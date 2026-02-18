@@ -39,16 +39,10 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
 
     final user = FirebaseAuth.instance.currentUser!;
 
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .set({
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
       "phone": user.phoneNumber,
       "selectedExams": selectedExamIds,
-      "subscription": {
-        "type": "free",
-        "validTill": null,
-      },
+      "subscription": {"type": "free", "validTill": null},
       "createdAt": FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
@@ -61,7 +55,6 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
       body: FutureBuilder<List<QueryDocumentSnapshot>>(
         future: _fetchExams(),
         builder: (context, snapshot) {
-
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -76,14 +69,11 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
             padding: const EdgeInsets.all(24),
             child: Column(
               children: [
-
                 const SizedBox(height: 40),
 
                 const Text(
                   "Select Your Exams",
-                  style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                 ),
 
                 const SizedBox(height: 20),
@@ -97,19 +87,15 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
                       final title = exam['title'];
                       final desc = exam['description'];
 
-                      final isSelected =
-                          selectedExamIds.contains(examId);
+                      final isSelected = selectedExamIds.contains(examId);
 
                       return GestureDetector(
                         onTap: () => _toggleExam(examId),
                         child: Container(
-                          margin:
-                              const EdgeInsets.only(bottom: 12),
-                          padding:
-                              const EdgeInsets.all(16),
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            borderRadius:
-                                BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: isSelected
                                   ? const Color(0xFF1F3A8A)
@@ -120,19 +106,19 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
                             children: [
                               Expanded(
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       title,
                                       style: const TextStyle(
-                                          fontWeight:
-                                              FontWeight.bold),
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                     Text(
                                       desc,
                                       style: const TextStyle(
-                                          color: Colors.grey),
+                                        color: Colors.grey,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -140,12 +126,11 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
                               Icon(
                                 isSelected
                                     ? Icons.check_circle
-                                    : Icons
-                                        .radio_button_unchecked,
+                                    : Icons.radio_button_unchecked,
                                 color: isSelected
                                     ? const Color(0xFF1F3A8A)
                                     : Colors.grey,
-                              )
+                              ),
                             ],
                           ),
                         ),
@@ -160,16 +145,19 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
                   child: ElevatedButton(
                     onPressed: loading ? null : _saveExams,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                          const Color(0xFF1F3A8A),
+                      backgroundColor: const Color(0xFF1F3A8A),
                     ),
                     child: loading
-                        ? const CircularProgressIndicator(
-                            color: Colors.white)
+                        ? const CircularProgressIndicator(color: Colors.white)
                         : Text(
-                            "Continue (${selectedExamIds.length} selected)"),
+                            "Continue (${selectedExamIds.length} selected)",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                   ),
-                )
+                ),
               ],
             ),
           );

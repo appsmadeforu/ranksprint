@@ -204,42 +204,42 @@ class ProfileScreen extends StatelessWidget {
 
                   const SizedBox(height: 30),
 
-                  const Text(
-                    "Selected Exams",
-                    style: TextStyle(
-                        fontWeight:
-                            FontWeight.bold),
-                  ),
+                  // const Text(
+                  //   "Selected Exams",
+                  //   style: TextStyle(
+                  //       fontWeight:
+                  //           FontWeight.bold),
+                  // ),
 
-                  const SizedBox(height: 10),
+                  // const SizedBox(height: 10),
 
-                  selectedExams.isEmpty
-                      ? const Text(
-                          "No exams selected",
-                          style: TextStyle(
-                              color:
-                                  Colors.grey),
-                        )
-                      : Wrap(
-                          spacing: 8,
-                          children:
-                              selectedExams
-                                  .map(
-                                    (exam) =>
-                                        Chip(
-                                      label: Text(
-                                          exam),
-                                      backgroundColor:
-                                          const Color(
-                                              0xFF1F3A8A),
-                                      labelStyle:
-                                          const TextStyle(
-                                              color: Colors
-                                                  .white),
-                                    ),
-                                  )
-                                  .toList(),
-                        ),
+                  // selectedExams.isEmpty
+                  //     ? const Text(
+                  //         "No exams selected",
+                  //         style: TextStyle(
+                  //             color:
+                  //                 Colors.grey),
+                  //       )
+                  //     : Wrap(
+                  //         spacing: 8,
+                  //         children:
+                  //             selectedExams
+                  //                 .map(
+                  //                   (exam) =>
+                  //                       Chip(
+                  //                     label: Text(
+                  //                         exam),
+                  //                     backgroundColor:
+                  //                         const Color(
+                  //                             0xFF1F3A8A),
+                  //                     labelStyle:
+                  //                         const TextStyle(
+                  //                             color: Colors
+                  //                                 .white),
+                  //                   ),
+                  //                 )
+                  //                 .toList(),
+                  //       ),
 
                   const SizedBox(height: 40),
 

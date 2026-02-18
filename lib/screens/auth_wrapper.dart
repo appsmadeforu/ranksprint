@@ -13,27 +13,28 @@ class AuthWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
+      builder: (context, authSnapshot) {
 
-        // Loading state
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        // 🔄 Waiting for auth
+        if (authSnapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
 
-        // Not logged in
-        if (!snapshot.hasData) {
+        // ❌ Not logged in
+        if (!authSnapshot.hasData) {
           return const LoginScreen();
         }
 
-        final user = snapshot.data!;
+        final user = authSnapshot.data!;
 
-        return FutureBuilder<DocumentSnapshot>(
-          future: FirebaseFirestore.instance
+        // 🔍 Check user document
+        return StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance
               .collection('users')
               .doc(user.uid)
-              .get(),
+              .snapshots(),
           builder: (context, userSnapshot) {
 
             if (userSnapshot.connectionState == ConnectionState.waiting) {
@@ -42,19 +43,28 @@ class AuthWrapper extends StatelessWidget {
               );
             }
 
+            // ❌ No user document yet
             if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
               return const SelectExamScreen();
             }
 
             final data =
-                userSnapshot.data!.data() as Map<String, dynamic>;
+                userSnapshot.data!.data() as Map<String, dynamic>?;
 
-            final selectedExams = data['selectedExams'] ?? [];
-
-            if (selectedExams.isEmpty) {
+            if (data == null) {
               return const SelectExamScreen();
             }
 
+            final selectedExams = data['selectedExams'];
+
+            // ❌ No exams selected
+            if (selectedExams == null ||
+                selectedExams is! List ||
+                selectedExams.isEmpty) {
+              return const SelectExamScreen();
+            }
+
+            // ✅ Everything good → go to app
             return const MainNavigation();
           },
         );

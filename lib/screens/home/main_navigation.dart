@@ -30,11 +30,20 @@ class _MainNavigationState extends State<MainNavigation> {
         onTap: (value) => setState(() => _index = value),
         selectedItemColor: const Color(0xFF2F3E8F),
         unselectedItemColor: Colors.grey,
+        type: BottomNavigationBarType.fixed,
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.description), label: "Tests"),
-          BottomNavigationBarItem(icon: Icon(Icons.menu_book), label: "PYQs"),
-          BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: "Analytics"),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.description_outlined),
+              label: "Tests"),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.menu_book_outlined),
+              label: "PYQs"),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.bar_chart_outlined),
+              label: "Analytics"),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.person_outline),
+              label: "Profile"),
         ],
       ),
     );
