@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "860899860233",
+    "project_id": "ranksprint",
+    "storage_bucket": "ranksprint.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:860899860233:android:b9b9f1c4b77504be633dd8",
+        "android_client_info": {
+          "package_name": "com.example.ranksprint"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "860899860233-60jdftnao0cqu4inqt18codhs7il7mt0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.ranksprint",
+            "certificate_hash": "50fca33d26edf9c9ad64017c38094be6fc1aefb5"
+          }
+        },
+        {
+          "client_id": "860899860233-i8266nl8nm1pnif4fqr3tcdon21qeoop.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCDWde0ByUjtKkhZKpWMaWemvUcfXWWD64"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "860899860233-i8266nl8nm1pnif4fqr3tcdon21qeoop.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "860899860233-919urglorr5a5kkecbtdrol541p91gs4.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.ranksprint"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
