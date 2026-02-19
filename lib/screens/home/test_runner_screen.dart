@@ -29,7 +29,10 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
 
   Future<void> _startAttempt() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (user == null) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('You must be signed in to start a test')));
+      return;
+    }
 
     setState(() => loading = true);
 
@@ -46,7 +49,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
     };
     await ref.set(attemptData);
 
-    // load test metadata (for duration) and questions
+    // load test metadata (for duration)
     final testDoc = await FirebaseFirestore.instance
         .collection('exams')
         .doc(widget.examId)
@@ -62,25 +65,55 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
       }
     } catch (_) {}
 
+    // fetch questions - try with orderBy first, fallback without orderBy if that fails
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> qdocs = [];
+    try {
+      final qSnap = await FirebaseFirestore.instance
+          .collection('exams')
+          .doc(widget.examId)
+          .collection('tests')
+          .doc(widget.testId)
+          .collection('questions')
+          .orderBy('createdAt')
+          .get();
+      qdocs = qSnap.docs;
+    } catch (e) {
+      // orderBy('createdAt') may fail if field missing or for security rules - retry without order
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not order questions: ${e.toString()} — retrying without order')));
+      try {
     final qSnap = await FirebaseFirestore.instance
-        .collection('exams')
-        .doc(widget.examId)
-        .collection('tests')
-        .doc(widget.testId)
-        .collection('questions')
-        .orderBy('createdAt')
-        .get();
+      .collection('exams')
+      .doc(widget.examId)
+      .collection('tests')
+      .doc(widget.testId)
+      .collection('questions')
+      .get();
+    qdocs = qSnap.docs;
+      } catch (e2) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load questions: ${e2.toString()}')));
+        qdocs = [];
+      }
+    }
 
-    questions = qSnap.docs.map((d) {
+    // map to internal structure
+    questions = qdocs.map((d) {
       final m = Map<String, dynamic>.from(d.data());
       m['__id'] = d.id;
       return m;
     }).toList();
 
+    // debug logs to help runtime investigation
+    // ignore: avoid_print
+    print('TestRunner: started attempt for exam=${widget.examId} test=${widget.testId} user=${user.uid} — questions found=${questions.length} ids=${qdocs.map((d) => d.id).toList()}');
+
     setState(() {
       attemptId = ref.id;
       remainingSeconds = totalMinutes * 60;
       loading = false;
+      currentIndex = 0;
+      answers = {};
+      markedForReview = {};
+      visited = {};
     });
 
     _timer?.cancel();
