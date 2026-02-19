@@ -13,16 +13,16 @@ void main() async {
   );
 
   // Run the full seeder only in debug mode to avoid overwriting production data on every startup.
-  if (kDebugMode) {
-    try {
-      await FullFirestoreSeeder.seed();
-    } catch (e) {
-      // swallow seeder errors in debug but print for visibility
-      if (kDebugMode) {
-        print('Seeder failed: $e');
-      }
-    }
-  }
+  // if (kDebugMode) {
+  //   try {
+  //     await FullFirestoreSeeder.seed();
+  //   } catch (e) {
+  //     // swallow seeder errors in debug but print for visibility
+  //     if (kDebugMode) {
+  //       print('Seeder failed: $e');
+  //     }
+  //   }
+  // }
   runApp(const MyApp());
 }
 
