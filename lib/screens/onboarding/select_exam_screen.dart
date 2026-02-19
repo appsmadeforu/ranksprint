@@ -42,7 +42,9 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
     await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
       "phone": user.phoneNumber,
       "selectedExams": selectedExamIds,
-      "subscription": {"type": "free", "validTill": null},
+      // align with seeded user structure
+      "subscriptionIds": [],
+      "subscriptionStatus": "free",
       "createdAt": FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
@@ -83,9 +85,9 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
                     itemCount: exams.length,
                     itemBuilder: (context, index) {
                       final exam = exams[index];
-                      final examId = exam['examId'];
-                      final title = exam['title'];
-                      final desc = exam['description'];
+                      final examId = exam.id;
+                      final title = exam['name'] ?? exam.id;
+                      final desc = exam['description'] ?? '';
 
                       final isSelected = selectedExamIds.contains(examId);
 
