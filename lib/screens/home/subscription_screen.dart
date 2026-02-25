@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 class SubscriptionScreen extends StatefulWidget {
   const SubscriptionScreen({super.key});
@@ -38,8 +37,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       for (var doc in snapshot.docs) {
         final data = doc.data();
 
-        final examsIncluded =
-            Map<String, dynamic>.from(data['examsIncluded'] ?? {});
+        final examsIncluded = Map<String, dynamic>.from(
+          data['examsIncluded'] ?? {},
+        );
 
         plans.add({
           'id': doc.id,
@@ -49,8 +49,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           'price': (data['price'] ?? 0).toInt(),
           'discount': data['discountPercentage'] ?? 0,
           'originalPrice': _calculateOriginalPrice(
-              (data['price'] ?? 0).toInt(),
-              (data['discountPercentage'] ?? 0).toInt()),
+            (data['price'] ?? 0).toInt(),
+            (data['discountPercentage'] ?? 0).toInt(),
+          ),
           'examsIncluded': examsIncluded,
         });
       }
@@ -74,11 +75,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       return {'tests': [], 'pyqs': []};
     }
 
-    final plan =
-        subscriptionPlans.firstWhere((p) => p['id'] == selectedPlanId);
+    final plan = subscriptionPlans.firstWhere((p) => p['id'] == selectedPlanId);
 
-    final examsMap =
-        Map<String, dynamic>.from(plan['examsIncluded'] ?? {});
+    final examsMap = Map<String, dynamic>.from(plan['examsIncluded'] ?? {});
 
     if (!examsMap.containsKey(selectedExamId)) {
       return {'tests': [], 'pyqs': []};
@@ -108,13 +107,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   @override
   Widget build(BuildContext context) {
     if (isLoadingPlans) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final selectedPlan =
-        subscriptionPlans.firstWhere((p) => p['id'] == selectedPlanId);
+    final selectedPlan = subscriptionPlans.firstWhere(
+      (p) => p['id'] == selectedPlanId,
+    );
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
@@ -127,17 +125,21 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             color: const Color(0xFF2F3E8F),
             child: Column(
               children: const [
-                Icon(Icons.workspace_premium,
-                    color: Colors.orange, size: 40),
+                Icon(Icons.workspace_premium, color: Colors.orange, size: 40),
                 SizedBox(height: 8),
-                Text("Unlock Premium",
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold)),
+                Text(
+                  "Unlock Premium",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 SizedBox(height: 4),
-                Text("Get unlimited access to all features",
-                    style: TextStyle(color: Colors.white70)),
+                Text(
+                  "Get unlimited access to all features",
+                  style: TextStyle(color: Colors.white70),
+                ),
               ],
             ),
           ),
@@ -150,14 +152,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                 children: [
                   /// PLAN CARDS
                   ...subscriptionPlans.map((plan) {
-                    final isSelected =
-                        plan['id'] == selectedPlanId;
-                    final isPopular =
-                        plan['durationDays'] == 180;
+                    final isSelected = plan['id'] == selectedPlanId;
+                    final isPopular = plan['durationDays'] == 180;
 
                     return GestureDetector(
-                      onTap: () =>
-                          setState(() => selectedPlanId = plan['id']),
+                      onTap: () => setState(() => selectedPlanId = plan['id']),
                       child: Container(
                         margin: const EdgeInsets.only(bottom: 12),
                         padding: const EdgeInsets.all(14),
@@ -186,80 +185,86 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                             /// TEXT
                             Expanded(
                               child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Row(
                                     children: [
-                                      Text(plan['name'],
-                                          style: const TextStyle(
-                                              fontWeight:
-                                                  FontWeight.w600)),
+                                      Text(
+                                        plan['name'],
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
                                       if (isPopular) ...[
                                         const SizedBox(width: 6),
                                         Container(
-                                          padding:
-                                              const EdgeInsets.symmetric(
-                                                  horizontal: 6,
-                                                  vertical: 2),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
                                           decoration: BoxDecoration(
                                             color: Colors.orange,
-                                            borderRadius:
-                                                BorderRadius.circular(
-                                                    4),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
                                           ),
                                           child: const Text(
                                             "Most Popular",
                                             style: TextStyle(
-                                                fontSize: 10,
-                                                color: Colors.white),
+                                              fontSize: 10,
+                                              color: Colors.white,
+                                            ),
                                           ),
-                                        )
-                                      ]
+                                        ),
+                                      ],
                                     ],
                                   ),
                                   const SizedBox(height: 4),
-                                  Text(plan['duration'],
-                                      style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey[600])),
+                                  Text(
+                                    plan['duration'],
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
 
                             /// PRICE
                             Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.end,
+                              crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 Text(
                                   "₹${plan['originalPrice']}",
                                   style: TextStyle(
                                     fontSize: 12,
-                                    decoration: TextDecoration
-                                        .lineThrough,
+                                    decoration: TextDecoration.lineThrough,
                                     color: Colors.grey[500],
                                   ),
                                 ),
                                 const SizedBox(height: 2),
                                 Row(
                                   children: [
-                                    Text("₹${plan['price']}",
-                                        style: const TextStyle(
-                                            fontWeight:
-                                                FontWeight.bold)),
+                                    Text(
+                                      "₹${plan['price']}",
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                                     const SizedBox(width: 4),
                                     Text(
-                                        "${plan['discount']}% OFF",
-                                        style: const TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.green,
-                                            fontWeight:
-                                                FontWeight.bold)),
+                                      "${plan['discount']}% OFF",
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.green,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ],
-                            )
+                            ),
                           ],
                         ),
                       ),
@@ -269,12 +274,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                   /// INCLUDED
                   _sectionCard(
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: const [
-                        Text("What's Included",
-                            style:
-                                TextStyle(fontWeight: FontWeight.bold)),
+                        Text(
+                          "What's Included",
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
                         SizedBox(height: 10),
                         _Feature("Access to all mock tests"),
                         _Feature("Unlimited test attempts"),
@@ -291,12 +296,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                   /// COUPON
                   _sectionCard(
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text("Have a Coupon Code?",
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold)),
+                        const Text(
+                          "Have a Coupon Code?",
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
                         const SizedBox(height: 10),
                         Row(
                           children: [
@@ -307,18 +312,18 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                                   hintText: "Enter coupon code",
                                   isDense: true,
                                   border: OutlineInputBorder(
-                                    borderRadius:
-                                        BorderRadius.circular(8),
+                                    borderRadius: BorderRadius.circular(8),
                                   ),
                                 ),
                               ),
                             ),
                             const SizedBox(width: 8),
                             OutlinedButton(
-                                onPressed: () {},
-                                child: const Text("Apply"))
+                              onPressed: () {},
+                              child: const Text("Apply"),
+                            ),
                           ],
-                        )
+                        ),
                       ],
                     ),
                   ),
@@ -328,8 +333,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     color: const Color(0xFFEAF4FF),
                     child: Row(
                       children: const [
-                        Icon(Icons.verified,
-                            color: Colors.green),
+                        Icon(Icons.verified, color: Colors.green),
                         SizedBox(width: 8),
                         Text("100% Secure Payment"),
                       ],
@@ -354,8 +358,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               child: Text(
                 "₹${selectedPlan['price']}",
                 style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold),
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
             ElevatedButton(
@@ -365,12 +370,15 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange,
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 24, vertical: 12),
+                  horizontal: 24,
+                  vertical: 12,
+                ),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
               child: const Text("Subscribe Now"),
-            )
+            ),
           ],
         ),
       ),
@@ -401,7 +409,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 /// FEATURE ROW (OUTSIDE MAIN CLASS)
 class _Feature extends StatelessWidget {
   final String text;
-  const _Feature(this.text, {super.key});
+  const _Feature(this.text);
 
   @override
   Widget build(BuildContext context) {
@@ -409,8 +417,7 @@ class _Feature extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
         children: [
-          const Icon(Icons.check_circle,
-              color: Colors.green, size: 16),
+          const Icon(Icons.check_circle, color: Colors.green, size: 16),
           const SizedBox(width: 8),
           Text(text, style: const TextStyle(fontSize: 13)),
         ],

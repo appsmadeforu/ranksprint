@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 class AppState extends ChangeNotifier {
-
   String? _selectedExamId;
 
   String? get selectedExamId => _selectedExamId;

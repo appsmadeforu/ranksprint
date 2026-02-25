@@ -34,12 +34,13 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
   Future<void> _startAttempt() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('You must be signed in to start a test'),
           ),
         );
+      }
       return;
     }
 
@@ -90,7 +91,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
       qdocs = qSnap.docs;
     } catch (e) {
       // orderBy('createdAt') may fail if field missing or for security rules - retry without order
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -98,6 +99,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
             ),
           ),
         );
+      }
       try {
         final qSnap = await FirebaseFirestore.instance
             .collection('exams')
@@ -108,12 +110,13 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
             .get();
         qdocs = qSnap.docs;
       } catch (e2) {
-        if (mounted)
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Failed to load questions: ${e2.toString()}'),
             ),
           );
+        }
         qdocs = [];
       }
     }
@@ -163,10 +166,11 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
       'visited': visited.toList(),
       'lastSavedAt': Timestamp.now(),
     });
-    if (mounted)
+    if (mounted) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Progress saved')));
+    }
   }
 
   Future<void> _submitAttempt() async {

@@ -29,9 +29,7 @@ class _MainNavigationState extends State<MainNavigation> {
   void navigateToSubscription() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const SubscriptionScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
     );
   }
 
@@ -47,20 +45,25 @@ class _MainNavigationState extends State<MainNavigation> {
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              label: "Home"),
+            icon: Icon(Icons.home_outlined),
+            label: "Home",
+          ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.description_outlined),
-              label: "Tests"),
+            icon: Icon(Icons.description_outlined),
+            label: "Tests",
+          ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.menu_book_outlined),
-              label: "PYQs"),
+            icon: Icon(Icons.menu_book_outlined),
+            label: "PYQs",
+          ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.bar_chart_outlined),
-              label: "Analytics"),
+            icon: Icon(Icons.bar_chart_outlined),
+            label: "Analytics",
+          ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              label: "Profile"),
+            icon: Icon(Icons.person_outline),
+            label: "Profile",
+          ),
         ],
       ),
     );

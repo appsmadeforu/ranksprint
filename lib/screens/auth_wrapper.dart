@@ -14,7 +14,6 @@ class AuthWrapper extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, authSnapshot) {
-
         // 🔄 Waiting for auth
         if (authSnapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
@@ -36,7 +35,6 @@ class AuthWrapper extends StatelessWidget {
               .doc(user.uid)
               .snapshots(),
           builder: (context, userSnapshot) {
-
             if (userSnapshot.connectionState == ConnectionState.waiting) {
               return const Scaffold(
                 body: Center(child: CircularProgressIndicator()),
@@ -48,8 +46,7 @@ class AuthWrapper extends StatelessWidget {
               return const SelectExamScreen();
             }
 
-            final data =
-                userSnapshot.data!.data() as Map<String, dynamic>?;
+            final data = userSnapshot.data!.data() as Map<String, dynamic>?;
 
             if (data == null) {
               return const SelectExamScreen();

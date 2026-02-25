@@ -33,10 +33,14 @@ class TopHeader extends StatelessWidget {
               final exams = snapshot.data!.docs;
 
               return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(12)),
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
                     value: selectedExamId,
@@ -52,9 +56,7 @@ class TopHeader extends StatelessWidget {
                             Text(
                               exam['name'] ?? exam.id,
                               style: TextStyle(
-                                color: isUnlocked
-                                    ? Colors.black
-                                    : Colors.grey,
+                                color: isUnlocked ? Colors.black : Colors.grey,
                               ),
                             ),
                             if (!isUnlocked)

@@ -44,6 +44,7 @@ dependencies:
   cloud_firestore: ^6.1.2
   cloud_functions: ^6.0.6
   syncfusion_flutter_pdfviewer: ^32.2.7
+  url_launcher: any
 url_launcher: ^6.2.2
 
 dependency_overrides:

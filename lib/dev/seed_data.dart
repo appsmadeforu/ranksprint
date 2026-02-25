@@ -12,9 +12,9 @@ class FullFirestoreSeeder {
     await _seedSubscription(batch);
     await _seedExamStructure(batch);
     await _seedJeePracticeTest(batch); // 👈 NEW PRACTICE TEST
-  await _seedAdditionalFreeTests(batch); // 👈 ADDITIONAL FREE/DEMO TESTS
-  await _seedUsers(batch);
-  await _seedPyqs(batch);
+    await _seedAdditionalFreeTests(batch); // 👈 ADDITIONAL FREE/DEMO TESTS
+    await _seedUsers(batch);
+    await _seedPyqs(batch);
 
     await batch.commit();
 
@@ -66,7 +66,12 @@ class FullFirestoreSeeder {
         "text": "Which blood cell carries oxygen?",
         "subject": "Biology",
         "sectionId": "biology",
-        "options": ["Red blood cells", "White blood cells", "Platelets", "Plasma"],
+        "options": [
+          "Red blood cells",
+          "White blood cells",
+          "Platelets",
+          "Plasma",
+        ],
         "answer": "A",
       },
       {
@@ -198,11 +203,7 @@ class FullFirestoreSeeder {
       "name": "Super Admin",
       "email": "admin@ranksprint.ai",
       "role": "super_admin",
-      "permissions": [
-        "manage_exams",
-        "manage_tests",
-        "manage_subscriptions"
-      ],
+      "permissions": ["manage_exams", "manage_tests", "manage_subscriptions"],
       "createdAt": now,
     });
 
@@ -237,16 +238,8 @@ class FullFirestoreSeeder {
     final now = Timestamp.now();
 
     final List<Map<String, dynamic>> exams = [
-      {
-        "id": "jee",
-        "name": "JEE Main",
-        "category": "Engineering"
-      },
-      {
-        "id": "mhtcet",
-        "name": "MHT-CET",
-        "category": "Engineering"
-      },
+      {"id": "jee", "name": "JEE Main", "category": "Engineering"},
+      {"id": "mhtcet", "name": "MHT-CET", "category": "Engineering"},
     ];
 
     for (Map<String, dynamic> exam in exams) {
@@ -294,10 +287,7 @@ class FullFirestoreSeeder {
       "attemptLimit": 5,
       "randomizeQuestions": false,
       "randomizeOptions": true,
-      "timing": {
-        "totalDurationMinutes": 30,
-        "serverEnforced": true,
-      },
+      "timing": {"totalDurationMinutes": 30, "serverEnforced": true},
       "createdAt": now,
     });
 
@@ -310,8 +300,7 @@ class FullFirestoreSeeder {
     ];
 
     for (int i = 0; i < sections.length; i++) {
-      batch.set(
-          testRef.collection("sections").doc(sections[i]["id"]!), {
+      batch.set(testRef.collection("sections").doc(sections[i]["id"]!), {
         "name": sections[i]["name"],
         "order": i + 1,
         "navigationRule": "free",
@@ -327,77 +316,77 @@ class FullFirestoreSeeder {
         "subject": "Physics",
         "text": "What is the SI unit of force?",
         "options": ["Newton", "Joule", "Pascal", "Watt"],
-        "answer": "A"
+        "answer": "A",
       },
       {
         "sectionId": "physics",
         "subject": "Physics",
         "text": "Acceleration due to gravity on Earth is?",
         "options": ["9.8 m/s²", "10 m/s²", "8.9 m/s²", "12 m/s²"],
-        "answer": "A"
+        "answer": "A",
       },
       {
         "sectionId": "chemistry",
         "subject": "Chemistry",
         "text": "Atomic number represents number of?",
         "options": ["Protons", "Neutrons", "Electrons", "Atoms"],
-        "answer": "A"
+        "answer": "A",
       },
       {
         "sectionId": "chemistry",
         "subject": "Chemistry",
         "text": "pH less than 7 means?",
         "options": ["Acidic", "Basic", "Neutral", "Salt"],
-        "answer": "A"
+        "answer": "A",
       },
       {
         "sectionId": "maths",
         "subject": "Mathematics",
         "text": "Derivative of x² is?",
         "options": ["2x", "x", "x²", "1"],
-        "answer": "A"
+        "answer": "A",
       },
       {
         "sectionId": "maths",
         "subject": "Mathematics",
         "text": "sin(90°) equals?",
         "options": ["1", "0", "-1", "0.5"],
-        "answer": "A"
+        "answer": "A",
       },
       {
         "sectionId": "physics",
         "subject": "Physics",
         "text": "Velocity is a vector because it has?",
         "options": ["Magnitude", "Direction", "Mass", "Speed"],
-        "answer": "B"
+        "answer": "B",
       },
       {
         "sectionId": "chemistry",
         "subject": "Chemistry",
         "text": "Avogadro number equals?",
         "options": ["6.022×10²³", "3.14", "9.8", "1.6×10⁻¹⁹"],
-        "answer": "A"
+        "answer": "A",
       },
       {
         "sectionId": "maths",
         "subject": "Mathematics",
         "text": "Value of π is?",
         "options": ["3.14", "2.17", "4.13", "1.41"],
-        "answer": "A"
+        "answer": "A",
       },
       {
         "sectionId": "maths",
         "subject": "Mathematics",
         "text": "log10(100) equals?",
         "options": ["2", "1", "10", "100"],
-        "answer": "A"
+        "answer": "A",
       },
     ];
 
     for (int i = 0; i < questions.length; i++) {
       final Map<String, dynamic> q = questions[i];
-      final List<String> options =
-          (q["options"] as List<dynamic>).cast<String>();
+      final List<String> options = (q["options"] as List<dynamic>)
+          .cast<String>();
 
       batch.set(testRef.collection("questions").doc("q${i + 1}"), {
         "questionText": q["text"],
@@ -551,7 +540,10 @@ class FullFirestoreSeeder {
     final now = Timestamp.now();
 
     // helper to add chapters for a subject
-    void addChapters(CollectionReference<Map<String, dynamic>> chaptersRef, List<Map<String, dynamic>> chapters) {
+    void addChapters(
+      CollectionReference<Map<String, dynamic>> chaptersRef,
+      List<Map<String, dynamic>> chapters,
+    ) {
       for (int i = 0; i < chapters.length; i++) {
         final ch = chapters[i];
         chaptersRef.doc('ch_${i + 1}').set({
@@ -570,23 +562,58 @@ class FullFirestoreSeeder {
     final jeePyq = jeeRef.collection('pyqs');
     final jeeSubjects = {
       'physics': [
-        {'name': 'Mechanics', 'pdfUrl': 'https://example.com/jee/physics/mechanics.pdf', 'questionCount': 12, 'isLocked': false},
-        {'name': 'Optics', 'pdfUrl': 'https://example.com/jee/physics/optics.pdf', 'questionCount': 8, 'isLocked': false},
+        {
+          'name': 'Mechanics',
+          'pdfUrl': 'https://example.com/jee/physics/mechanics.pdf',
+          'questionCount': 12,
+          'isLocked': false,
+        },
+        {
+          'name': 'Optics',
+          'pdfUrl': 'https://example.com/jee/physics/optics.pdf',
+          'questionCount': 8,
+          'isLocked': false,
+        },
       ],
       'chemistry': [
-        {'name': 'Organic Chemistry', 'pdfUrl': 'https://example.com/jee/chem/org.pdf', 'questionCount': 10, 'isLocked': false},
-        {'name': 'Physical Chemistry', 'pdfUrl': 'https://example.com/jee/chem/phys.pdf', 'questionCount': 9, 'isLocked': false},
+        {
+          'name': 'Organic Chemistry',
+          'pdfUrl': 'https://example.com/jee/chem/org.pdf',
+          'questionCount': 10,
+          'isLocked': false,
+        },
+        {
+          'name': 'Physical Chemistry',
+          'pdfUrl': 'https://example.com/jee/chem/phys.pdf',
+          'questionCount': 9,
+          'isLocked': false,
+        },
       ],
       'maths': [
-        {'name': 'Calculus', 'pdfUrl': 'https://example.com/jee/math/calculus.pdf', 'questionCount': 15, 'isLocked': false},
-        {'name': 'Algebra', 'pdfUrl': 'https://example.com/jee/math/algebra.pdf', 'questionCount': 10, 'isLocked': false},
+        {
+          'name': 'Calculus',
+          'pdfUrl': 'https://example.com/jee/math/calculus.pdf',
+          'questionCount': 15,
+          'isLocked': false,
+        },
+        {
+          'name': 'Algebra',
+          'pdfUrl': 'https://example.com/jee/math/algebra.pdf',
+          'questionCount': 10,
+          'isLocked': false,
+        },
       ],
     };
 
     jeeSubjects.forEach((subjectId, chapters) {
       final subjRef = jeePyq.doc(subjectId);
-      batch.set(subjRef, {'name': '${subjectId[0].toUpperCase()}${subjectId.substring(1)}'});
-      addChapters(subjRef.collection('chapters'), List<Map<String, dynamic>>.from(chapters));
+      batch.set(subjRef, {
+        'name': '${subjectId[0].toUpperCase()}${subjectId.substring(1)}',
+      });
+      addChapters(
+        subjRef.collection('chapters'),
+        List<Map<String, dynamic>>.from(chapters),
+      );
     });
 
     // NEET subjects
@@ -594,21 +621,46 @@ class FullFirestoreSeeder {
     final neetPyq = neetRef.collection('pyqs');
     final neetSubjects = {
       'biology': [
-        {'name': 'Human Physiology', 'pdfUrl': 'https://example.com/neet/bio/physiology.pdf', 'questionCount': 20, 'isLocked': false},
-        {'name': 'Genetics', 'pdfUrl': 'https://example.com/neet/bio/genetics.pdf', 'questionCount': 12, 'isLocked': false},
+        {
+          'name': 'Human Physiology',
+          'pdfUrl': 'https://example.com/neet/bio/physiology.pdf',
+          'questionCount': 20,
+          'isLocked': false,
+        },
+        {
+          'name': 'Genetics',
+          'pdfUrl': 'https://example.com/neet/bio/genetics.pdf',
+          'questionCount': 12,
+          'isLocked': false,
+        },
       ],
       'chemistry': [
-        {'name': 'Inorganic Chemistry', 'pdfUrl': 'https://example.com/neet/chem/inorg.pdf', 'questionCount': 10, 'isLocked': false},
+        {
+          'name': 'Inorganic Chemistry',
+          'pdfUrl': 'https://example.com/neet/chem/inorg.pdf',
+          'questionCount': 10,
+          'isLocked': false,
+        },
       ],
       'physics': [
-        {'name': 'Electrostatics', 'pdfUrl': 'https://example.com/neet/phys/electro.pdf', 'questionCount': 8, 'isLocked': false},
+        {
+          'name': 'Electrostatics',
+          'pdfUrl': 'https://example.com/neet/phys/electro.pdf',
+          'questionCount': 8,
+          'isLocked': false,
+        },
       ],
     };
 
     neetSubjects.forEach((subjectId, chapters) {
       final subjRef = neetPyq.doc(subjectId);
-      batch.set(subjRef, {'name': '${subjectId[0].toUpperCase()}${subjectId.substring(1)}'});
-      addChapters(subjRef.collection('chapters'), List<Map<String, dynamic>>.from(chapters));
+      batch.set(subjRef, {
+        'name': '${subjectId[0].toUpperCase()}${subjectId.substring(1)}',
+      });
+      addChapters(
+        subjRef.collection('chapters'),
+        List<Map<String, dynamic>>.from(chapters),
+      );
     });
 
     // SSC subjects
@@ -616,17 +668,32 @@ class FullFirestoreSeeder {
     final sscPyq = sscRef.collection('pyqs');
     final sscSubjects = {
       'gk': [
-        {'name': 'Indian Polity', 'pdfUrl': 'https://example.com/ssc/gk/polity.pdf', 'questionCount': 10, 'isLocked': false},
+        {
+          'name': 'Indian Polity',
+          'pdfUrl': 'https://example.com/ssc/gk/polity.pdf',
+          'questionCount': 10,
+          'isLocked': false,
+        },
       ],
       'maths': [
-        {'name': 'Arithmetic', 'pdfUrl': 'https://example.com/ssc/math/arithmetic.pdf', 'questionCount': 12, 'isLocked': false},
+        {
+          'name': 'Arithmetic',
+          'pdfUrl': 'https://example.com/ssc/math/arithmetic.pdf',
+          'questionCount': 12,
+          'isLocked': false,
+        },
       ],
     };
 
     sscSubjects.forEach((subjectId, chapters) {
       final subjRef = sscPyq.doc(subjectId);
-      batch.set(subjRef, {'name': '${subjectId[0].toUpperCase()}${subjectId.substring(1)}'});
-      addChapters(subjRef.collection('chapters'), List<Map<String, dynamic>>.from(chapters));
+      batch.set(subjRef, {
+        'name': '${subjectId[0].toUpperCase()}${subjectId.substring(1)}',
+      });
+      addChapters(
+        subjRef.collection('chapters'),
+        List<Map<String, dynamic>>.from(chapters),
+      );
     });
 
     // MHTCET subjects
@@ -634,17 +701,32 @@ class FullFirestoreSeeder {
     final mhtPyq = mhtRef.collection('pyqs');
     final mhtSubjects = {
       'physics': [
-        {'name': 'Thermodynamics', 'pdfUrl': 'https://example.com/mht/phys/thermo.pdf', 'questionCount': 8, 'isLocked': false},
+        {
+          'name': 'Thermodynamics',
+          'pdfUrl': 'https://example.com/mht/phys/thermo.pdf',
+          'questionCount': 8,
+          'isLocked': false,
+        },
       ],
       'chemistry': [
-        {'name': 'Physical Chemistry', 'pdfUrl': 'https://example.com/mht/chem/phys.pdf', 'questionCount': 7, 'isLocked': false},
+        {
+          'name': 'Physical Chemistry',
+          'pdfUrl': 'https://example.com/mht/chem/phys.pdf',
+          'questionCount': 7,
+          'isLocked': false,
+        },
       ],
     };
 
     mhtSubjects.forEach((subjectId, chapters) {
       final subjRef = mhtPyq.doc(subjectId);
-      batch.set(subjRef, {'name': '${subjectId[0].toUpperCase()}${subjectId.substring(1)}'});
-      addChapters(subjRef.collection('chapters'), List<Map<String, dynamic>>.from(chapters));
+      batch.set(subjRef, {
+        'name': '${subjectId[0].toUpperCase()}${subjectId.substring(1)}',
+      });
+      addChapters(
+        subjRef.collection('chapters'),
+        List<Map<String, dynamic>>.from(chapters),
+      );
     });
   }
 }

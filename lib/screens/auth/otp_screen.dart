@@ -13,13 +13,14 @@ class OtpScreen extends StatefulWidget {
 class _OtpScreenState extends State<OtpScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  final List<TextEditingController> _controllers =
-      List.generate(6, (_) => TextEditingController());
+  final List<TextEditingController> _controllers = List.generate(
+    6,
+    (_) => TextEditingController(),
+  );
 
   bool _loading = false;
 
-  String get _otp =>
-      _controllers.map((c) => c.text).join();
+  String get _otp => _controllers.map((c) => c.text).join();
 
   Future<void> _verifyOtp() async {
     if (_otp.length != 6) return;
@@ -27,8 +28,7 @@ class _OtpScreenState extends State<OtpScreen> {
     setState(() => _loading = true);
 
     try {
-      PhoneAuthCredential credential =
-          PhoneAuthProvider.credential(
+      PhoneAuthCredential credential = PhoneAuthProvider.credential(
         verificationId: widget.verificationId,
         smsCode: _otp,
       );
@@ -42,9 +42,9 @@ class _OtpScreenState extends State<OtpScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Invalid OTP")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Invalid OTP")));
       }
     }
   }
@@ -85,7 +85,6 @@ class _OtpScreenState extends State<OtpScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-
               // RS Logo
               Container(
                 width: 60,
@@ -110,10 +109,7 @@ class _OtpScreenState extends State<OtpScreen> {
 
               const Text(
                 "Rank Sprint",
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
               ),
 
               const SizedBox(height: 6),
@@ -135,10 +131,7 @@ class _OtpScreenState extends State<OtpScreen> {
 
               const Text(
                 "Verify OTP",
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
 
               const SizedBox(height: 6),
@@ -170,9 +163,7 @@ class _OtpScreenState extends State<OtpScreen> {
                     ),
                   ),
                   child: _loading
-                      ? const CircularProgressIndicator(
-                          color: Colors.white,
-                        )
+                      ? const CircularProgressIndicator(color: Colors.white)
                       : const Text("Verify & Continue"),
                 ),
               ),
@@ -200,25 +191,17 @@ class _OtpScreenState extends State<OtpScreen> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-
-                    const Icon(
-                      Icons.info_outline,
-                      color: Colors.orange,
-                    ),
+                    const Icon(Icons.info_outline, color: Colors.orange),
 
                     const SizedBox(width: 12),
 
                     Expanded(
                       child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: const [
-
                           Text(
                             "Single Device Policy",
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: TextStyle(fontWeight: FontWeight.bold),
                           ),
 
                           SizedBox(height: 6),

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'subscription_screen.dart';
 import '../../widgets/top_header.dart';
@@ -25,10 +24,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _loadUserExams() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-    final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-    final data = doc.data() as Map<String, dynamic>?;
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+    final data = doc.data();
     if (data == null) return;
-    
+
     final exams = List<String>.from(data['selectedExams'] ?? []);
     setState(() {
       userExamIds = exams;
@@ -53,7 +55,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'September',
       'October',
       'November',
-      'December'
+      'December',
     ];
     return '${months[d.month - 1]} ${d.day}, ${d.year}';
   }
@@ -63,9 +65,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final currentUser = FirebaseAuth.instance.currentUser;
 
     if (currentUser == null) {
-      return const Scaffold(
-        body: Center(child: Text('User not logged in')),
-      );
+      return const Scaffold(body: Center(child: Text('User not logged in')));
     }
 
     return Scaffold(
@@ -89,7 +89,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final email = data['email'] ?? '';
           final phone = data['phone'] ?? '';
           final selectedExams = List<String>.from(data['selectedExams'] ?? []);
-          final subscriptionIds = List<String>.from(data['subscriptionIds'] ?? []);
+          final subscriptionIds = List<String>.from(
+            data['subscriptionIds'] ?? [],
+          );
 
           return SafeArea(
             child: SingleChildScrollView(
@@ -97,7 +99,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   // Top header with functional dropdown
                   TopHeader(
-                    selectedExamId: selectedExamId ?? (selectedExams.isNotEmpty ? selectedExams.first : null),
+                    selectedExamId:
+                        selectedExamId ??
+                        (selectedExams.isNotEmpty ? selectedExams.first : null),
                     userExamIds: selectedExams,
                     onExamChanged: (examId) {
                       setState(() {
@@ -117,8 +121,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           radius: 36,
                           backgroundColor: const Color(0xFF2F3E8F),
                           child: Text(
-                            name.isNotEmpty ? (name.length >= 2 ? name.substring(0, 2).toUpperCase() : name.toUpperCase()) : 'RS',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                            name.isNotEmpty
+                                ? (name.length >= 2
+                                      ? name.substring(0, 2).toUpperCase()
+                                      : name.toUpperCase())
+                                : 'RS',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -126,20 +138,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(name.isNotEmpty ? name : 'Rank Sprint User', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                              Text(
+                                name.isNotEmpty ? name : 'Rank Sprint User',
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                               const SizedBox(height: 6),
-                              Text(email, style: const TextStyle(color: Colors.grey)),
+                              Text(
+                                email,
+                                style: const TextStyle(color: Colors.grey),
+                              ),
                               if (phone != '') ...[
                                 const SizedBox(height: 6),
-                                Text(phone, style: const TextStyle(color: Colors.grey)),
-                              ]
+                                Text(
+                                  phone,
+                                  style: const TextStyle(color: Colors.grey),
+                                ),
+                              ],
                             ],
                           ),
                         ),
                         IconButton(
                           onPressed: () {},
                           icon: const Icon(Icons.edit_outlined),
-                        )
+                        ),
                       ],
                     ),
                   ),
@@ -151,25 +175,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: FutureBuilder<DocumentSnapshot?>(
                       future: subscriptionIds.isNotEmpty
-                          ? FirebaseFirestore.instance.collection('subscriptions').doc(subscriptionIds.first).get()
+                          ? FirebaseFirestore.instance
+                                .collection('subscriptions')
+                                .doc(subscriptionIds.first)
+                                .get()
                           : Future.value(null),
                       builder: (context, subSnap) {
                         DateTime? expires;
-                        if (subSnap.hasData && subSnap.data != null && subSnap.data!.exists) {
-                          final sdata = subSnap.data!.data() as Map<String, dynamic>? ?? {};
+                        if (subSnap.hasData &&
+                            subSnap.data != null &&
+                            subSnap.data!.exists) {
+                          final sdata =
+                              subSnap.data!.data() as Map<String, dynamic>? ??
+                              {};
                           if (sdata['expiresAt'] is Timestamp) {
-                            expires = (sdata['expiresAt'] as Timestamp).toDate().toLocal();
+                            expires = (sdata['expiresAt'] as Timestamp)
+                                .toDate()
+                                .toLocal();
                           }
                         }
 
                         final isPremium = expires != null;
-                        final expiryText = expires != null ? 'Valid until ${_formatDate(expires)}' : '';
+                        final expiryText = expires != null
+                            ? 'Valid until ${_formatDate(expires)}'
+                            : '';
 
                         return Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(18),
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(colors: [Color(0xFF3A53B7), Color(0xFF1F3A8A)]),
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF3A53B7), Color(0xFF1F3A8A)],
+                            ),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Column(
@@ -179,16 +216,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 children: [
                                   Container(
                                     padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(8)),
-                                    child: const Icon(Icons.workspace_premium, color: Colors.orange),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white24,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.workspace_premium,
+                                      color: Colors.orange,
+                                    ),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
-                                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                      Text(isPremium ? 'Premium Plan' : 'Free Plan', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                                      const SizedBox(height: 6),
-                                      Text(isPremium ? expiryText : 'Upgrade to unlock all features', style: const TextStyle(color: Colors.white70)),
-                                    ]),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          isPremium
+                                              ? 'Premium Plan'
+                                              : 'Free Plan',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          isPremium
+                                              ? expiryText
+                                              : 'Upgrade to unlock all features',
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
@@ -196,25 +259,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               SizedBox(
                                 width: double.infinity,
                                 child: OutlinedButton(
-                                    onPressed: () {
-                                      // Navigate to subscription screen
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => const SubscriptionScreen(),
-                                        ),
-                                      );
-                                    },
+                                  onPressed: () {
+                                    // Navigate to subscription screen
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            const SubscriptionScreen(),
+                                      ),
+                                    );
+                                  },
                                   style: OutlinedButton.styleFrom(
-                                    side: const BorderSide(color: Colors.white24),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    side: const BorderSide(
+                                      color: Colors.white24,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
                                   ),
                                   child: const Padding(
                                     padding: EdgeInsets.symmetric(vertical: 12),
-                                    child: Text('Manage Subscription', style: TextStyle(color: Colors.white)),
+                                    child: Text(
+                                      'Manage Subscription',
+                                      style: TextStyle(color: Colors.white),
+                                    ),
                                   ),
                                 ),
-                              )
+                              ),
                             ],
                           ),
                         );
@@ -230,10 +301,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('ACCOUNT', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600)),
+                        const Text(
+                          'ACCOUNT',
+                          style: TextStyle(
+                            color: Colors.grey,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         Card(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                           child: Column(
                             children: [
                               ListTile(
@@ -271,10 +350,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('SUPPORT', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600)),
+                        const Text(
+                          'SUPPORT',
+                          style: TextStyle(
+                            color: Colors.grey,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         Card(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                           child: Column(
                             children: [
                               ListTile(
@@ -310,10 +397,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Card(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       child: ListTile(
                         leading: const Icon(Icons.logout, color: Colors.orange),
-                        title: const Text('Logout', style: TextStyle(color: Colors.orange)),
+                        title: const Text(
+                          'Logout',
+                          style: TextStyle(color: Colors.orange),
+                        ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => _logout(context),
                       ),
@@ -321,7 +413,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
 
                   const SizedBox(height: 30),
-                  const Center(child: Text('Rank Sprint v1.0.0\n© 2026 Rank Sprint', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey))),
+                  const Center(
+                    child: Text(
+                      'Rank Sprint v1.0.0\n© 2026 Rank Sprint',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
                   const SizedBox(height: 40),
                 ],
               ),

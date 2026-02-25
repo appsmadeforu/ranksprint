@@ -7,10 +7,7 @@ import '../screens/home/profile_screen.dart';
 class CommonBottomNavBar extends StatelessWidget {
   final int currentIndex;
 
-  const CommonBottomNavBar({
-    super.key,
-    required this.currentIndex,
-  });
+  const CommonBottomNavBar({super.key, required this.currentIndex});
 
   @override
   Widget build(BuildContext context) {

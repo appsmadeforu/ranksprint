@@ -34,11 +34,8 @@ class TestCard extends StatelessWidget {
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerRight,
-              child: ElevatedButton(
-                onPressed: () {},
-                child: Text(buttonText),
-              ),
-            )
+              child: ElevatedButton(onPressed: () {}, child: Text(buttonText)),
+            ),
           ],
         ),
       ),

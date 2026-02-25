@@ -37,12 +37,14 @@ class PyqChaptersScreen extends StatelessWidget {
       body: StreamBuilder<QuerySnapshot>(
         stream: _chaptersStream(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData)
+          if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
+          }
 
           final docs = snapshot.data!.docs;
-          if (docs.isEmpty)
+          if (docs.isEmpty) {
             return const Center(child: Text('No chapters available'));
+          }
 
           return ListView.separated(
             padding: const EdgeInsets.all(16),

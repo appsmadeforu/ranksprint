@@ -4,7 +4,11 @@ class TestRunnerScreen extends StatelessWidget {
   final String examId;
   final String testId;
 
-  const TestRunnerScreen({super.key, required this.examId, required this.testId});
+  const TestRunnerScreen({
+    super.key,
+    required this.examId,
+    required this.testId,
+  });
 
   @override
   Widget build(BuildContext context) {
