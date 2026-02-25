@@ -5,7 +5,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'test_detail_screen.dart';
 
 class TestsScreen extends StatefulWidget {
-  const TestsScreen({super.key});
+  final String selectedExam;
+
+  const TestsScreen({super.key, required this.selectedExam});
 
   @override
   State<TestsScreen> createState() => _TestsScreenState();
@@ -36,29 +38,42 @@ class _TestsScreenState extends State<TestsScreen> {
     if (exams.isNotEmpty) {
       setState(() {
         userExamIds = exams;
-        selectedExamId = exams.first;
+        selectedExamId = widget.selectedExam.isNotEmpty
+            ? widget.selectedExam
+            : exams.first;
       });
       // load metadata for the initially selected exam
-      _loadExamMetadata(exams.first);
-      _checkUserHasPlanForExam(exams.first);
+      _loadExamMetadata(selectedExamId!);
+      _checkUserHasPlanForExam(selectedExamId!);
     }
   }
 
   Future<void> _checkUserHasPlanForExam(String examId) async {
     try {
       final user = FirebaseAuth.instance.currentUser!;
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      final subIds = List<String>.from(userDoc.data()?['subscriptionIds'] ?? []);
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      final subIds = List<String>.from(
+        userDoc.data()?['subscriptionIds'] ?? [],
+      );
 
       bool has = false;
       for (final sid in subIds) {
-        final sdoc = await FirebaseFirestore.instance.collection('subscriptions').doc(sid).get();
+        final sdoc = await FirebaseFirestore.instance
+            .collection('subscriptions')
+            .doc(sid)
+            .get();
         if (!sdoc.exists) continue;
         final sdata = sdoc.data() ?? {};
         if ((sdata['status'] ?? '') != 'active') continue;
         final planId = sdata['planId'] as String?;
         if (planId == null) continue;
-        final pdoc = await FirebaseFirestore.instance.collection('subscriptionPlans').doc(planId).get();
+        final pdoc = await FirebaseFirestore.instance
+            .collection('subscriptionPlans')
+            .doc(planId)
+            .get();
         if (!pdoc.exists) continue;
         final pdata = pdoc.data() ?? {};
         final included = List<String>.from(pdata['examsIncluded'] ?? []);
@@ -79,9 +94,15 @@ class _TestsScreenState extends State<TestsScreen> {
 
   Future<void> _loadExamMetadata(String examId) async {
     try {
-      final doc = await FirebaseFirestore.instance.collection('exams').doc(examId).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('exams')
+          .doc(examId)
+          .get();
       final data = doc.data();
-      final isPremium = (data != null && (data['subscriptionPlanIds'] is List) && (data['subscriptionPlanIds'] as List).isNotEmpty);
+      final isPremium =
+          (data != null &&
+          (data['subscriptionPlanIds'] is List) &&
+          (data['subscriptionPlanIds'] as List).isNotEmpty);
       setState(() {
         _examIsPremium = isPremium;
       });
@@ -124,8 +145,14 @@ class _TestsScreenState extends State<TestsScreen> {
                       final exams = snapshot.data!.docs;
 
                       return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<String>(
                             value: selectedExamId,
@@ -160,7 +187,8 @@ class _TestsScreenState extends State<TestsScreen> {
                               );
                             }).toList(),
                             onChanged: (value) {
-                              if (value != null && userExamIds.contains(value)) {
+                              if (value != null &&
+                                  userExamIds.contains(value)) {
                                 setState(() {
                                   selectedExamId = value;
                                 });
@@ -203,12 +231,12 @@ class _TestsScreenState extends State<TestsScreen> {
             // ======================
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-          .collection('exams')
-          .doc(selectedExamId)
-          .collection('tests')
-          .orderBy('createdAt')
-          .snapshots(),
+                stream: FirebaseFirestore.instance
+                    .collection('exams')
+                    .doc(selectedExamId)
+                    .collection('tests')
+                    .orderBy('createdAt')
+                    .snapshots(),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());
@@ -237,19 +265,25 @@ class _TestsScreenState extends State<TestsScreen> {
   }
 
   Widget _buildTestCard(QueryDocumentSnapshot test) {
-  final title = test['name'] ?? test.id;
+    final title = test['name'] ?? test.id;
 
-  final Map<String, dynamic>? testData = test.data() as Map<String, dynamic>?;
-  final durationVal = (testData != null && testData.containsKey('timing') && testData['timing'] is Map && (testData['timing'] as Map).containsKey('totalDurationMinutes'))
-    ? testData['timing']['totalDurationMinutes']
-    : (testData != null ? testData['totalDurationMinutes'] : null);
-  final duration = durationVal?.toString() ?? '0';
+    final Map<String, dynamic>? testData = test.data() as Map<String, dynamic>?;
+    final durationVal =
+        (testData != null &&
+            testData.containsKey('timing') &&
+            testData['timing'] is Map &&
+            (testData['timing'] as Map).containsKey('totalDurationMinutes'))
+        ? testData['timing']['totalDurationMinutes']
+        : (testData != null ? testData['totalDurationMinutes'] : null);
+    final duration = durationVal?.toString() ?? '0';
 
-  final marks = test['totalMarks'] ?? test['marks'] ?? 0;
-  final maxAttempts = test['attemptLimit'] ?? test['maxAttempts'] ?? 0;
-  // derive premium from parent exam metadata; fallback to any explicit test field if present
-  final Map<String, dynamic>? tdata = test.data() as Map<String, dynamic>?;
-  final isPremium = (tdata != null && tdata.containsKey('isPremium')) ? (tdata['isPremium'] ?? false) : _examIsPremium;
+    final marks = test['totalMarks'] ?? test['marks'] ?? 0;
+    final maxAttempts = test['attemptLimit'] ?? test['maxAttempts'] ?? 0;
+    // derive premium from parent exam metadata; fallback to any explicit test field if present
+    final Map<String, dynamic>? tdata = test.data() as Map<String, dynamic>?;
+    final isPremium = (tdata != null && tdata.containsKey('isPremium'))
+        ? (tdata['isPremium'] ?? false)
+        : _examIsPremium;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -294,7 +328,9 @@ class _TestsScreenState extends State<TestsScreen> {
                       context: context,
                       builder: (context) => AlertDialog(
                         title: const Text('Premium Test'),
-                        content: const Text('This test is available for subscribers only. Manage your subscription to unlock.'),
+                        content: const Text(
+                          'This test is available for subscribers only. Manage your subscription to unlock.',
+                        ),
                         actions: [
                           TextButton(
                             onPressed: () {
@@ -308,16 +344,29 @@ class _TestsScreenState extends State<TestsScreen> {
                               final scaffold = ScaffoldMessenger.of(context);
                               Navigator.pop(context);
                               final user = FirebaseAuth.instance.currentUser;
-                              String manageUrl = 'https://ranksprint.ai/manage-subscription';
+                              String manageUrl =
+                                  'https://ranksprint.ai/manage-subscription';
                               if (user != null) {
-                                final udoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-                                final subs = List<String>.from(udoc.data()?['subscriptionIds'] ?? []);
+                                final udoc = await FirebaseFirestore.instance
+                                    .collection('users')
+                                    .doc(user.uid)
+                                    .get();
+                                final subs = List<String>.from(
+                                  udoc.data()?['subscriptionIds'] ?? [],
+                                );
                                 if (subs.isNotEmpty) {
-                                  manageUrl = 'https://ranksprint.ai/manage-subscription?sub=${subs.first}';
+                                  manageUrl =
+                                      'https://ranksprint.ai/manage-subscription?sub=${subs.first}';
                                 }
                               }
                               Clipboard.setData(ClipboardData(text: manageUrl));
-                              scaffold.showSnackBar(const SnackBar(content: Text('Manage subscription URL copied to clipboard')));
+                              scaffold.showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Manage subscription URL copied to clipboard',
+                                  ),
+                                ),
+                              );
                             },
                             child: const Text('Manage Subscription'),
                           ),
@@ -331,7 +380,10 @@ class _TestsScreenState extends State<TestsScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => TestDetailScreen(examId: selectedExamId!, testId: test.id),
+                      builder: (_) => TestDetailScreen(
+                        examId: selectedExamId!,
+                        testId: test.id,
+                      ),
                     ),
                   );
                 },
@@ -347,9 +399,15 @@ class _TestsScreenState extends State<TestsScreen> {
                   ),
                 ),
                 child: Text(
-                  (isPremium && !(_userHasPlanForExam[selectedExamId] ?? false)) ? 'Unlock' : 'Attempt',
+                  (isPremium && !(_userHasPlanForExam[selectedExamId] ?? false))
+                      ? 'Unlock'
+                      : 'Attempt',
                   style: TextStyle(
-                    color: (isPremium && !(_userHasPlanForExam[selectedExamId] ?? false)) ? Colors.orange : Colors.white,
+                    color:
+                        (isPremium &&
+                            !(_userHasPlanForExam[selectedExamId] ?? false))
+                        ? Colors.orange
+                        : Colors.white,
                   ),
                 ),
               ),

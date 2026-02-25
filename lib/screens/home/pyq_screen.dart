@@ -33,18 +33,29 @@ class _PyqScreenState extends State<PyqScreen> {
   Future<void> _checkUserHasPlanForExam(String examId) async {
     try {
       final user = FirebaseAuth.instance.currentUser!;
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      final subIds = List<String>.from(userDoc.data()?['subscriptionIds'] ?? []);
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      final subIds = List<String>.from(
+        userDoc.data()?['subscriptionIds'] ?? [],
+      );
 
       bool has = false;
       for (final sid in subIds) {
-        final sdoc = await FirebaseFirestore.instance.collection('subscriptions').doc(sid).get();
+        final sdoc = await FirebaseFirestore.instance
+            .collection('subscriptions')
+            .doc(sid)
+            .get();
         if (!sdoc.exists) continue;
         final sdata = sdoc.data() ?? {};
         if ((sdata['status'] ?? '') != 'active') continue;
         final planId = sdata['planId'] as String?;
         if (planId == null) continue;
-        final pdoc = await FirebaseFirestore.instance.collection('subscriptionPlans').doc(planId).get();
+        final pdoc = await FirebaseFirestore.instance
+            .collection('subscriptionPlans')
+            .doc(planId)
+            .get();
         if (!pdoc.exists) continue;
         final pdata = pdoc.data() ?? {};
         final included = List<String>.from(pdata['examsIncluded'] ?? []);
@@ -110,7 +121,9 @@ class _PyqScreenState extends State<PyqScreen> {
               final docs = snapshot.data!.docs;
 
               if (docs.isEmpty) {
-                return const Center(child: Text("No PYQs available for this exam"));
+                return const Center(
+                  child: Text("No PYQs available for this exam"),
+                );
               }
 
               return Padding(
@@ -118,7 +131,6 @@ class _PyqScreenState extends State<PyqScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-
                     // Top header: exam selector + notifications (match ProfileScreen)
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 0),
@@ -136,7 +148,10 @@ class _PyqScreenState extends State<PyqScreen> {
                               final exams = examSnap.data!.docs;
 
                               return Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.grey.shade100,
                                   borderRadius: BorderRadius.circular(12),
@@ -146,27 +161,42 @@ class _PyqScreenState extends State<PyqScreen> {
                                     value: selectedExamId,
                                     icon: const Icon(Icons.keyboard_arrow_down),
                                     items: exams.map((exam) {
-                                      final isUnlocked = userExamIds.contains(exam.id) || (_userHasPlanForExam[exam.id] ?? false);
+                                      final isUnlocked =
+                                          userExamIds.contains(exam.id) ||
+                                          (_userHasPlanForExam[exam.id] ??
+                                              false);
 
                                       return DropdownMenuItem<String>(
                                         value: exam.id,
                                         enabled: isUnlocked,
                                         child: Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
                                           children: [
                                             Text(
                                               exam['name'] ?? exam.id,
-                                              style: TextStyle(color: isUnlocked ? Colors.black : Colors.grey),
+                                              style: TextStyle(
+                                                color: isUnlocked
+                                                    ? Colors.black
+                                                    : Colors.grey,
+                                              ),
                                             ),
                                             if (!isUnlocked)
-                                              const Icon(Icons.lock_outline, size: 18, color: Colors.grey),
+                                              const Icon(
+                                                Icons.lock_outline,
+                                                size: 18,
+                                                color: Colors.grey,
+                                              ),
                                           ],
                                         ),
                                       );
                                     }).toList(),
                                     onChanged: (value) {
                                       if (value != null) {
-                                        final isUnlocked = userExamIds.contains(value) || (_userHasPlanForExam[value] ?? false);
+                                        final isUnlocked =
+                                            userExamIds.contains(value) ||
+                                            (_userHasPlanForExam[value] ??
+                                                false);
                                         if (isUnlocked) {
                                           setState(() {
                                             selectedExamId = value;
@@ -207,12 +237,18 @@ class _PyqScreenState extends State<PyqScreen> {
 
                     const Text(
                       "Previous Year Questions",
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
 
                     const SizedBox(height: 8),
 
-                    const Text("Access exam papers organized by subject and chapter", style: TextStyle(color: Colors.grey)),
+                    const Text(
+                      "Access exam papers organized by subject and chapter",
+                      style: TextStyle(color: Colors.grey),
+                    ),
 
                     const SizedBox(height: 16),
 
@@ -223,8 +259,14 @@ class _PyqScreenState extends State<PyqScreen> {
                         itemBuilder: (context, index) {
                           final doc = docs[index];
                           final title = doc['name'] ?? doc.id;
-                          final isExamUnlocked = userExamIds.contains(selectedExamId) || (_userHasPlanForExam[selectedExamId] ?? false);
-                          final chapterCount = doc.reference.collection('chapters').get().then((snap) => snap.size).catchError((_) => 0);
+                          final isExamUnlocked =
+                              userExamIds.contains(selectedExamId) ||
+                              (_userHasPlanForExam[selectedExamId] ?? false);
+                          final chapterCount = doc.reference
+                              .collection('chapters')
+                              .get()
+                              .then((snap) => snap.size)
+                              .catchError((_) => 0);
 
                           return FutureBuilder<int>(
                             future: chapterCount,
@@ -232,26 +274,57 @@ class _PyqScreenState extends State<PyqScreen> {
                               final count = ctSnap.hasData ? ctSnap.data! : 0;
 
                               return Card(
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
                                 margin: const EdgeInsets.only(bottom: 12),
                                 child: ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
                                   leading: Container(
                                     width: 46,
                                     height: 46,
-                                    decoration: BoxDecoration(color: const Color(0xFFEFF3FF), borderRadius: BorderRadius.circular(12)),
-                                    child: const Icon(Icons.menu_book, color: Color(0xFF2F3E8F)),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFEFF3FF),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Icon(
+                                      Icons.menu_book,
+                                      color: Color(0xFF2F3E8F),
+                                    ),
                                   ),
-                                  title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                  subtitle: Text(count > 0 ? '$count papers available' : 'Tap to view chapters', style: const TextStyle(color: Colors.grey)),
+                                  title: Text(
+                                    title,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    count > 0
+                                        ? '$count papers available'
+                                        : 'Tap to view chapters',
+                                    style: const TextStyle(color: Colors.grey),
+                                  ),
                                   trailing: isExamUnlocked
                                       ? const Icon(Icons.chevron_right)
                                       : Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
                                           children: const [
-                                            Icon(Icons.lock_outline, color: Colors.grey),
+                                            Icon(
+                                              Icons.lock_outline,
+                                              color: Colors.grey,
+                                            ),
                                             SizedBox(height: 4),
-                                            Text('Unlock', style: TextStyle(color: Color(0xFFF37A1C), fontSize: 12)),
+                                            Text(
+                                              'Unlock',
+                                              style: TextStyle(
+                                                color: Color(0xFFF37A1C),
+                                                fontSize: 12,
+                                              ),
+                                            ),
                                           ],
                                         ),
                                   onTap: isExamUnlocked
@@ -259,7 +332,11 @@ class _PyqScreenState extends State<PyqScreen> {
                                           Navigator.push(
                                             context,
                                             MaterialPageRoute(
-                                              builder: (_) => PyqChaptersScreen(examId: selectedExamId!, subjectId: doc.id, subjectName: title),
+                                              builder: (_) => PyqChaptersScreen(
+                                                examId: selectedExamId!,
+                                                subjectId: doc.id,
+                                                subjectName: title,
+                                              ),
                                             ),
                                           );
                                         }
@@ -268,17 +345,43 @@ class _PyqScreenState extends State<PyqScreen> {
                                           showDialog(
                                             context: context,
                                             builder: (context) => AlertDialog(
-                                              title: const Text('Locked Content'),
-                                              content: const Text('This subject is available to subscribers. Manage subscription to unlock.'),
+                                              title: const Text(
+                                                'Locked Content',
+                                              ),
+                                              content: const Text(
+                                                'This subject is available to subscribers. Manage subscription to unlock.',
+                                              ),
                                               actions: [
-                                                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+                                                TextButton(
+                                                  onPressed: () =>
+                                                      Navigator.pop(context),
+                                                  child: const Text('Close'),
+                                                ),
                                                 TextButton(
                                                   onPressed: () {
-                                                    Clipboard.setData(ClipboardData(text: 'https://ranksprint.ai/manage-subscription'));
+                                                    Clipboard.setData(
+                                                      ClipboardData(
+                                                        text:
+                                                            'https://ranksprint.ai/manage-subscription',
+                                                      ),
+                                                    );
                                                     Navigator.pop(context);
-                                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Manage subscription URL copied to clipboard')));
+                                                    ScaffoldMessenger.of(
+                                                      context,
+                                                    ).showSnackBar(
+                                                      const SnackBar(
+                                                        content: Text(
+                                                          'Manage subscription URL copied to clipboard',
+                                                        ),
+                                                      ),
+                                                    );
                                                   },
-                                                  child: const Text('Manage Subscription', style: TextStyle(color: Color(0xFFF37A1C))),
+                                                  child: const Text(
+                                                    'Manage Subscription',
+                                                    style: TextStyle(
+                                                      color: Color(0xFFF37A1C),
+                                                    ),
+                                                  ),
                                                 ),
                                               ],
                                             ),
@@ -290,7 +393,7 @@ class _PyqScreenState extends State<PyqScreen> {
                           );
                         },
                       ),
-                    )
+                    ),
                   ],
                 ),
               );
