@@ -3,6 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
 import 'pyq_chapters_screen.dart';
+import 'tests_screen.dart';
+import 'analytics_screen.dart';
+import 'profile_screen.dart';
 
 class PyqScreen extends StatefulWidget {
   const PyqScreen({super.key});
@@ -109,19 +112,12 @@ class _PyqScreenState extends State<PyqScreen> {
 
               final docs = snapshot.data!.docs;
 
-              if (docs.isEmpty) {
-                return const Center(child: Text("No PYQs available for this exam"));
-              }
-
-              return Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              return Scaffold(
+                body: Column(
                   children: [
-
-                    // Top header: exam selector + notifications (match ProfileScreen)
+                    // Top header: exam selector + notifications (match TestsScreen)
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 0),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -203,94 +199,151 @@ class _PyqScreenState extends State<PyqScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 20),
-
-                    const Text(
-                      "Previous Year Questions",
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
-
                     const SizedBox(height: 8),
 
-                    const Text("Access exam papers organized by subject and chapter", style: TextStyle(color: Colors.grey)),
-
-                    const SizedBox(height: 16),
-
-                    // Subjects list as rounded cards
+                    // Content area - show list or empty state
                     Expanded(
-                      child: ListView.builder(
-                        itemCount: docs.length,
-                        itemBuilder: (context, index) {
-                          final doc = docs[index];
-                          final title = doc['name'] ?? doc.id;
-                          final isExamUnlocked = userExamIds.contains(selectedExamId) || (_userHasPlanForExam[selectedExamId] ?? false);
-                          final chapterCount = doc.reference.collection('chapters').get().then((snap) => snap.size).catchError((_) => 0);
-
-                          return FutureBuilder<int>(
-                            future: chapterCount,
-                            builder: (context, ctSnap) {
-                              final count = ctSnap.hasData ? ctSnap.data! : 0;
-
-                              return Card(
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                margin: const EdgeInsets.only(bottom: 12),
-                                child: ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                  leading: Container(
-                                    width: 46,
-                                    height: 46,
-                                    decoration: BoxDecoration(color: const Color(0xFFEFF3FF), borderRadius: BorderRadius.circular(12)),
-                                    child: const Icon(Icons.menu_book, color: Color(0xFF2F3E8F)),
+                      child: docs.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Text(
+                                    "No PYQs available for this exam",
+                                    style: TextStyle(fontSize: 16, color: Colors.grey),
                                   ),
-                                  title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                  subtitle: Text(count > 0 ? '$count papers available' : 'Tap to view chapters', style: const TextStyle(color: Colors.grey)),
-                                  trailing: isExamUnlocked
-                                      ? const Icon(Icons.chevron_right)
-                                      : Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: const [
-                                            Icon(Icons.lock_outline, color: Colors.grey),
-                                            SizedBox(height: 4),
-                                            Text('Unlock', style: TextStyle(color: Color(0xFFF37A1C), fontSize: 12)),
-                                          ],
-                                        ),
-                                  onTap: isExamUnlocked
-                                      ? () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) => PyqChaptersScreen(examId: selectedExamId!, subjectId: doc.id, subjectName: title),
-                                            ),
-                                          );
-                                        }
-                                      : () {
-                                          // Prompt to manage subscription
-                                          showDialog(
-                                            context: context,
-                                            builder: (context) => AlertDialog(
-                                              title: const Text('Locked Content'),
-                                              content: const Text('This subject is available to subscribers. Manage subscription to unlock.'),
-                                              actions: [
-                                                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
-                                                TextButton(
-                                                  onPressed: () {
-                                                    Clipboard.setData(ClipboardData(text: 'https://ranksprint.ai/manage-subscription'));
-                                                    Navigator.pop(context);
-                                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Manage subscription URL copied to clipboard')));
-                                                  },
-                                                  child: const Text('Manage Subscription', style: TextStyle(color: Color(0xFFF37A1C))),
+                                ],
+                              ),
+                            )
+                          : Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    "Previous Year Questions",
+                                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                                  ),
+
+                                  const SizedBox(height: 8),
+
+                                  const Text("Access exam papers organized by subject and chapter", style: TextStyle(color: Colors.grey)),
+
+                                  const SizedBox(height: 16),
+
+                                  // Subjects list as rounded cards
+                                  Expanded(
+                                    child: ListView.builder(
+                                      itemCount: docs.length,
+                                      itemBuilder: (context, index) {
+                                        final doc = docs[index];
+                                        final title = doc['name'] ?? doc.id;
+                                        final isExamUnlocked = userExamIds.contains(selectedExamId) || (_userHasPlanForExam[selectedExamId] ?? false);
+                                        final chapterCount = doc.reference.collection('chapters').get().then((snap) => snap.size).catchError((_) => 0);
+
+                                        return FutureBuilder<int>(
+                                          future: chapterCount,
+                                          builder: (context, ctSnap) {
+                                            final count = ctSnap.hasData ? ctSnap.data! : 0;
+
+                                            return Card(
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                              margin: const EdgeInsets.only(bottom: 12),
+                                              child: ListTile(
+                                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                                leading: Container(
+                                                  width: 46,
+                                                  height: 46,
+                                                  decoration: BoxDecoration(color: const Color(0xFFEFF3FF), borderRadius: BorderRadius.circular(12)),
+                                                  child: const Icon(Icons.menu_book, color: Color(0xFF2F3E8F)),
                                                 ),
-                                              ],
-                                            ),
-                                          );
-                                        },
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      ),
+                                                title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                                subtitle: Text(count > 0 ? '$count papers available' : 'Tap to view chapters', style: const TextStyle(color: Colors.grey)),
+                                                trailing: isExamUnlocked
+                                                    ? const Icon(Icons.chevron_right)
+                                                    : Column(
+                                                        mainAxisAlignment: MainAxisAlignment.center,
+                                                        children: const [
+                                                          Icon(Icons.lock_outline, color: Colors.grey),
+                                                          SizedBox(height: 4),
+                                                          Text('Unlock', style: TextStyle(color: Color(0xFFF37A1C), fontSize: 12)),
+                                                        ],
+                                                      ),
+                                                onTap: isExamUnlocked
+                                                    ? () {
+                                                        Navigator.push(
+                                                          context,
+                                                          MaterialPageRoute(
+                                                            builder: (_) => PyqChaptersScreen(examId: selectedExamId!, subjectId: doc.id, subjectName: title),
+                                                          ),
+                                                        );
+                                                      }
+                                                    : () {
+                                                        // Prompt to manage subscription
+                                                        showDialog(
+                                                          context: context,
+                                                          builder: (context) => AlertDialog(
+                                                            title: const Text('Locked Content'),
+                                                            content: const Text('This subject is available to subscribers. Manage subscription to unlock.'),
+                                                            actions: [
+                                                              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+                                                              TextButton(
+                                                                onPressed: () {
+                                                                  Clipboard.setData(ClipboardData(text: 'https://ranksprint.ai/manage-subscription'));
+                                                                  Navigator.pop(context);
+                                                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Manage subscription URL copied to clipboard')));
+                                                                },
+                                                                child: const Text('Manage Subscription', style: TextStyle(color: Color(0xFFF37A1C))),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        );
+                                                      },
+                                              ),
+                                            );
+                                          },
+                                        );
+                                      },
+                                    ),
+                                  )
+                                ],
+                              ),
+                            ),
                     )
+                  ],
+                ),
+                bottomNavigationBar: BottomNavigationBar(
+                  currentIndex: 2,
+                  onTap: (index) {
+                    switch (index) {
+                      case 0:
+                        Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(builder: (context) => const TestsScreen()),
+                          (route) => false,
+                        );
+                        break;
+                      case 1:
+                        // Already on PyqScreen
+                        break;
+                      case 2:
+                        Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(builder: (context) => const AnalyticsScreen()),
+                          (route) => false,
+                        );
+                        break;
+                      case 3:
+                        Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(builder: (context) => const ProfileScreen()),
+                          (route) => false,
+                        );
+                        break;
+                    }
+                  },
+                  items: const [
+                    BottomNavigationBarItem(icon: Icon(Icons.assignment), label: 'Tests'),
+                    BottomNavigationBarItem(icon: Icon(Icons.description), label: 'PYQ'),
+                    BottomNavigationBarItem(icon: Icon(Icons.analytics), label: 'Analytics'),
+                    BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
                   ],
                 ),
               );

@@ -3,6 +3,7 @@ import 'tests_screen.dart';
 import 'pyq_screen.dart';
 import 'analytics_screen.dart';
 import 'profile_screen.dart';
+import 'subscription_screen.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -20,6 +21,16 @@ class _MainNavigationState extends State<MainNavigation> {
     AnalyticsScreen(),
     ProfileScreen(),
   ];
+
+  // Method to navigate to subscription screen
+  void navigateToSubscription() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const SubscriptionScreen(),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

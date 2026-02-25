@@ -2,9 +2,39 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'subscription_screen.dart';
+import '../../widgets/top_header.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  String? selectedExamId;
+  List<String> userExamIds = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserExams();
+  }
+
+  Future<void> _loadUserExams() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    final data = doc.data() as Map<String, dynamic>?;
+    if (data == null) return;
+    
+    final exams = List<String>.from(data['selectedExams'] ?? []);
+    setState(() {
+      userExamIds = exams;
+      selectedExamId = exams.isNotEmpty ? exams.first : null;
+    });
+  }
 
   Future<void> _logout(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
@@ -65,48 +95,15 @@ class ProfileScreen extends StatelessWidget {
             child: SingleChildScrollView(
               child: Column(
                 children: [
-                  // Top header: exam selector + notifications
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            children: [
-                              Text(
-                                selectedExams.isNotEmpty ? selectedExams.first.toUpperCase() : 'SELECT',
-                                style: const TextStyle(fontWeight: FontWeight.w600),
-                              ),
-                              const SizedBox(width: 8),
-                              const Icon(Icons.keyboard_arrow_down, size: 20),
-                            ],
-                          ),
-                        ),
-                        const Spacer(),
-                        Stack(
-                          children: [
-                            const Icon(Icons.notifications_none, size: 28),
-                            Positioned(
-                              right: 0,
-                              top: 0,
-                              child: Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: Colors.orange,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
-                      ],
-                    ),
+                  // Top header with functional dropdown
+                  TopHeader(
+                    selectedExamId: selectedExamId ?? (selectedExams.isNotEmpty ? selectedExams.first : null),
+                    userExamIds: selectedExams,
+                    onExamChanged: (examId) {
+                      setState(() {
+                        selectedExamId = examId;
+                      });
+                    },
                   ),
 
                   const SizedBox(height: 8),
@@ -199,23 +196,14 @@ class ProfileScreen extends StatelessWidget {
                               SizedBox(
                                 width: double.infinity,
                                 child: OutlinedButton(
-                                    onPressed: () async {
-                                      // Construct a management URL (fallback).
-                                      String manageUrl = 'https://ranksprint.ai/manage-subscription';
-                                      if (subSnap.hasData && subSnap.data != null && subSnap.data!.exists) {
-                                        final sdata = subSnap.data!.data() as Map<String, dynamic>? ?? {};
-                                        if (sdata['manageUrl'] is String && (sdata['manageUrl'] as String).isNotEmpty) {
-                                          manageUrl = sdata['manageUrl'];
-                                        } else if (subscriptionIds.isNotEmpty) {
-                                          manageUrl = 'https://ranksprint.ai/manage-subscription?sub=${subscriptionIds.first}';
-                                        }
-                                      } else if (subscriptionIds.isNotEmpty) {
-                                        manageUrl = 'https://ranksprint.ai/manage-subscription?sub=${subscriptionIds.first}';
-                                      }
-
-                                      // Copy without awaiting to avoid using BuildContext after an async gap.
-                                      Clipboard.setData(ClipboardData(text: manageUrl));
-                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Manage subscription URL copied to clipboard')));
+                                    onPressed: () {
+                                      // Navigate to subscription screen
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => const SubscriptionScreen(),
+                                        ),
+                                      );
                                     },
                                   style: OutlinedButton.styleFrom(
                                     side: const BorderSide(color: Colors.white24),

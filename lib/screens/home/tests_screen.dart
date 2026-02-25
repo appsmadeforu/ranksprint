@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'test_detail_screen.dart';
+import 'subscription_screen.dart';
 
 class TestsScreen extends StatefulWidget {
   const TestsScreen({super.key});
@@ -289,39 +290,11 @@ class _TestsScreenState extends State<TestsScreen> {
                   final isLocked = isPremium && !hasPlan;
 
                   if (isLocked) {
-                    // show upgrade dialog
-                    showDialog(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Premium Test'),
-                        content: const Text('This test is available for subscribers only. Manage your subscription to unlock.'),
-                        actions: [
-                          TextButton(
-                            onPressed: () {
-                              Navigator.pop(context);
-                            },
-                            child: const Text('Close'),
-                          ),
-                          TextButton(
-                            onPressed: () async {
-                              // copy manage URL to clipboard as a simple action
-                              final scaffold = ScaffoldMessenger.of(context);
-                              Navigator.pop(context);
-                              final user = FirebaseAuth.instance.currentUser;
-                              String manageUrl = 'https://ranksprint.ai/manage-subscription';
-                              if (user != null) {
-                                final udoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-                                final subs = List<String>.from(udoc.data()?['subscriptionIds'] ?? []);
-                                if (subs.isNotEmpty) {
-                                  manageUrl = 'https://ranksprint.ai/manage-subscription?sub=${subs.first}';
-                                }
-                              }
-                              Clipboard.setData(ClipboardData(text: manageUrl));
-                              scaffold.showSnackBar(const SnackBar(content: Text('Manage subscription URL copied to clipboard')));
-                            },
-                            child: const Text('Manage Subscription'),
-                          ),
-                        ],
+                    // navigate to subscription screen
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const SubscriptionScreen(),
                       ),
                     );
                     return;

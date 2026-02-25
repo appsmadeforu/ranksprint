@@ -1,9 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../widgets/top_header.dart';
 
-class AnalyticsScreen extends StatelessWidget {
+class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({super.key});
+
+  @override
+  State<AnalyticsScreen> createState() => _AnalyticsScreenState();
+}
+
+class _AnalyticsScreenState extends State<AnalyticsScreen> {
+  String? selectedExamId;
+  List<String> userExamIds = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserExams();
+  }
+
+  Future<void> _loadUserExams() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    final data = doc.data();
+    if (data == null) return;
+    
+    final exams = List<String>.from(data['selectedExams'] ?? []);
+    setState(() {
+      userExamIds = exams;
+      selectedExamId = exams.isNotEmpty ? exams.first : null;
+    });
+  }
 
   Future<List<String>> _getUserExams() async {
     final user = FirebaseAuth.instance.currentUser;
@@ -26,33 +55,19 @@ class AnalyticsScreen extends StatelessWidget {
             if (!examSnap.hasData) return const Center(child: CircularProgressIndicator());
 
             final exams = examSnap.data!;
-            final selectedExam = exams.isNotEmpty ? exams.first : null;
+            final selectedExam = selectedExamId ?? (exams.isNotEmpty ? exams.first : null);
 
             return Column(
               children: [
-                // Top header (exam selector + bell) — simplified: show selected exam
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
-                        child: Row(children: [Text(selectedExam != null ? selectedExam.toUpperCase() : 'SELECT', style: const TextStyle(fontWeight: FontWeight.w600)), const SizedBox(width: 8), const Icon(Icons.keyboard_arrow_down, size: 20)]),
-                      ),
-                      const Spacer(),
-                      Stack(
-                        children: [
-                          const Icon(Icons.notifications_none, size: 28),
-                          Positioned(
-                            right: 0,
-                            top: 0,
-                            child: Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.orange, shape: BoxShape.circle)),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                // Top header with functional dropdown
+                TopHeader(
+                  selectedExamId: selectedExam,
+                  userExamIds: exams,
+                  onExamChanged: (examId) {
+                    setState(() {
+                      selectedExamId = examId;
+                    });
+                  },
                 ),
 
                 const SizedBox(height: 8),
