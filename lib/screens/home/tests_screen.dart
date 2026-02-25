@@ -6,7 +6,9 @@ import 'test_detail_screen.dart';
 import 'subscription_screen.dart';
 
 class TestsScreen extends StatefulWidget {
-  const TestsScreen({super.key});
+  final String? selectedExam;
+
+  const TestsScreen({super.key, this.selectedExam});
 
   @override
   State<TestsScreen> createState() => _TestsScreenState();
@@ -37,11 +39,16 @@ class _TestsScreenState extends State<TestsScreen> {
     if (exams.isNotEmpty) {
       setState(() {
         userExamIds = exams;
-        selectedExamId = exams.first;
+        // prefer passed selectedExam (if provided and present in user's exams)
+        if (widget.selectedExam != null && exams.contains(widget.selectedExam)) {
+          selectedExamId = widget.selectedExam;
+        } else {
+          selectedExamId = exams.first;
+        }
       });
       // load metadata for the initially selected exam
-      _loadExamMetadata(exams.first);
-      _checkUserHasPlanForExam(exams.first);
+      _loadExamMetadata(selectedExamId!);
+      _checkUserHasPlanForExam(selectedExamId!);
     }
   }
 

@@ -40,9 +40,15 @@ dependencies:
   cupertino_icons: ^1.0.8
   firebase_core: ^4.4.0
   firebase_auth: ^6.1.4
-  google_sign_in: ^6.2.1
+  google_sign_in: ^6.2.0
   cloud_firestore: ^6.1.2
   cloud_functions: ^6.0.6
+  syncfusion_flutter_pdfviewer: ^32.2.7
+url_launcher: ^6.2.2
+
+dependency_overrides:
+  xml: 6.5.0
+  
 
 dev_dependencies:
   flutter_test:
