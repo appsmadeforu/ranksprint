@@ -3,6 +3,7 @@ import 'tests_screen.dart';
 import 'pyq_screen.dart';
 import 'analytics_screen.dart';
 import 'profile_screen.dart';
+import 'select_exam_home.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -15,7 +16,8 @@ class _MainNavigationState extends State<MainNavigation> {
   int _index = 0;
 
   final screens = const [
-    TestsScreen(),
+    const SelectExamHome(),
+    TestsScreen(selectedExam: ""),
     PyqScreen(),
     AnalyticsScreen(),
     ProfileScreen(),
@@ -33,17 +35,25 @@ class _MainNavigationState extends State<MainNavigation> {
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(
-              icon: Icon(Icons.description_outlined),
-              label: "Tests"),
+            icon: Icon(Icons.home_outlined),
+            label: "Home",
+          ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.menu_book_outlined),
-              label: "PYQs"),
+            icon: Icon(Icons.description_outlined),
+            label: "Tests",
+          ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.bar_chart_outlined),
-              label: "Analytics"),
+            icon: Icon(Icons.menu_book_outlined),
+            label: "PYQs",
+          ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              label: "Profile"),
+            icon: Icon(Icons.bar_chart_outlined),
+            label: "Analytics",
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline),
+            label: "Profile",
+          ),
         ],
       ),
     );
