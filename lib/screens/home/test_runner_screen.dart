@@ -20,6 +20,8 @@ class TestRunnerScreen extends StatefulWidget {
 
 class _TestRunnerScreenState extends State<TestRunnerScreen> {
   String? attemptId;
+  String? testName;
+  String? examName;
   List<Map<String, dynamic>> questions = [];
   int currentIndex = 0;
   Map<String, String> answers = {}; // questionId -> selected option id
@@ -30,6 +32,31 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
   int remainingSeconds = 0;
 
   bool loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTestMetadata(); // 👈 add this
+  }
+
+  Future<void> _loadTestMetadata() async {
+    final testDoc = await FirebaseFirestore.instance
+        .collection('exams')
+        .doc(widget.examId)
+        .collection('tests')
+        .doc(widget.testId)
+        .get();
+
+    final examDoc = await FirebaseFirestore.instance
+        .collection('exams')
+        .doc(widget.examId)
+        .get();
+
+    setState(() {
+      testName = testDoc.data()?['name'] ?? widget.testId;
+      examName = examDoc.data()?['name'] ?? widget.examId;
+    });
+  }
 
   Future<void> _startAttempt() async {
     final user = FirebaseAuth.instance.currentUser;
@@ -66,7 +93,6 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
         .collection('tests')
         .doc(widget.testId)
         .get();
-
     int totalMinutes = 60;
     try {
       final tdata = testDoc.data();
@@ -290,7 +316,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
               children: [
                 // Title
                 Text(
-                  "${widget.examId.toUpperCase()} - ${widget.testId}",
+                  "${examName ?? ''} - ${testName ?? ''}",
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,

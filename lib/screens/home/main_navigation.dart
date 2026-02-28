@@ -16,16 +16,14 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   int _index = 0;
 
-  // Keep screens in the same order as the BottomNavigationBar items
-  final screens = [
-    const SelectExamHome(),
-    const TestsScreen(),
-    const PyqScreen(),
-    const AnalyticsScreen(),
-    const ProfileScreen(),
+  final List<Widget> screens = const [
+    SelectExamHome(),
+    TestsScreen(),
+    PyqScreen(),
+    AnalyticsScreen(),
+    ProfileScreen(),
   ];
 
-  // Method to navigate to subscription screen
   void navigateToSubscription() {
     Navigator.push(
       context,
@@ -36,7 +34,7 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: screens[_index],
+      body: IndexedStack(index: _index, children: screens),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _index,
         onTap: (value) => setState(() => _index = value),

@@ -1,7 +1,9 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/services.dart';
+
+import '../../widgets/top_header.dart';
 import 'pyq_chapters_screen.dart';
 import 'tests_screen.dart';
 import 'analytics_screen.dart';
@@ -16,69 +18,32 @@ class PyqScreen extends StatefulWidget {
 
 class _PyqScreenState extends State<PyqScreen> {
   String? selectedExamId;
-  // whether current user has plan that includes a given exam
-  final Map<String, bool> _userHasPlanForExam = {};
+  List<String> userExamIds = [];
 
-  /// Fetch user's selected exams
-  Future<List<String>> _getUserExams() async {
-    final user = FirebaseAuth.instance.currentUser!;
+  @override
+  void initState() {
+    super.initState();
+    _loadUserExams();
+  }
+
+  Future<void> _loadUserExams() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
     final doc = await FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
         .get();
 
-    final data = doc.data();
-    if (data == null) return [];
+    final exams = List<String>.from(doc.data()?['selectedExams'] ?? []);
 
-    return List<String>.from(data['selectedExams'] ?? []);
+    setState(() {
+      userExamIds = exams;
+      selectedExamId = exams.isNotEmpty ? exams.first : null;
+    });
   }
 
-  Future<void> _checkUserHasPlanForExam(String examId) async {
-    try {
-      final user = FirebaseAuth.instance.currentUser!;
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-      final subIds = List<String>.from(
-        userDoc.data()?['subscriptionIds'] ?? [],
-      );
-
-      bool has = false;
-      for (final sid in subIds) {
-        final sdoc = await FirebaseFirestore.instance
-            .collection('subscriptions')
-            .doc(sid)
-            .get();
-        if (!sdoc.exists) continue;
-        final sdata = sdoc.data() ?? {};
-        if ((sdata['status'] ?? '') != 'active') continue;
-        final planId = sdata['planId'] as String?;
-        if (planId == null) continue;
-        final pdoc = await FirebaseFirestore.instance
-            .collection('subscriptionPlans')
-            .doc(planId)
-            .get();
-        if (!pdoc.exists) continue;
-        final pdata = pdoc.data() ?? {};
-        final included = List<String>.from(pdata['examsIncluded'] ?? []);
-        if (included.contains(examId)) {
-          has = true;
-          break;
-        }
-      }
-      setState(() {
-        _userHasPlanForExam[examId] = has;
-      });
-    } catch (_) {
-      setState(() {
-        _userHasPlanForExam[examId] = false;
-      });
-    }
-  }
-
-  /// Fetch PYQ subjects for a particular exam (seeder stores pyqs under exams/{examId}/pyqs)
-  Stream<QuerySnapshot> _getPyqExamsFor(String examId) {
+  Stream<QuerySnapshot> _getPyqs(String examId) {
     return FirebaseFirestore.instance
         .collection('exams')
         .doc(examId)
@@ -86,289 +51,152 @@ class _PyqScreenState extends State<PyqScreen> {
         .snapshots();
   }
 
-  // Note: exam names are fetched directly in the dropdown to match TestsScreen style
+  void _showSubscriptionSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) {
+        return Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                "Unlock Full Access",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                "Subscribe to access all PYQs, premium tests and analytics.",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2F6FEB),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  child: const Text("View Subscription Plans"),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Maybe Later"),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: FutureBuilder<List<String>>(
-        future: _getUserExams(),
-        builder: (context, userSnapshot) {
-          if (!userSnapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      backgroundColor: const Color(0xFFF5F6FA),
+      body: SafeArea(
+        child: Column(
+          children: [
+            TopHeader(
+              selectedExamId: selectedExamId,
+              userExamIds: userExamIds,
+              onExamChanged: (id) {
+                setState(() => selectedExamId = id);
+              },
+            ),
+            const SizedBox(height: 8),
 
-          final userExamIds = userSnapshot.data!;
+            Expanded(
+              child: selectedExamId == null
+                  ? const Center(child: Text("No exam selected"))
+                  : StreamBuilder<QuerySnapshot>(
+                      stream: _getPyqs(selectedExamId!),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) {
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        }
 
-          if (userExamIds.isEmpty) {
-            return const Center(
-              child: Text(
-                "Please select exams first",
-                style: TextStyle(fontSize: 16),
-              ),
-            );
-          }
+                        final docs = snapshot.data!.docs;
 
-          // default to first selected exam if not yet chosen
-          selectedExamId ??= userExamIds.first;
-          // ensure we check plan for the selected exam
-          _checkUserHasPlanForExam(selectedExamId!);
+                        if (docs.isEmpty) {
+                          return const Center(child: Text("No PYQs available"));
+                        }
 
-          return StreamBuilder<QuerySnapshot>(
-            stream: _getPyqExamsFor(selectedExamId!),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
+                        final isUnlocked = userExamIds.contains(selectedExamId);
 
-              final docs = snapshot.data!.docs;
-
-              return Scaffold(
-                body: Column(
-                  children: [
-                    // Top header: exam selector + notifications (match TestsScreen)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          FutureBuilder<QuerySnapshot>(
-                            future: FirebaseFirestore.instance
-                                .collection('exams')
-                                .where('isActive', isEqualTo: true)
-                                .get(),
-                            builder: (context, examSnap) {
-                              if (!examSnap.hasData) return const SizedBox();
-
-                              final exams = examSnap.data!.docs;
-
-                              return Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade100,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<String>(
-                                    value: selectedExamId,
-                                    icon: const Icon(Icons.keyboard_arrow_down),
-                                    items: exams.map((exam) {
-                                      final isUnlocked =
-                                          userExamIds.contains(exam.id) ||
-                                          (_userHasPlanForExam[exam.id] ??
-                                              false);
-
-                                      return DropdownMenuItem<String>(
-                                        value: exam.id,
-                                        enabled: isUnlocked,
-                                        child: Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(
-                                              exam['name'] ?? exam.id,
-                                              style: TextStyle(
-                                                color: isUnlocked
-                                                    ? Colors.black
-                                                    : Colors.grey,
-                                              ),
-                                            ),
-                                            if (!isUnlocked)
-                                              const Icon(
-                                                Icons.lock_outline,
-                                                size: 18,
-                                                color: Colors.grey,
-                                              ),
-                                          ],
-                                        ),
-                                      );
-                                    }).toList(),
-                                    onChanged: (value) {
-                                      if (value != null) {
-                                        final isUnlocked =
-                                            userExamIds.contains(value) ||
-                                            (_userHasPlanForExam[value] ??
-                                                false);
-                                        if (isUnlocked) {
-                                          setState(() {
-                                            selectedExamId = value;
-                                          });
-                                          _checkUserHasPlanForExam(value);
-                                        }
-                                      }
-                                    },
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-
-                          // Bell Icon (notification dot)
-                          Stack(
+                        return SingleChildScrollView(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(Icons.notifications_none, size: 28),
-                              Positioned(
-                                right: 0,
-                                top: 0,
-                                child: Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: const BoxDecoration(
-                                    color: Colors.orange,
-                                    shape: BoxShape.circle,
-                                  ),
+                              const SizedBox(height: 12),
+                              const Text(
+                                "Previous Year Questions",
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    // Content area - show list or empty state
-                    Expanded(
-                      child: docs.isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Text(
-                                    "No PYQs available for this exam",
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                ],
+                              const SizedBox(height: 6),
+                              const Text(
+                                "Access exam papers organized by subject and chapter",
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey,
+                                ),
                               ),
-                            )
-                          : Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    "Previous Year Questions",
-                                    style: TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
+                              const SizedBox(height: 20),
 
-                                  const SizedBox(height: 8),
+                              ListView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: docs.length,
+                                itemBuilder: (context, index) {
+                                  final doc = docs[index];
+                                  final title = doc['name'] ?? doc.id;
 
-                                  const Text(
-                                    "Access exam papers organized by subject and chapter",
-                                    style: TextStyle(color: Colors.grey),
-                                  ),
+                                  return FutureBuilder<QuerySnapshot>(
+                                    future: doc.reference
+                                        .collection('chapters')
+                                        .get(),
+                                    builder: (context, chapterSnap) {
+                                      final paperCount = chapterSnap.hasData
+                                          ? chapterSnap.data!.size
+                                          : 0;
 
-                                  const SizedBox(height: 16),
-
-                                  // Subjects list as rounded cards
-                                  Expanded(
-                                    child: ListView.builder(
-                                      itemCount: docs.length,
-                                      itemBuilder: (context, index) {
-                                        final doc = docs[index];
-                                        final title = doc['name'] ?? doc.id;
-                                        final isExamUnlocked =
-                                            userExamIds.contains(
-                                              selectedExamId,
-                                            ) ||
-                                            (_userHasPlanForExam[selectedExamId] ??
-                                                false);
-                                        final chapterCount = doc.reference
-                                            .collection('chapters')
-                                            .get()
-                                            .then((snap) => snap.size)
-                                            .catchError((_) => 0);
-
-                                        return FutureBuilder<int>(
-                                          future: chapterCount,
-                                          builder: (context, ctSnap) {
-                                            final count = ctSnap.hasData
-                                                ? ctSnap.data!
-                                                : 0;
-
-                                            return Card(
-                                              shape: RoundedRectangleBorder(
+                                      return Container(
+                                        margin: const EdgeInsets.only(
+                                          bottom: 16,
+                                        ),
+                                        child: Stack(
+                                          children: [
+                                            Material(
+                                              borderRadius:
+                                                  BorderRadius.circular(18),
+                                              color: Colors.white,
+                                              elevation: 3,
+                                              child: InkWell(
                                                 borderRadius:
-                                                    BorderRadius.circular(12),
-                                              ),
-                                              margin: const EdgeInsets.only(
-                                                bottom: 12,
-                                              ),
-                                              child: ListTile(
-                                                contentPadding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 16,
-                                                      vertical: 12,
-                                                    ),
-                                                leading: Container(
-                                                  width: 46,
-                                                  height: 46,
-                                                  decoration: BoxDecoration(
-                                                    color: const Color(
-                                                      0xFFEFF3FF,
-                                                    ),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          12,
-                                                        ),
-                                                  ),
-                                                  child: const Icon(
-                                                    Icons.menu_book,
-                                                    color: Color(0xFF2F3E8F),
-                                                  ),
-                                                ),
-                                                title: Text(
-                                                  title,
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                                subtitle: Text(
-                                                  count > 0
-                                                      ? '$count papers available'
-                                                      : 'Tap to view chapters',
-                                                  style: const TextStyle(
-                                                    color: Colors.grey,
-                                                  ),
-                                                ),
-                                                trailing: isExamUnlocked
-                                                    ? const Icon(
-                                                        Icons.chevron_right,
-                                                      )
-                                                    : Column(
-                                                        mainAxisAlignment:
-                                                            MainAxisAlignment
-                                                                .center,
-                                                        children: const [
-                                                          Icon(
-                                                            Icons.lock_outline,
-                                                            color: Colors.grey,
-                                                          ),
-                                                          SizedBox(height: 4),
-                                                          Text(
-                                                            'Unlock',
-                                                            style: TextStyle(
-                                                              color: Color(
-                                                                0xFFF37A1C,
-                                                              ),
-                                                              fontSize: 12,
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                onTap: isExamUnlocked
+                                                    BorderRadius.circular(18),
+                                                splashColor: const Color(
+                                                  0xFF2F6FEB,
+                                                ).withOpacity(0.1),
+                                                onTap: isUnlocked
                                                     ? () {
                                                         Navigator.push(
                                                           context,
@@ -385,131 +213,151 @@ class _PyqScreenState extends State<PyqScreen> {
                                                           ),
                                                         );
                                                       }
-                                                    : () {
-                                                        // Prompt to manage subscription
-                                                        showDialog(
-                                                          context: context,
-                                                          builder: (context) => AlertDialog(
-                                                            title: const Text(
-                                                              'Locked Content',
-                                                            ),
-                                                            content: const Text(
-                                                              'This subject is available to subscribers. Manage subscription to unlock.',
-                                                            ),
-                                                            actions: [
-                                                              TextButton(
-                                                                onPressed: () =>
-                                                                    Navigator.pop(
-                                                                      context,
-                                                                    ),
-                                                                child:
-                                                                    const Text(
-                                                                      'Close',
-                                                                    ),
-                                                              ),
-                                                              TextButton(
-                                                                onPressed: () {
-                                                                  Clipboard.setData(
-                                                                    ClipboardData(
-                                                                      text:
-                                                                          'https://ranksprint.ai/manage-subscription',
-                                                                    ),
-                                                                  );
-                                                                  Navigator.pop(
-                                                                    context,
-                                                                  );
-                                                                  ScaffoldMessenger.of(
-                                                                    context,
-                                                                  ).showSnackBar(
-                                                                    const SnackBar(
-                                                                      content: Text(
-                                                                        'Manage subscription URL copied to clipboard',
-                                                                      ),
-                                                                    ),
-                                                                  );
-                                                                },
-                                                                child: const Text(
-                                                                  'Manage Subscription',
-                                                                  style: TextStyle(
-                                                                    color: Color(
-                                                                      0xFFF37A1C,
-                                                                    ),
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                            ],
+                                                    : _showSubscriptionSheet,
+                                                child: Padding(
+                                                  padding: const EdgeInsets.all(
+                                                    18,
+                                                  ),
+                                                  child: Row(
+                                                    children: [
+                                                      Container(
+                                                        width: 52,
+                                                        height: 52,
+                                                        decoration: BoxDecoration(
+                                                          color: const Color(
+                                                            0xFFEFF3FF,
                                                           ),
-                                                        );
-                                                      },
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                14,
+                                                              ),
+                                                        ),
+                                                        child: const Icon(
+                                                          Icons.menu_book,
+                                                          color: Color(
+                                                            0xFF2F6FEB,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 16),
+                                                      Expanded(
+                                                        child: Column(
+                                                          crossAxisAlignment:
+                                                              CrossAxisAlignment
+                                                                  .start,
+                                                          children: [
+                                                            Text(
+                                                              title,
+                                                              style: const TextStyle(
+                                                                fontSize: 16,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                              ),
+                                                            ),
+                                                            const SizedBox(
+                                                              height: 4,
+                                                            ),
+                                                            Text(
+                                                              "$paperCount papers available",
+                                                              style:
+                                                                  const TextStyle(
+                                                                    fontSize:
+                                                                        13,
+                                                                    color: Colors
+                                                                        .grey,
+                                                                  ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      const Icon(
+                                                        Icons.chevron_right,
+                                                        color: Colors.grey,
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
                                               ),
-                                            );
-                                          },
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ],
+                                            ),
+
+                                            if (!isUnlocked)
+                                              Positioned.fill(
+                                                child: ClipRRect(
+                                                  borderRadius:
+                                                      BorderRadius.circular(18),
+                                                  child: BackdropFilter(
+                                                    filter: ImageFilter.blur(
+                                                      sigmaX: 4,
+                                                      sigmaY: 4,
+                                                    ),
+                                                    child: Container(
+                                                      color: Colors.white
+                                                          .withOpacity(0.6),
+                                                      alignment:
+                                                          Alignment.center,
+                                                      child: const Text(
+                                                        "Unlock with Subscription →",
+                                                        style: TextStyle(
+                                                          color: Color(
+                                                            0xFFF37A1C,
+                                                          ),
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  );
+                                },
                               ),
-                            ),
-                    ),
-                  ],
-                ),
-                bottomNavigationBar: BottomNavigationBar(
-                  currentIndex: 2,
-                  onTap: (index) {
-                    switch (index) {
-                      case 0:
-                        Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(
-                            builder: (context) => const TestsScreen(),
+                            ],
                           ),
-                          (route) => false,
                         );
-                        break;
-                      case 1:
-                        // Already on PyqScreen
-                        break;
-                      case 2:
-                        Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(
-                            builder: (context) => const AnalyticsScreen(),
-                          ),
-                          (route) => false,
-                        );
-                        break;
-                      case 3:
-                        Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(
-                            builder: (context) => const ProfileScreen(),
-                          ),
-                          (route) => false,
-                        );
-                        break;
-                    }
-                  },
-                  items: const [
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.assignment),
-                      label: 'Tests',
+                      },
                     ),
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.description),
-                      label: 'PYQ',
-                    ),
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.analytics),
-                      label: 'Analytics',
-                    ),
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.person),
-                      label: 'Profile',
-                    ),
-                  ],
-                ),
-              );
-            },
-          );
+            ),
+          ],
+        ),
+      ),
+
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: 1,
+        onTap: (index) {
+          if (index == 0) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const TestsScreen()),
+            );
+          }
+          if (index == 2) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const AnalyticsScreen()),
+            );
+          }
+          if (index == 3) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const ProfileScreen()),
+            );
+          }
         },
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.assignment), label: 'Tests'),
+          BottomNavigationBarItem(icon: Icon(Icons.description), label: 'PYQs'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.analytics),
+            label: 'Analytics',
+          ),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+        ],
       ),
     );
   }

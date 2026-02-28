@@ -28,6 +28,7 @@ class PyqChaptersScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
         title: Text(subjectName),
         backgroundColor: Colors.white,
@@ -42,23 +43,25 @@ class PyqChaptersScreen extends StatelessWidget {
           }
 
           final docs = snapshot.data!.docs;
+
           if (docs.isEmpty) {
             return const Center(child: Text('No chapters available'));
           }
 
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
+          return ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
             itemCount: docs.length,
-            separatorBuilder: (context, index) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               final doc = docs[index];
               final data = doc.data() as Map<String, dynamic>? ?? {};
+
               final title =
                   data['name'] ?? data['title'] ?? 'Chapter ${index + 1}';
-              final pdfUrl = data['pdfUrl'] ?? data['notesPdfUrl'] ?? '';
-              final qCount = data['questionCount']?.toString() ?? '';
+              final pdfUrl =
+                  data['pdfUrl'] ?? data['notesPdfUrl'] ?? '';
+              final qCount =
+                  data['questionCount']?.toString() ?? '';
 
-              /// ✅ FIXED: force List<String>
               final List<String> allPdfUrls = docs
                   .map((document) {
                     final documentData =
@@ -71,50 +74,106 @@ class PyqChaptersScreen extends StatelessWidget {
                   .where((url) => url.isNotEmpty)
                   .toList();
 
-              return Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  leading: CircleAvatar(
-                    backgroundColor: const Color(0xFFEFF3FF),
-                    child: Text(
-                      '${index + 1}',
-                      style: const TextStyle(color: Color(0xFF2F3E8F)),
+              return Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                child: Material(
+                  borderRadius: BorderRadius.circular(18),
+                  color: Colors.white,
+                  elevation: 3,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(18),
+                    splashColor:
+                        const Color(0xFF2F6FEB).withOpacity(0.1),
+                    onTap: () {
+                      if (pdfUrl.isNotEmpty &&
+                          allPdfUrls.isNotEmpty) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PdfViewerScreen(
+                              pdfUrl: pdfUrl,
+                              title: title,
+                              pdfUrls: allPdfUrls,
+                              currentIndex:
+                                  allPdfUrls.indexOf(pdfUrl),
+                            ),
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context)
+                            .showSnackBar(
+                          const SnackBar(
+                              content:
+                                  Text('PDF not available')),
+                        );
+                      }
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Row(
+                        children: [
+                          // Left icon box
+                          Container(
+                            width: 52,
+                            height: 52,
+                            decoration: BoxDecoration(
+                              color:
+                                  const Color(0xFFEFF3FF),
+                              borderRadius:
+                                  BorderRadius.circular(14),
+                            ),
+                            child: Center(
+                              child: Text(
+                                '${index + 1}',
+                                style: const TextStyle(
+                                  color:
+                                      Color(0xFF2F6FEB),
+                                  fontWeight:
+                                      FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(width: 16),
+
+                          // Text content
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight:
+                                        FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                if (qCount.isNotEmpty)
+                                  Text(
+                                    "$qCount papers available",
+                                    style:
+                                        const TextStyle(
+                                      fontSize: 13,
+                                      color:
+                                          Colors.grey,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+
+                          const Icon(
+                            Icons.chevron_right,
+                            color: Colors.grey,
+                          )
+                        ],
+                      ),
                     ),
                   ),
-                  title: Text(
-                    title,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Text(
-                    qCount.isNotEmpty ? '$qCount papers available' : '',
-                    style: const TextStyle(color: Colors.grey),
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    if (pdfUrl.isNotEmpty && allPdfUrls.isNotEmpty) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => PdfViewerScreen(
-                            pdfUrl: pdfUrl,
-                            title: title,
-                            pdfUrls: allPdfUrls,
-                            currentIndex: allPdfUrls.indexOf(pdfUrl),
-                          ),
-                        ),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('PDF not available')),
-                      );
-                    }
-                  },
                 ),
               );
             },

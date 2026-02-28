@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'otp_screen.dart';
 
@@ -17,6 +18,23 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _loading = false;
 
+  Future<void> _createUserIfNotExists(User user) async {
+    final userDoc = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid);
+
+    final docSnapshot = await userDoc.get();
+
+    if (!docSnapshot.exists) {
+      await userDoc.set({
+        'phone': user.phoneNumber ?? user.email ?? '',
+        'createdAt': FieldValue.serverTimestamp(),
+        'subscriptionStatus': 'free',
+        'selectedExams': [],
+        'subscriptionIds': [],
+      });
+    }
+  }
   // =========================
   // PHONE OTP
   // =========================
@@ -30,6 +48,25 @@ class _LoginScreenState extends State<LoginScreen> {
       phoneNumber: "+91${_phoneController.text.trim()}",
       verificationCompleted: (PhoneAuthCredential credential) async {
         await _auth.signInWithCredential(credential);
+
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          final userDoc = FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid);
+
+          final snapshot = await userDoc.get();
+
+          if (!snapshot.exists) {
+            await userDoc.set({
+              'phone': user.phoneNumber ?? '',
+              'email': user.email ?? '',
+              'selectedExams': [],
+              'subscriptionIds': [],
+              'createdAt': Timestamp.now(),
+            });
+          }
+        }
       },
       verificationFailed: (FirebaseAuthException e) {
         if (mounted) {
@@ -79,7 +116,36 @@ class _LoginScreenState extends State<LoginScreen> {
         idToken: googleAuth.idToken,
       );
 
-      await _auth.signInWithCredential(credential);
+      final userCredential = await _auth.signInWithCredential(credential);
+
+      final user = userCredential.user;
+
+      if (user != null) {
+        final userDoc = FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid);
+
+        final docSnapshot = await userDoc.get();
+
+        // If new user → create document
+        if (!docSnapshot.exists) {
+          await userDoc.set({
+            'name': user.displayName ?? '',
+            'email': user.email ?? '',
+            'phone': user.phoneNumber ?? '',
+            'selectedExams': [],
+            'subscriptionIds': [],
+            'createdAt': Timestamp.now(),
+          });
+        } else {
+          // Existing user → update email if missing
+          await userDoc.update({
+            'email': user.email ?? '',
+            'name': user.displayName ?? '',
+            'updatedAt': Timestamp.now(),
+          });
+        }
+      }
 
       if (mounted) setState(() => _loading = false);
     } catch (e) {
@@ -87,11 +153,10 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() => _loading = false);
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text("Google Sign-In failed")));
+        ).showSnackBar(const SnackBar(content: Text("Google Sign-In failed")));
       }
     }
   }
-
   // =========================
   // UI
   // =========================

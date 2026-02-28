@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'subscription_screen.dart';
 import '../../widgets/top_header.dart';
+import 'edit_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -19,6 +20,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _loadUserExams();
+  }
+
+  Future<void> _deleteAccount(BuildContext context) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Delete Account"),
+        content: const Text(
+          "This action is permanent. All your data will be deleted. Are you sure?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Delete", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      // Delete user document
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .delete();
+
+      // Delete Firebase Auth account
+      await user.delete();
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error deleting account: $e")));
+    }
   }
 
   Future<void> _loadUserExams() async {
@@ -114,12 +157,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   // User card
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        CircleAvatar(
-                          radius: 36,
-                          backgroundColor: const Color(0xFF2F3E8F),
+                        // Avatar
+                        Container(
+                          width: 72,
+                          height: 72,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Color(0xFF2F3E8F),
+                          ),
+                          alignment: Alignment.center,
                           child: Text(
                             name.isNotEmpty
                                 ? (name.length >= 2
@@ -129,40 +182,83 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
-                              fontSize: 18,
+                              fontSize: 20,
                             ),
                           ),
                         ),
+
                         const SizedBox(width: 16),
+
+                        // Name + Email + Phone
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                name.isNotEmpty ? name : 'Rank Sprint User',
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      name.isNotEmpty
+                                          ? name
+                                          : 'Rank Sprint User',
+                                      style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  InkWell(
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              const EditProfileScreen(),
+                                        ),
+                                      );
+                                    },
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        border: Border.all(
+                                          color: Colors.grey.shade300,
+                                        ),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Icon(
+                                        Icons.edit_outlined,
+                                        size: 18,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
+
                               const SizedBox(height: 6),
-                              Text(
-                                email,
-                                style: const TextStyle(color: Colors.grey),
-                              ),
-                              if (phone != '') ...[
-                                const SizedBox(height: 6),
+
+                              if (email.isNotEmpty)
+                                Text(
+                                  email,
+                                  style: const TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 14,
+                                  ),
+                                ),
+
+                              if (phone.isNotEmpty) ...[
+                                const SizedBox(height: 4),
                                 Text(
                                   phone,
-                                  style: const TextStyle(color: Colors.grey),
+                                  style: const TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 14,
+                                  ),
                                 ),
                               ],
                             ],
                           ),
-                        ),
-                        IconButton(
-                          onPressed: () {},
-                          icon: const Icon(Icons.edit_outlined),
                         ),
                       ],
                     ),
@@ -396,19 +492,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   // Actions
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Card(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: ListTile(
-                        leading: const Icon(Icons.logout, color: Colors.orange),
-                        title: const Text(
-                          'Logout',
-                          style: TextStyle(color: Colors.orange),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'ACTIONS',
+                          style: TextStyle(
+                            color: Colors.grey,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => _logout(context),
-                      ),
+                        const SizedBox(height: 8),
+                        Card(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Column(
+                            children: [
+                              // Logout
+                              ListTile(
+                                leading: const Icon(
+                                  Icons.logout,
+                                  color: Colors.orange,
+                                ),
+                                title: const Text(
+                                  'Logout',
+                                  style: TextStyle(color: Colors.orange),
+                                ),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () => _logout(context),
+                              ),
+                              const Divider(height: 1),
+
+                              // Delete Account
+                              ListTile(
+                                leading: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.red,
+                                ),
+                                title: const Text(
+                                  'Delete Account',
+                                  style: TextStyle(color: Colors.red),
+                                ),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () => _deleteAccount(context),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
 

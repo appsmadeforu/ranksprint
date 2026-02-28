@@ -23,485 +23,309 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   Future<void> _loadUserExams() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+
     final doc = await FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
         .get();
-    final data = doc.data();
-    if (data == null) return;
 
-    final exams = List<String>.from(data['selectedExams'] ?? []);
+    final exams = List<String>.from(doc.data()?['selectedExams'] ?? []);
+
     setState(() {
       userExamIds = exams;
       selectedExamId = exams.isNotEmpty ? exams.first : null;
     });
   }
 
-  Future<List<String>> _getUserExams() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return [];
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .get();
-    final data = doc.data();
-    if (data == null) return [];
-    return List<String>.from(data['selectedExams'] ?? []);
-  }
-
   @override
   Widget build(BuildContext context) {
-    // We'll present a small Leaderboard / Dashboard UI using results collection
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
       body: SafeArea(
-        child: FutureBuilder<List<String>>(
-          future: _getUserExams(),
-          builder: (context, examSnap) {
-            if (!examSnap.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            final exams = examSnap.data!;
-            final selectedExam =
-                selectedExamId ?? (exams.isNotEmpty ? exams.first : null);
-
-            return Column(
-              children: [
-                // Top header with functional dropdown
-                TopHeader(
-                  selectedExamId: selectedExam,
-                  userExamIds: exams,
-                  onExamChanged: (examId) {
-                    setState(() {
-                      selectedExamId = examId;
-                    });
-                  },
-                ),
-
-                const SizedBox(height: 8),
-
-                // Tabs
-                Expanded(
-                  child: DefaultTabController(
-                    length: 2,
-                    child: Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: TabBar(
-                              indicator: BoxDecoration(
-                                color: const Color(0xFFF1F5FF),
-                                borderRadius: BorderRadius.circular(12),
+        child: Column(
+          children: [
+            TopHeader(
+              selectedExamId: selectedExamId,
+              userExamIds: userExamIds,
+              onExamChanged: (examId) {
+                setState(() {
+                  selectedExamId = examId;
+                });
+              },
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: selectedExamId == null
+                  ? const Center(child: Text("No exam selected"))
+                  : DefaultTabController(
+                      length: 2,
+                      child: Column(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(14),
                               ),
-                              labelColor: Colors.black,
-                              tabs: const [
-                                Tab(text: 'Leaderboard'),
-                                Tab(text: 'Dashboard'),
+                              child: const TabBar(
+                                indicatorColor: Color(0xFF2F6FEB),
+                                labelColor: Colors.black,
+                                tabs: [
+                                  Tab(text: 'Leaderboard'),
+                                  Tab(text: 'Dashboard'),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Expanded(
+                            child: TabBarView(
+                              children: [
+                                _buildLeaderboard(),
+                                _buildDashboard(),
                               ],
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        Expanded(
-                          child: TabBarView(
-                            children: [
-                              // Leaderboard tab
-                              Builder(
-                                builder: (context) {
-                                  if (selectedExam == null) {
-                                    return const Center(
-                                      child: Text('No exam selected'),
-                                    );
-                                  }
+                        ],
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-                                  final currentUser =
-                                      FirebaseAuth.instance.currentUser;
+  // =========================
+  // LEADERBOARD (UI UPGRADED + NAME FIX)
+  // =========================
+  Widget _buildLeaderboard() {
+    final currentUser = FirebaseAuth.instance.currentUser;
 
-                                  return StreamBuilder<QuerySnapshot>(
-                                    stream: FirebaseFirestore.instance
-                                        .collection('results')
-                                        .where(
-                                          'examId',
-                                          isEqualTo: selectedExam,
-                                        )
-                                        .orderBy('score', descending: true)
-                                        .limit(50)
-                                        .snapshots(),
-                                    builder: (context, snap) {
-                                      if (snap.hasError) {
-                                        return Center(
-                                          child: Text(
-                                            'Failed to load leaderboard: ${snap.error}',
-                                          ),
-                                        );
-                                      }
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('results')
+          .where('examId', isEqualTo: selectedExamId)
+          .orderBy('score', descending: true)
+          .limit(50)
+          .snapshots(),
+      builder: (context, snap) {
+        if (!snap.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-                                      if (snap.connectionState ==
-                                          ConnectionState.waiting) {
-                                        return const Center(
-                                          child: CircularProgressIndicator(),
-                                        );
-                                      }
+        final docs = snap.data!.docs;
 
-                                      if (!snap.hasData) {
-                                        return const Center(
-                                          child: Text('No leaderboard data'),
-                                        );
-                                      }
+        if (docs.isEmpty) {
+          return const Center(child: Text('No leaderboard data'));
+        }
 
-                                      final docs = snap.data!.docs;
-                                      if (docs.isEmpty) {
-                                        return const Center(
-                                          child: Text('No leaderboard data'),
-                                        );
-                                      }
+        return ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: docs.length,
+          itemBuilder: (context, index) {
+            final data = docs[index].data() as Map<String, dynamic>;
+            final userId = data['userId'] ?? '';
+            final score = data['score'] ?? 0;
+            final testsTaken = data['testsTaken'] ?? 0;
+            final percentile = data['percentile'] ?? 0;
 
-                                      return ListView.builder(
-                                        padding: const EdgeInsets.all(16),
-                                        itemCount: docs.length,
-                                        itemBuilder: (context, index) {
-                                          final doc = docs[index];
-                                          final data =
-                                              doc.data()
-                                                  as Map<String, dynamic>;
-                                          final userId = (data['userId'] ?? '')
-                                              .toString();
-                                          final score = data['score'] ?? 0;
-                                          final testsTaken =
-                                              data['testsTaken'] ?? 0;
-                                          final percentile =
-                                              data['percentile'] ?? 0;
+            final isCurrentUser =
+                currentUser != null && currentUser.uid == userId;
 
-                                          final isCurrentUser =
-                                              currentUser != null &&
-                                              currentUser.uid == userId;
-
-                                          // medal colors for top 3
-                                          Color? medalColor;
-                                          if (index == 0) {
-                                            medalColor = const Color(
-                                              0xFFFFD700,
-                                            ); // gold
-                                          }
-                                          if (index == 1) {
-                                            medalColor = const Color(
-                                              0xFFC0C0C0,
-                                            ); // silver
-                                          }
-                                          if (index == 2) {
-                                            medalColor = const Color(
-                                              0xFFCD7F32,
-                                            ); // bronze
-                                          }
-
-                                          return Container(
-                                            margin: const EdgeInsets.only(
-                                              bottom: 12,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                              border: isCurrentUser
-                                                  ? Border.all(
-                                                      color: const Color(
-                                                        0xFF2F6FEB,
-                                                      ),
-                                                      width: 2,
-                                                    )
-                                                  : Border.all(
-                                                      color: Colors.transparent,
-                                                    ),
-                                            ),
-                                            child: ListTile(
-                                              contentPadding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 16,
-                                                    vertical: 12,
-                                                  ),
-                                              leading: CircleAvatar(
-                                                backgroundColor:
-                                                    medalColor ??
-                                                    const Color(0xFFF1F5FF),
-                                                child: Text(
-                                                  '#${index + 1}',
-                                                  style: const TextStyle(
-                                                    color: Colors.black,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                              ),
-                                              title:
-                                                  FutureBuilder<
-                                                    DocumentSnapshot
-                                                  >(
-                                                    future: FirebaseFirestore
-                                                        .instance
-                                                        .collection('users')
-                                                        .doc(userId)
-                                                        .get(),
-                                                    builder: (context, userSnap) {
-                                                      final uname =
-                                                          userSnap.hasData &&
-                                                              userSnap
-                                                                  .data!
-                                                                  .exists
-                                                          ? ((userSnap.data!
-                                                                        .data()
-                                                                    as Map<
-                                                                      String,
-                                                                      dynamic
-                                                                    >)['name'] ??
-                                                                userId)
-                                                          : userId;
-                                                      return Text(
-                                                        uname.toString(),
-                                                        style: const TextStyle(
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                        ),
-                                                      );
-                                                    },
-                                                  ),
-                                              subtitle: Text(
-                                                '$testsTaken tests • $percentile %ile',
-                                                style: const TextStyle(
-                                                  color: Colors.grey,
-                                                ),
-                                              ),
-                                              trailing: Column(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment.center,
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.end,
-                                                children: [
-                                                  Text(
-                                                    '$score',
-                                                    style: const TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      fontSize: 16,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  const Text(
-                                                    'points',
-                                                    style: TextStyle(
-                                                      color: Colors.grey,
-                                                      fontSize: 12,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      );
-                                    },
-                                  );
-                                },
-                              ),
-
-                              // Dashboard tab: compute some simple aggregates from results
-                              Builder(
-                                builder: (context) {
-                                  if (selectedExam == null) {
-                                    return const Center(
-                                      child: Text('No exam selected'),
-                                    );
-                                  }
-                                  return FutureBuilder<QuerySnapshot>(
-                                    future: FirebaseFirestore.instance
-                                        .collection('results')
-                                        .where(
-                                          'examId',
-                                          isEqualTo: selectedExam,
-                                        )
-                                        .get(),
-                                    builder: (context, snap) {
-                                      if (!snap.hasData) {
-                                        return const Center(
-                                          child: CircularProgressIndicator(),
-                                        );
-                                      }
-                                      final docs = snap.data!.docs;
-                                      if (docs.isEmpty) {
-                                        return const Center(
-                                          child: Text('No analytics data'),
-                                        );
-                                      }
-
-                                      int total = docs.length;
-                                      double avg = 0;
-                                      int best = 0;
-                                      for (final d in docs) {
-                                        final mRaw =
-                                            (d.data()
-                                                as Map<
-                                                  String,
-                                                  dynamic
-                                                >)['score'] ??
-                                            0;
-                                        final m = (mRaw is num)
-                                            ? mRaw.toDouble()
-                                            : double.tryParse(
-                                                    mRaw.toString(),
-                                                  ) ??
-                                                  0.0;
-                                        avg += m;
-                                        if (m.toInt() > best) best = m.toInt();
-                                      }
-                                      avg = avg / total;
-
-                                      return Padding(
-                                        padding: const EdgeInsets.all(16),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Card(
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                              ),
-                                              child: Padding(
-                                                padding: const EdgeInsets.all(
-                                                  16,
-                                                ),
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    const Text(
-                                                      'Overview',
-                                                      style: TextStyle(
-                                                        fontSize: 16,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 12),
-                                                    Row(
-                                                      children: [
-                                                        Expanded(
-                                                          child: Column(
-                                                            crossAxisAlignment:
-                                                                CrossAxisAlignment
-                                                                    .start,
-                                                            children: [
-                                                              const Text(
-                                                                'Attempts',
-                                                              ),
-                                                              const SizedBox(
-                                                                height: 6,
-                                                              ),
-                                                              Text(
-                                                                '$total',
-                                                                style: const TextStyle(
-                                                                  fontSize: 18,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .bold,
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                        Expanded(
-                                                          child: Column(
-                                                            crossAxisAlignment:
-                                                                CrossAxisAlignment
-                                                                    .start,
-                                                            children: [
-                                                              const Text(
-                                                                'Avg Score',
-                                                              ),
-                                                              const SizedBox(
-                                                                height: 6,
-                                                              ),
-                                                              Text(
-                                                                avg.toStringAsFixed(
-                                                                  1,
-                                                                ),
-                                                                style: const TextStyle(
-                                                                  fontSize: 18,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .bold,
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                        Expanded(
-                                                          child: Column(
-                                                            crossAxisAlignment:
-                                                                CrossAxisAlignment
-                                                                    .start,
-                                                            children: [
-                                                              const Text(
-                                                                'Best Score',
-                                                              ),
-                                                              const SizedBox(
-                                                                height: 6,
-                                                              ),
-                                                              Text(
-                                                                '$best',
-                                                                style: const TextStyle(
-                                                                  fontSize: 18,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .bold,
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 12),
-                                            // small chart placeholder
-                                            Card(
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                              ),
-                                              child: Container(
-                                                height: 160,
-                                                alignment: Alignment.center,
-                                                child: const Text(
-                                                  'Performance chart placeholder',
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                    },
-                                  );
-                                },
-                              ),
-                            ],
+            return Container(
+              margin: const EdgeInsets.only(bottom: 18),
+              child: Material(
+                borderRadius: BorderRadius.circular(18),
+                color: Colors.white,
+                elevation: 3,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    border: isCurrentUser
+                        ? Border.all(color: const Color(0xFF2F6FEB), width: 2)
+                        : null,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Row(
+                      children: [
+                        // Rank Circle
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF3FF),
+                            borderRadius: BorderRadius.circular(14),
                           ),
+                          child: Center(
+                            child: Text(
+                              '#${index + 1}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF2F6FEB),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(width: 16),
+
+                        // USER NAME FIX
+                        Expanded(
+                          child: FutureBuilder<DocumentSnapshot>(
+                            future: FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(userId)
+                                .get(),
+                            builder: (context, userSnap) {
+                              String displayName = userId.toString();
+
+                              if (userSnap.hasData && userSnap.data!.exists) {
+                                final udata =
+                                    userSnap.data!.data()
+                                        as Map<String, dynamic>;
+                                displayName =
+                                    udata['name'] ?? userId.toString();
+                              }
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    displayName,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    '$testsTaken tests • $percentile %ile',
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              '$score',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'points',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
                 ),
-              ],
+              ),
             );
           },
-        ),
+        );
+      },
+    );
+  }
+
+  // =========================
+  // DASHBOARD (UI MATCHED)
+  // =========================
+  Widget _buildDashboard() {
+    return FutureBuilder<QuerySnapshot>(
+      future: FirebaseFirestore.instance
+          .collection('results')
+          .where('examId', isEqualTo: selectedExamId)
+          .get(),
+      builder: (context, snap) {
+        if (!snap.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final docs = snap.data!.docs;
+
+        if (docs.isEmpty) {
+          return const Center(child: Text('No analytics data'));
+        }
+
+        int total = docs.length;
+        double avg = 0;
+        int best = 0;
+
+        for (final d in docs) {
+          final data = d.data() as Map<String, dynamic>;
+          final score = (data['score'] ?? 0) as num;
+          avg += score.toDouble();
+          if (score.toInt() > best) best = score.toInt();
+        }
+
+        avg = avg / total;
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            children: [
+              _buildPremiumCard(
+                child: Row(
+                  children: [
+                    _buildStat("Attempts", "$total"),
+                    _buildStat("Avg Score", avg.toStringAsFixed(1)),
+                    _buildStat("Best Score", "$best"),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              _buildPremiumCard(
+                child: const SizedBox(
+                  height: 160,
+                  child: Center(child: Text("Performance chart placeholder")),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPremiumCard({required Widget child}) {
+    return Material(
+      borderRadius: BorderRadius.circular(18),
+      color: Colors.white,
+      elevation: 3,
+      child: Padding(padding: const EdgeInsets.all(20), child: child),
+    );
+  }
+
+  Widget _buildStat(String title, String value) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(title, style: const TextStyle(color: Colors.grey)),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+        ],
       ),
     );
   }
