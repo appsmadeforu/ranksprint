@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'help_faq_screen.dart';
+
+import 'privacy_policy_screen.dart';
+import 'terms_conditions_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'subscription_screen.dart';
@@ -441,6 +445,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 18),
 
                   // Support
+                  // Support
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Column(
@@ -460,25 +465,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           child: Column(
                             children: [
+                              // Help & FAQ
                               ListTile(
                                 leading: const Icon(Icons.help_outline),
-                                title: const Text('Help & FAQ'),
-                                trailing: const Icon(Icons.chevron_right),
-                                onTap: () {},
+                                title: const Text("Help & FAQ"),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => HelpFaqScreen(),
+                                    ),
+                                  );
+                                },
                               ),
                               const Divider(height: 1),
+
+                              // Terms
                               ListTile(
                                 leading: const Icon(Icons.description_outlined),
-                                title: const Text('Terms & Conditions'),
-                                trailing: const Icon(Icons.chevron_right),
-                                onTap: () {},
+                                title: const Text("Terms & Conditions"),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const TermsConditionsScreen(),
+                                    ),
+                                  );
+                                },
                               ),
                               const Divider(height: 1),
+
+                              // Privacy
                               ListTile(
                                 leading: const Icon(Icons.lock_outline),
-                                title: const Text('Privacy Policy'),
+                                title: const Text("Privacy Policy"),
                                 trailing: const Icon(Icons.chevron_right),
-                                onTap: () {},
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const PrivacyPolicyScreen(),
+                                    ),
+                                  );
+                                },
                               ),
                             ],
                           ),
