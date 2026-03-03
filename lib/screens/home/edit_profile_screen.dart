@@ -41,14 +41,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (data == null) return;
 
     setState(() {
-      nameController.text = data['name'] ?? '';
-      phoneController.text = data['phone'] ?? '';
-      pincodeController.text = data['pincode'] ?? '';
-      cityController.text = data['city'] ?? '';
-      stateController.text = data['state'] ?? '';
-      gender = data['gender'];
+      nameController.text = (data['name'] is String) ? data['name'] : '';
+      phoneController.text = (data['phone'] is String) ? data['phone'] : '';
+      pincodeController.text = (data['pincode'] is String)
+          ? data['pincode']
+          : '';
+      cityController.text = (data['city'] is String) ? data['city'] : '';
+      stateController.text = (data['state'] is String) ? data['state'] : '';
+      gender = (data['gender'] is String) ? data['gender'] : null;
       if (data['dob'] is Timestamp) {
         dob = (data['dob'] as Timestamp).toDate();
+      } else {
+        dob = null;
       }
     });
   }
