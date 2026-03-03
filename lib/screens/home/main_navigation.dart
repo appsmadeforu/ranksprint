@@ -7,14 +7,15 @@ import 'subscription_screen.dart';
 import 'select_exam_home.dart';
 
 class MainNavigation extends StatefulWidget {
-  const MainNavigation({super.key});
+  final int initialIndex;
+  const MainNavigation({Key? key, this.initialIndex = 0}) : super(key: key);
 
   @override
   State<MainNavigation> createState() => _MainNavigationState();
 }
 
 class _MainNavigationState extends State<MainNavigation> {
-  int _index = 0;
+  late int _index;
 
   final List<Widget> screens = const [
     SelectExamHome(),
@@ -23,6 +24,12 @@ class _MainNavigationState extends State<MainNavigation> {
     AnalyticsScreen(),
     ProfileScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _index = widget.initialIndex;
+  }
 
   void navigateToSubscription() {
     Navigator.push(

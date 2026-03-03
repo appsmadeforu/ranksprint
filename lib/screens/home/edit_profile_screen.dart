@@ -61,16 +61,27 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     setState(() => loading = true);
 
-    await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+    Map<String, dynamic> updateData = {
       'name': nameController.text.trim(),
       'phone': phoneController.text.trim(),
       'pincode': pincodeController.text.trim(),
       'city': cityController.text.trim(),
       'state': stateController.text.trim(),
       'gender': gender,
-      'dob': dob != null ? Timestamp.fromDate(dob!) : null,
       'updatedAt': Timestamp.now(),
-    });
+    };
+
+    // Only add dob if selected
+    if (dob != null) {
+      updateData['dob'] = Timestamp.fromDate(dob!);
+    } else {
+      updateData['dob'] = ""; // Clear dob if not selected
+    }
+
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .update(updateData);
 
     setState(() => loading = false);
 

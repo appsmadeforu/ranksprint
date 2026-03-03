@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'auth/login_screen.dart';
 import 'onboarding/select_exam_screen.dart';
 import 'home/main_navigation.dart';
+import 'home/edit_profile_screen.dart';
 
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
@@ -43,13 +44,21 @@ class AuthWrapper extends StatelessWidget {
 
             // ❌ No user document yet
             if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
-              return const SelectExamScreen();
+              // Show edit profile first
+              return const EditProfileScreen();
             }
 
             final data = userSnapshot.data!.data() as Map<String, dynamic>?;
 
-            if (data == null) {
-              return const SelectExamScreen();
+            // If profile fields are missing, force edit profile
+            if (data == null ||
+                ((data['email'] == null || data['email'].toString().isEmpty) &&
+                        (data['phone'] == null ||
+                            data['phone'].toString().isEmpty) ||
+                    (data['name'] == null || data['name'].toString().isEmpty) ||
+                    (data['pincode'] == null) ||
+                    (data['dob'] == null))) {
+              return const EditProfileScreen();
             }
 
             final selectedExams = data['selectedExams'];
@@ -61,8 +70,8 @@ class AuthWrapper extends StatelessWidget {
               return const SelectExamScreen();
             }
 
-            // ✅ Everything good → go to app
-            return const MainNavigation();
+            // ✅ Everything good → go to tests screen
+            return const MainNavigation(initialIndex: 1);
           },
         );
       },

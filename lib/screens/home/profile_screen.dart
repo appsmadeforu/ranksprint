@@ -8,6 +8,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'subscription_screen.dart';
 import '../../widgets/top_header.dart';
 import 'edit_profile_screen.dart';
+import '../auth/login_screen.dart';
+import 'test_history_screen.dart';
+import 'performance_trends_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -26,42 +29,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadUserExams();
   }
 
-  Future<void> _deleteAccount(BuildContext context) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final confirm = await showDialog<bool>(
+  void _confirmDeleteAccount(BuildContext context) {
+    showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Delete Account"),
+        title: const Text('Delete Account'),
         content: const Text(
-          "This action is permanent. All your data will be deleted. Are you sure?",
+          'Are you sure you want to delete your account? This action cannot be undone.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text("Cancel"),
+            onPressed: () => Navigator.of(context).pop(), // Cancel
+            child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text("Delete", style: TextStyle(color: Colors.red)),
+            onPressed: () async {
+              Navigator.of(context).pop(); // Close dialog
+              await _deleteAccount(context); // Call your delete logic
+            },
+            child: const Text(
+              'Yes, Delete',
+              style: TextStyle(color: Colors.red),
+            ),
           ),
         ],
       ),
     );
+  }
 
-    if (confirm != true) return;
+  Future<void> _deleteAccount(BuildContext context) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
 
     try {
-      // Delete user document
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .delete();
+      final user = FirebaseAuth.instance.currentUser;
 
-      // Delete Firebase Auth account
-      await user.delete();
+      if (user != null) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .delete();
+
+        await user.delete();
+      }
+
+      if (!mounted) return;
+
+      // Remove loader
+      Navigator.of(context, rootNavigator: true).pop();
+
+      // Navigate and clear everything
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
     } catch (e) {
+      Navigator.of(context, rootNavigator: true).pop();
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text("Error deleting account: $e")));
@@ -122,6 +149,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             .doc(currentUser.uid)
             .snapshots(),
         builder: (context, snapshot) {
+          if (FirebaseAuth.instance.currentUser == null) {
+            Future.microtask(() {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                (route) => false,
+              );
+            });
+            return const SizedBox();
+          }
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -395,6 +431,63 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   const SizedBox(height: 18),
 
+                  // Performance section
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'PERFORMANCE',
+                          style: TextStyle(
+                            color: Colors.grey,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Card(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            children: [
+                              ListTile(
+                                leading: const Icon(Icons.history),
+                                title: const Text('Test History'),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const TestHistoryScreen(),
+                                    ),
+                                  );
+                                },
+                              ),
+                              const Divider(height: 1),
+                              ListTile(
+                                leading: const Icon(Icons.trending_up),
+                                title: const Text('Performance Trends'),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const PerformanceTrendsScreen(),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+
                   // Account section
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -416,10 +509,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Column(
                             children: [
                               ListTile(
-                                leading: const Icon(Icons.settings_outlined),
-                                title: const Text('Account Settings'),
-                                trailing: const Icon(Icons.chevron_right),
-                                onTap: () {},
+                                leading: Icon(Icons.settings),
+                                title: Text('Account Settings'),
+                                onTap: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          const EditProfileScreen(),
+                                    ),
+                                  );
+                                },
                               ),
                               const Divider(height: 1),
                               ListTile(
@@ -428,13 +527,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: () {},
                               ),
-                              const Divider(height: 1),
-                              ListTile(
-                                leading: const Icon(Icons.notifications_none),
-                                title: const Text('Notifications'),
-                                trailing: const Icon(Icons.chevron_right),
-                                onTap: () {},
-                              ),
+                              // Notifications option removed as requested
                             ],
                           ),
                         ),
@@ -566,7 +659,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   style: TextStyle(color: Colors.red),
                                 ),
                                 trailing: const Icon(Icons.chevron_right),
-                                onTap: () => _deleteAccount(context),
+                                onTap: () => _confirmDeleteAccount(context),
                               ),
                             ],
                           ),
