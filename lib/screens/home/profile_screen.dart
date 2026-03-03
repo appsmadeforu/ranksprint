@@ -22,11 +22,29 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   String? selectedExamId;
   List<String> userExamIds = [];
+  bool isDeletingAccount = false;
 
   @override
   void initState() {
     super.initState();
     _loadUserExams();
+  }
+
+  Future<void> _loadUserExams() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+    final data = doc.data();
+    if (data == null) return;
+
+    final exams = List<String>.from(data['selectedExams'] ?? []);
+    setState(() {
+      userExamIds = exams;
+      selectedExamId = exams.isNotEmpty ? exams.first : null;
+    });
   }
 
   void _confirmDeleteAccount(BuildContext context) {
@@ -44,8 +62,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           TextButton(
             onPressed: () async {
-              Navigator.of(context).pop(); // Close dialog
               await _deleteAccount(context); // Call your delete logic
+              Navigator.of(context).pop(); // Close dialog
             },
             child: const Text(
               'Yes, Delete',
@@ -58,6 +76,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _deleteAccount(BuildContext context) async {
+    setState(() {
+      isDeletingAccount = true;
+    });
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -72,30 +93,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
             .collection('users')
             .doc(user.uid)
             .delete();
-
         await user.delete();
       }
-
-      if (!mounted) return;
 
       // Remove loader
       Navigator.of(context, rootNavigator: true).pop();
 
-      // Navigate and clear everything
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-        (route) => false,
-      );
+      setState(() {
+        isDeletingAccount = false;
+      });
+
+      if (mounted) {
+        // Navigate and clear everything
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+      }
     } catch (e) {
       Navigator.of(context, rootNavigator: true).pop();
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error deleting account: $e")));
-    }
-  }
+      setState(() {
+        isDeletingAccount = false;
+      });
 
-  Future<void> _loadUserExams() async {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Error deleting account: $e")));
+      }
+    }
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     final doc = await FirebaseFirestore.instance
@@ -247,32 +274,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       ),
                                     ),
                                   ),
-                                  InkWell(
-                                    onTap: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) =>
-                                              const EditProfileScreen(),
+                                  if (!isDeletingAccount)
+                                    InkWell(
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                const EditProfileScreen(),
+                                          ),
+                                        );
+                                      },
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(
+                                            color: Colors.grey.shade300,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
                                         ),
-                                      );
-                                    },
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(6),
-                                      decoration: BoxDecoration(
-                                        border: Border.all(
-                                          color: Colors.grey.shade300,
+                                        child: const Icon(
+                                          Icons.edit_outlined,
+                                          size: 18,
+                                          color: Colors.black87,
                                         ),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Icon(
-                                        Icons.edit_outlined,
-                                        size: 18,
-                                        color: Colors.black87,
                                       ),
                                     ),
-                                  ),
                                 ],
                               ),
 
@@ -508,18 +538,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           child: Column(
                             children: [
-                              ListTile(
-                                leading: Icon(Icons.settings),
-                                title: Text('Account Settings'),
-                                onTap: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                          const EditProfileScreen(),
-                                    ),
-                                  );
-                                },
-                              ),
+                              if (!isDeletingAccount)
+                                ListTile(
+                                  leading: Icon(Icons.settings),
+                                  title: Text('Account Settings'),
+                                  onTap: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            const EditProfileScreen(),
+                                      ),
+                                    );
+                                  },
+                                ),
                               const Divider(height: 1),
                               ListTile(
                                 leading: const Icon(Icons.credit_card_outlined),
