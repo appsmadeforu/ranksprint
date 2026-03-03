@@ -135,44 +135,63 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 currentUser != null && currentUser.uid == userId;
 
             return Container(
-              margin: const EdgeInsets.only(bottom: 18),
+              margin: const EdgeInsets.only(bottom: 14),
               child: Material(
-                borderRadius: BorderRadius.circular(18),
-                color: Colors.white,
-                elevation: 3,
+                elevation: 6,
+                borderRadius: BorderRadius.circular(22),
                 child: Container(
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    border: isCurrentUser
-                        ? Border.all(color: const Color(0xFF2F6FEB), width: 2)
+                    borderRadius: BorderRadius.circular(22),
+                    gradient: isCurrentUser
+                        ? const LinearGradient(
+                            colors: [Color(0xFF2F6FEB), Color(0xFF6EA8FF)],
+                          )
                         : null,
+                    color: isCurrentUser ? null : Colors.white,
                   ),
-                  child: Padding(
+                  child: Container(
                     padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(22),
+                      color: isCurrentUser
+                          ? Colors.white.withOpacity(0.95)
+                          : Colors.white,
+                    ),
                     child: Row(
                       children: [
-                        // Rank Circle
+                        // 🏅 Rank Badge
                         Container(
-                          width: 52,
-                          height: 52,
+                          width: 56,
+                          height: 56,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFEFF3FF),
-                            borderRadius: BorderRadius.circular(14),
+                            shape: BoxShape.circle,
+                            color: index == 0
+                                ? Colors.amber
+                                : index == 1
+                                ? Colors.grey
+                                : index == 2
+                                ? Colors.brown
+                                : const Color(0xFFEFF3FF),
                           ),
                           child: Center(
-                            child: Text(
-                              '#${index + 1}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF2F6FEB),
-                              ),
-                            ),
+                            child: index < 3
+                                ? const Icon(
+                                    Icons.emoji_events,
+                                    color: Colors.white,
+                                  )
+                                : Text(
+                                    '#${index + 1}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF2F6FEB),
+                                    ),
+                                  ),
                           ),
                         ),
 
                         const SizedBox(width: 16),
 
-                        // USER NAME FIX
+                        // 👤 User Name + Stats
                         Expanded(
                           child: FutureBuilder<DocumentSnapshot>(
                             future: FirebaseFirestore.instance
@@ -180,14 +199,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                 .doc(userId)
                                 .get(),
                             builder: (context, userSnap) {
-                              String displayName = userId.toString();
+                              String displayName = userId;
 
                               if (userSnap.hasData && userSnap.data!.exists) {
                                 final udata =
                                     userSnap.data!.data()
                                         as Map<String, dynamic>;
-                                displayName =
-                                    udata['name'] ?? userId.toString();
+                                displayName = udata['name'] ?? userId;
                               }
 
                               return Column(
@@ -196,17 +214,27 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                   Text(
                                     displayName,
                                     style: const TextStyle(
-                                      fontSize: 16,
+                                      fontSize: 17,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                   const SizedBox(height: 6),
-                                  Text(
-                                    '$testsTaken tests • $percentile %ile',
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.grey,
-                                    ),
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.bar_chart,
+                                        size: 14,
+                                        color: Colors.grey.shade600,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '$testsTaken tests • $percentile %ile',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               );
@@ -214,13 +242,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                           ),
                         ),
 
+                        // 💎 Score
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
                               '$score',
                               style: const TextStyle(
-                                fontSize: 18,
+                                fontSize: 22,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),

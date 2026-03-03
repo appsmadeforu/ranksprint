@@ -328,23 +328,47 @@ class _TestsScreenState extends State<TestsScreen> {
                   ),
                 ),
                 ElevatedButton(
-                  onPressed: null,
+                  onPressed: () {
+                    if (isLocked) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const SubscriptionScreen(),
+                        ),
+                      );
+                      return;
+                    }
+
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TestDetailScreen(
+                          examId: selectedExamId!,
+                          testId: test.id,
+                        ),
+                      ),
+                    );
+                  },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: isLocked
                         ? Colors.white
-                        : const Color(0xFF2F3E8F),
+                        : const Color.fromARGB(255, 23, 57, 125),
+                    foregroundColor: isLocked ? Colors.orange : Colors.white,
                     side: isLocked
                         ? const BorderSide(color: Colors.orange)
                         : null,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 12,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
+                    elevation: isLocked ? 0 : 3,
                   ),
                   child: Text(
                     isLocked ? "Unlock" : "Attempt",
-                    style: TextStyle(
-                      color: isLocked ? Colors.orange : Colors.white,
-                    ),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),
               ],

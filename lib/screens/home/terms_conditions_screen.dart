@@ -16,7 +16,17 @@ class TermsConditionsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Terms & Conditions")),
+      backgroundColor: const Color(0xFFF5F6FA),
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: const Color(0xFF2F6FEB),
+        centerTitle: true,
+        title: const Text(
+          "Terms & Conditions",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        ),
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('policies')
@@ -30,25 +40,41 @@ class TermsConditionsScreen extends StatelessWidget {
           }
 
           if (snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text("Terms not available"));
+            return const Center(
+              child: Text("Terms & Conditions not available"),
+            );
           }
 
           final doc = snapshot.data!.docs.first;
-          final html = doc['content'] ?? doc['body'] ?? "";
+          final html = doc['content'] ?? doc['body'] ?? doc['text'] ?? "";
           final text = htmlToPlainText(html);
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+            padding: const EdgeInsets.all(20),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
               ),
-              elevation: 1,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
+              child: Container(
+                padding: const EdgeInsets.all(28),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                ),
                 child: Text(
                   text,
-                  style: const TextStyle(fontSize: 14, height: 1.5),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    height: 1.8,
+                    color: Colors.black87,
+                  ),
                 ),
               ),
             ),

@@ -16,7 +16,17 @@ class PrivacyPolicyScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Privacy Policy")),
+      backgroundColor: const Color(0xFFF5F6FA),
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: const Color(0xFF2F6FEB),
+        centerTitle: true,
+        title: const Text(
+          "Privacy Policy",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        ),
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('policies')
@@ -34,24 +44,35 @@ class PrivacyPolicyScreen extends StatelessWidget {
           }
 
           final doc = snapshot.data!.docs.first;
-
-          /// 🔴 IMPORTANT: change field if your HTML field name differs
           final html = doc['content'] ?? doc['body'] ?? doc['text'] ?? "";
-
           final text = htmlToPlainText(html);
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+            padding: const EdgeInsets.all(20),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 15,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
               ),
-              elevation: 1,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                ),
                 child: Text(
                   text,
-                  style: const TextStyle(fontSize: 14, height: 1.5),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    height: 1.7,
+                    color: Colors.black87,
+                  ),
                 ),
               ),
             ),
