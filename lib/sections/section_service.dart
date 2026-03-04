@@ -4,6 +4,8 @@ import 'package:ranksprint/sections/section_split.dart';
 
 class SectionService {
   final SectionDao _sectionDao = SectionDao();
+  static int unlockedSectionLength = 0;
+  static bool isLock = true;
 
   Future<List<SectionBean>> getSections(String examId, String testId) {
     return _sectionDao.getSectionsOnce(examId, testId);
@@ -49,6 +51,7 @@ class SectionService {
         arranged.addAll(grouped[sectionId]!);
       }
     }
+    unlockedSectionLength = arranged.length - 1;
 
     // 2️⃣ Then add locked section questions
     for (final section in lockedSections) {

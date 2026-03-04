@@ -96,23 +96,8 @@ class ExamNavigationDrawer extends StatelessWidget {
                 context,
                 section,
                 grouped,
-                false,
+                !SectionService.isLock,
               )),
-
-          /// ===============================
-          /// 🔒 LOCKED SECTIONS TITLE
-          /// ===============================
-          if (lockedSections.isNotEmpty)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                "Locked Sections",
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.red,
-                ),
-              ),
-            ),
 
           /// ===============================
           /// 🔒 LOCKED SECTIONS
@@ -122,7 +107,7 @@ class ExamNavigationDrawer extends StatelessWidget {
                 context,
                 section,
                 grouped,
-                true,
+                SectionService.isLock,
               )),
         ],
       ),
