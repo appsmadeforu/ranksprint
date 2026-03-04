@@ -409,69 +409,6 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
                   markedForReview: markedForReview,
                   onQuestionTap: (index) { Navigator.pop(context); setState(() { currentIndex = index; }); },
                 ),
-
-                // Grid
-               /* GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: questions.length,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 6,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 10,
-                  ),
-                  itemBuilder: (_, i) {
-                    final q = questions[i];
-                    final qid = q['__id'] as String;
-
-                    final isVisited = visited.contains(qid);
-                    final isAnswered = answers.containsKey(qid);
-                    final isMarked = markedForReview.contains(qid);
-
-                    Color bg = const Color(0xFFEAEFF6);
-                    Color textColor = Colors.black;
-
-                    if (isMarked && isAnswered) {
-                      bg = Colors.blue;
-                      textColor = Colors.white;
-                    } else if (isMarked) {
-                      bg = Colors.deepPurple;
-                      textColor = Colors.white;
-                    } else if (isAnswered) {
-                      bg = Colors.green;
-                      textColor = Colors.white;
-                    } else if (!isVisited) {
-                      bg = Colors.grey.shade300;
-                    } else {
-                      bg = Colors.red;
-                      textColor = Colors.white;
-                    }
-
-                    return GestureDetector(
-                      onTap: () {
-                        Navigator.pop(context);
-                        setState(() {
-                          currentIndex = i;
-                        });
-                      },
-                      child: Container(
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: bg,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          "${i + 1}",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: textColor,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),*/
-
                 const SizedBox(height: 20),
               ],
             ),
