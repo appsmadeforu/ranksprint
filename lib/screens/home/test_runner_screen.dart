@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:ranksprint/sections/section_bean.dart';
+import 'package:ranksprint/sections/section_service.dart';
+import 'package:ranksprint/sections/sectionwise_navigation_screen.dart';
 
 class TestRunnerScreen extends StatefulWidget {
   final String examId;
@@ -32,6 +35,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
   int remainingSeconds = 0;
 
   bool loading = false;
+  List<SectionBean> sectionsBean = [];
 
   @override
   void initState() {
@@ -159,6 +163,10 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
     print(
       'TestRunner: started attempt for exam=${widget.examId} test=${widget.testId} user=${user.uid} — questions found=${questions.length} ids=${qdocs.map((d) => d.id).toList()}',
     );
+
+    SectionService sectionService = SectionService();
+    sectionsBean = await sectionService.getSections(widget.examId, widget.testId);
+
 
     setState(() {
       attemptId = ref.id;
@@ -393,9 +401,17 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
                 ),
 
                 const SizedBox(height: 12),
+                
+                ExamNavigationDrawer(sections: sectionsBean,
+                  questions: questions,
+                  visited: visited,
+                  answers: answers,
+                  markedForReview: markedForReview,
+                  onQuestionTap: (index) { Navigator.pop(context); setState(() { currentIndex = index; }); },
+                ),
 
                 // Grid
-                GridView.builder(
+               /* GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: questions.length,
@@ -454,7 +470,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
                       ),
                     );
                   },
-                ),
+                ),*/
 
                 const SizedBox(height: 20),
               ],
