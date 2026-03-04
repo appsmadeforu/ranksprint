@@ -35,7 +35,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
   int remainingSeconds = 0;
 
   bool loading = false;
-  List<SectionBean> sectionsBean = [];
+  List<SectionBean> sectionsBeans = [];
 
   @override
   void initState() {
@@ -158,6 +158,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
       return m;
     }).toList();
 
+
     // debug logs to help runtime investigation
     // ignore: avoid_print
     print(
@@ -165,7 +166,8 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
     );
 
     SectionService sectionService = SectionService();
-    sectionsBean = await sectionService.getSections(widget.examId, widget.testId);
+    sectionsBeans = await sectionService.getSections(widget.examId, widget.testId);
+    questions = sectionService.rearrangeQuestionsLikeDrawer(questions: questions, sections: sectionsBeans);
 
 
     setState(() {
@@ -402,7 +404,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
 
                 const SizedBox(height: 12),
                 
-                ExamNavigationDrawer(sections: sectionsBean,
+                ExamNavigationDrawer(sections: sectionsBeans,
                   questions: questions,
                   visited: visited,
                   answers: answers,
