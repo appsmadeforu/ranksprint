@@ -15,6 +15,7 @@ class TestsScreen extends StatefulWidget {
 }
 
 class _TestsScreenState extends State<TestsScreen> {
+  String _selectedFilter = "All";
   List<String> userExamIds = [];
   String? selectedExamId;
   bool _examIsPremium = false;
@@ -184,7 +185,20 @@ class _TestsScreenState extends State<TestsScreen> {
                 ),
               ),
             ),
-
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  _buildFilterChip("All"),
+                  const SizedBox(width: 8),
+                  _buildFilterChip("Attempted"),
+                  const SizedBox(width: 8),
+                  _buildFilterChip("Not Attempted"),
+                  const SizedBox(width: 8),
+                  _buildFilterChip("Latest"),
+                ],
+              ),
+            ),
             const SizedBox(height: 16),
 
             // =======================
@@ -373,6 +387,34 @@ class _TestsScreenState extends State<TestsScreen> {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String label) {
+    final bool isSelected = _selectedFilter == label;
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedFilter = label;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? const Color.fromARGB(255, 16, 42, 94)
+              : Colors.grey.shade200,
+          borderRadius: BorderRadius.circular(30),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.black87,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),
