@@ -36,11 +36,11 @@ class SectionBean {
           : null,
       name: json['name'],
       navigationRule: json['navigationRule'],
-      negativeMarksOverride: json['negativeMarksOverride'],
+      negativeMarksOverride: (json['negativeMarksOverride'] as num?)?.toDouble(),
       order: json['order'],
       sectionDurationMinutes: json['sectionDurationMinutes'],
       switchingAllowed: json['switchingAllowed'],
-      totalMarks: json['totalMarks'],
+      totalMarks: (json['totalMarks'] as num?)?.toInt(),
       totalQuestion: json['totalQuestion'],
     );
   }
