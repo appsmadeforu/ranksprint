@@ -13,6 +13,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
 
   final nameController = TextEditingController();
+  final emailController = TextEditingController();
   final phoneController = TextEditingController();
   final pincodeController = TextEditingController();
   final cityController = TextEditingController();
@@ -21,6 +22,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String? gender;
   DateTime? dob;
   bool loading = false;
+  bool _emailLocked = false;
+  bool _phoneLocked = false;
+  String _authEmail = '';
+  String _authPhone = '';
 
   @override
   void initState() {
@@ -32,22 +37,47 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
+    final authEmail = (user.email ?? '').trim();
+    final authPhone = (user.phoneNumber ?? '').trim();
+    final hasPhoneProvider = user.providerData.any(
+      (p) => p.providerId == 'phone',
+    );
+    final hasEmailProvider = user.providerData.any(
+      (p) => p.providerId == 'google.com' || p.providerId == 'password',
+    );
+
     final doc = await FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
         .get();
 
-    final data = doc.data();
-    if (data == null) return;
+    final data = doc.data() ?? <String, dynamic>{};
 
     setState(() {
       nameController.text = (data['name'] is String) ? data['name'] : '';
-      phoneController.text = (data['phone'] is String) ? data['phone'] : '';
+      emailController.text = authEmail.isNotEmpty
+          ? authEmail
+          : ((data['email'] is String) ? data['email'] : '');
+      phoneController.text = authPhone.isNotEmpty
+          ? authPhone
+          : ((data['phone'] is String) ? data['phone'] : '');
       pincodeController.text = (data['pincode'] is String)
           ? data['pincode']
           : '';
       cityController.text = (data['city'] is String) ? data['city'] : '';
       stateController.text = (data['state'] is String) ? data['state'] : '';
+      _authEmail = authEmail;
+      _authPhone = authPhone;
+      if (hasPhoneProvider && !hasEmailProvider) {
+        _phoneLocked = true;
+        _emailLocked = false;
+      } else if (hasEmailProvider && !hasPhoneProvider) {
+        _emailLocked = true;
+        _phoneLocked = false;
+      } else {
+        _emailLocked = authEmail.isNotEmpty;
+        _phoneLocked = authPhone.isNotEmpty;
+      }
       gender = (data['gender'] is String) ? data['gender'] : null;
       if (data['dob'] is Timestamp) {
         dob = (data['dob'] as Timestamp).toDate();
@@ -65,9 +95,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     setState(() => loading = true);
 
-    Map<String, dynamic> updateData = {
+    final Map<String, dynamic> updateData = {
       'name': nameController.text.trim(),
-      'phone': phoneController.text.trim(),
+      'email': _emailLocked ? _authEmail : emailController.text.trim(),
+      'phone': _phoneLocked ? _authPhone : phoneController.text.trim(),
       'pincode': pincodeController.text.trim(),
       'city': cityController.text.trim(),
       'state': stateController.text.trim(),
@@ -82,15 +113,25 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       updateData['dob'] = ""; // Clear dob if not selected
     }
 
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .update(updateData);
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
+            updateData,
+            SetOptions(merge: true),
+          );
 
-    setState(() => loading = false);
-
-    if (mounted) {
-      Navigator.pop(context);
+      if (mounted) {
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save profile: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => loading = false);
+      }
     }
   }
 
@@ -105,6 +146,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (picked != null) {
       setState(() => dob = picked);
     }
+  }
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    emailController.dispose();
+    phoneController.dispose();
+    pincodeController.dispose();
+    cityController.dispose();
+    stateController.dispose();
+    super.dispose();
   }
 
   @override
@@ -126,7 +178,35 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 child: Column(
                   children: [
                     _buildTextField(nameController, "Full Name"),
-                    _buildTextField(phoneController, "Phone Number"),
+                    _buildTextField(
+                      emailController,
+                      "Email ID",
+                      enabled: !_emailLocked,
+                      keyboardType: TextInputType.emailAddress,
+                      validator: (value) {
+                        final v = (value ?? '').trim();
+                        if (v.isEmpty) return "Email is required";
+                        final emailRegex = RegExp(
+                          r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                        );
+                        if (!emailRegex.hasMatch(v)) {
+                          return "Enter a valid email";
+                        }
+                        return null;
+                      },
+                    ),
+                    _buildTextField(
+                      phoneController,
+                      "Phone Number",
+                      enabled: !_phoneLocked,
+                      keyboardType: TextInputType.phone,
+                      validator: (value) {
+                        final v = (value ?? '').trim();
+                        if (v.isEmpty) return "Phone number is required";
+                        if (v.length < 10) return "Enter a valid phone number";
+                        return null;
+                      },
+                    ),
                     _buildTextField(pincodeController, "Pincode"),
                     _buildTextField(cityController, "City"),
                     _buildTextField(stateController, "State"),
@@ -193,19 +273,30 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String label) {
+  Widget _buildTextField(
+    TextEditingController controller,
+    String label, {
+    bool enabled = true,
+    TextInputType keyboardType = TextInputType.text,
+    String? helperText,
+    String? Function(String?)? validator,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
         controller: controller,
-        decoration: _inputDecoration(label),
+        enabled: enabled,
+        keyboardType: keyboardType,
+        validator: validator,
+        decoration: _inputDecoration(label, helperText: helperText),
       ),
     );
   }
 
-  InputDecoration _inputDecoration(String label) {
+  InputDecoration _inputDecoration(String label, {String? helperText}) {
     return InputDecoration(
       labelText: label,
+      helperText: helperText,
       filled: true,
       fillColor: Colors.white,
       border: OutlineInputBorder(

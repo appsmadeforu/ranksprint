@@ -5,6 +5,7 @@ import 'privacy_policy_screen.dart';
 import 'terms_conditions_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'subscription_screen.dart';
 import '../../widgets/top_header.dart';
 import 'edit_profile_screen.dart';
@@ -23,6 +24,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? selectedExamId;
   List<String> userExamIds = [];
   bool isDeletingAccount = false;
+
+  Future<void> _clearAppCache() async {
+    imageCache.clear();
+    imageCache.clearLiveImages();
+  }
+
+  Future<void> _forceLogoutAndGoToLogin(BuildContext context) async {
+    try {
+      await GoogleSignIn().signOut().timeout(const Duration(seconds: 3));
+      await GoogleSignIn().disconnect().timeout(const Duration(seconds: 3));
+    } catch (_) {
+      // Ignore Google session cleanup errors on devices without stable GMS.
+    }
+    await FirebaseAuth.instance.signOut();
+    await _clearAppCache();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
+    );
+  }
 
   @override
   void initState() {
@@ -50,20 +72,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _confirmDeleteAccount(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Delete Account'),
         content: const Text(
           'Are you sure you want to delete your account? This action cannot be undone.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(), // Cancel
+            onPressed: () => Navigator.of(dialogContext).pop(), // Cancel
             child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () async {
-              await _deleteAccount(context); // Call your delete logic
-              Navigator.of(context).pop(); // Close dialog
+              Navigator.of(dialogContext).pop();
+              await _deleteAccount(context);
             },
             child: const Text(
               'Yes, Delete',
@@ -79,64 +101,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() {
       isDeletingAccount = true;
     });
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
 
     try {
       final user = FirebaseAuth.instance.currentUser;
+      final uid = user?.uid;
 
-      if (user != null) {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .delete();
+      if (user != null && uid != null) {
+        // Deleting the Firebase Auth user removes all linked sign-in methods
+        // (email/password, phone, Google, etc.) for this account.
         await user.delete();
+        await FirebaseFirestore.instance.collection('users').doc(uid).delete();
       }
 
-      // Remove loader
-      Navigator.of(context, rootNavigator: true).pop();
-
-      setState(() {
-        isDeletingAccount = false;
-      });
-
+      await _forceLogoutAndGoToLogin(context);
+    } on FirebaseAuthException catch (e) {
       if (mounted) {
-        // Navigate and clear everything
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-          (route) => false,
-        );
+        final msg = e.code == 'requires-recent-login'
+            ? 'For security, please log in again and retry account deletion.'
+            : 'Error deleting account: ${e.message ?? e.code}';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      }
+
+      if (e.code == 'requires-recent-login') {
+        await _forceLogoutAndGoToLogin(context);
       }
     } catch (e) {
-      Navigator.of(context, rootNavigator: true).pop();
-
-      setState(() {
-        isDeletingAccount = false;
-      });
-
       if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text("Error deleting account: $e")));
       }
+    } finally {
+      if (mounted) {
+        setState(() {
+          isDeletingAccount = false;
+        });
+      }
     }
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .get();
-    final data = doc.data();
-    if (data == null) return;
-
-    final exams = List<String>.from(data['selectedExams'] ?? []);
-    setState(() {
-      userExamIds = exams;
-      selectedExamId = exams.isNotEmpty ? exams.first : null;
-    });
   }
 
   Future<void> _logout(BuildContext context) async {
