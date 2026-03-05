@@ -20,7 +20,7 @@ class ExamNavigationDrawer extends StatelessWidget {
     required this.answers,
     required this.markedForReview,
     required this.onQuestionTap,
-    this.currentSectionTimeLeft,
+    required this.currentSectionTimeLeft,
   });
 
   String formatTime(int seconds) {
@@ -44,11 +44,6 @@ class ExamNavigationDrawer extends StatelessWidget {
     final unlockedSections = sectionSplit.unlockedSections;
     final lockedSections = sectionSplit.lockedSections;
 
-    final totalUnlockedTime = unlockedSections.fold<int>(
-      0,
-          (sum, s) => sum + (s.sectionDurationMinutes ?? 0),
-    );
-
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -59,7 +54,7 @@ class ExamNavigationDrawer extends StatelessWidget {
           /// ===============================
           if (unlockedSections.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(0),
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -71,13 +66,13 @@ class ExamNavigationDrawer extends StatelessWidget {
                   MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
-                      "Unlocked Sections Total Time",
+                      "Unlocked Sections Remaining Time",
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     Text(
-                      formatTime(totalUnlockedTime),
+                      formatTime(currentSectionTimeLeft!),
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         color: Colors.green,

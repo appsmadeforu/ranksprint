@@ -96,14 +96,6 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
     };
     await ref.set(attemptData);
 
-    // load test metadata (for duration)
-    final testDoc = await FirebaseFirestore.instance
-        .collection('exams')
-        .doc(widget.examId)
-        .collection('tests')
-        .doc(widget.testId)
-        .get();
-
     // fetch questions - try with orderBy first, fallback without orderBy if that fails
     List<QueryDocumentSnapshot<Map<String, dynamic>>> qdocs = [];
     try {
@@ -257,6 +249,12 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
       'createdAt': Timestamp.now(),
     });
 
+    SectionService.lockedTime = 0;
+    SectionService.unlockedSectionLength = 0;
+    SectionService.isLock = true;
+    SectionService.unlockedTime = 0;
+    SectionService.totalQuestionLength = 0;
+
     if (mounted) {
       ScaffoldMessenger.of(
         context,
@@ -302,7 +300,9 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
                 Navigator.of(context).pop(); // Close dialog first
                 SectionService.isLock = false;
                 remainingSeconds = SectionService.lockedTime * 60;
-                _saveProgress(); // Call your method
+                _saveProgress();
+                if (!mounted) return;
+                Navigator.pop(context);// Call your method
               },
               child: const Text("Yes"),
             ),
@@ -482,9 +482,20 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
 
                 const SizedBox(height: 24),
 
-                const Text(
-                  "Questions",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                Center(
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                         _showSubmitSectionDialog();
+                      },
+                      icon: const Icon(Icons.cloud_done),
+                      label: const Text("Submit Current Unlocked Sections"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueGrey[100],
+                      ),
+                    ),
+                  ),
                 ),
 
                 const SizedBox(height: 12),
@@ -495,6 +506,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
                   answers: answers,
                   markedForReview: markedForReview,
                   onQuestionTap: (index) { Navigator.pop(context); setState(() { currentIndex = index; }); },
+                  currentSectionTimeLeft: SectionService.isLock ? remainingSeconds - SectionService.lockedTime * 60 : remainingSeconds ,
                 ),
                 const SizedBox(height: 20),
               ],
