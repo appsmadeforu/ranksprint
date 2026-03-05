@@ -119,7 +119,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final msg = e.code == 'requires-recent-login'
             ? 'For security, please log in again and retry account deletion.'
             : 'Error deleting account: ${e.message ?? e.code}';
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(msg)));
       }
 
       if (e.code == 'requires-recent-login') {

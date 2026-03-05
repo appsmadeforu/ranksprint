@@ -328,7 +328,19 @@ class _TestsScreenState extends State<TestsScreen> {
                   ),
                 ),
                 ElevatedButton(
-                  onPressed: null,
+                  onPressed: isLocked
+                      ? null
+                      : () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => TestDetailScreen(
+                                examId: selectedExamId!,
+                                testId: test.id,
+                              ),
+                            ),
+                          );
+                        },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: isLocked
                         ? Colors.white
@@ -339,6 +351,7 @@ class _TestsScreenState extends State<TestsScreen> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
+                    elevation: isLocked ? 0 : 2,
                   ),
                   child: Text(
                     isLocked ? "Unlock" : "Attempt",

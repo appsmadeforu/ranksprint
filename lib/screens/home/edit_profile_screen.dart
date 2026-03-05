@@ -114,19 +114,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
 
     try {
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
-            updateData,
-            SetOptions(merge: true),
-          );
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set(updateData, SetOptions(merge: true));
 
       if (mounted) {
         Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save profile: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to save profile: $e')));
       }
     } finally {
       if (mounted) {

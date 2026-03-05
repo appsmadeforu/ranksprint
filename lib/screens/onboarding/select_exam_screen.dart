@@ -71,7 +71,7 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
 
     setState(() => loading = false);
 
-    if (mounted) Navigator.pop(context);
+    if (mounted && Navigator.canPop(context)) Navigator.pop(context);
   }
 
   @override

@@ -66,6 +66,16 @@ class TopHeader extends StatelessWidget {
                       }
 
                       final exams = snapshot.data!.docs;
+                      final unlockedExamIds = exams
+                          .where((exam) => userExamIds.contains(exam.id))
+                          .map((exam) => exam.id)
+                          .toList();
+                      final validSelectedExamId =
+                          unlockedExamIds.contains(selectedExamId)
+                          ? selectedExamId
+                          : (unlockedExamIds.isNotEmpty
+                                ? unlockedExamIds.first
+                                : null);
 
                       return Container(
                         padding: const EdgeInsets.symmetric(
@@ -74,16 +84,14 @@ class TopHeader extends StatelessWidget {
                         ),
                         constraints: const BoxConstraints(maxHeight: 45),
                         decoration: BoxDecoration(
-                          // color: Colors.grey.shade100,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<String>(
-                            value: selectedExamId,
+                            value: validSelectedExamId,
                             icon: const Icon(Icons.keyboard_arrow_down),
                             items: exams.map((exam) {
                               final isUnlocked = userExamIds.contains(exam.id);
-
                               return DropdownMenuItem<String>(
                                 value: exam.id,
                                 enabled: isUnlocked,

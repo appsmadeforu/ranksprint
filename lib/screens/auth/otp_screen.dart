@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:async';
 
 class OtpScreen extends StatefulWidget {
   final String verificationId;
+  final String phoneNumber;
+  final int? resendToken;
 
-  const OtpScreen({super.key, required this.verificationId});
+  const OtpScreen({
+    super.key,
+    this.verificationId = '',
+    this.phoneNumber = '',
+    this.resendToken,
+  });
 
   @override
   State<OtpScreen> createState() => _OtpScreenState();
@@ -18,18 +26,56 @@ class _OtpScreenState extends State<OtpScreen> {
     (_) => TextEditingController(),
   );
 
+  late String _verificationId;
+  int? _resendToken;
   bool _loading = false;
+  bool _resending = false;
+  int _resendSeconds = 30;
+  Timer? _timer;
 
   String get _otp => _controllers.map((c) => c.text).join();
 
+  @override
+  void initState() {
+    super.initState();
+    _verificationId = widget.verificationId;
+    _resendToken = widget.resendToken;
+    _startResendTimer();
+  }
+
+  void _startResendTimer() {
+    _timer?.cancel();
+    setState(() => _resendSeconds = 30);
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (_resendSeconds <= 1) {
+        timer.cancel();
+        setState(() => _resendSeconds = 0);
+      } else {
+        setState(() => _resendSeconds--);
+      }
+    });
+  }
+
   Future<void> _verifyOtp() async {
     if (_otp.length != 6) return;
+    if (_verificationId.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("OTP session expired. Please retry.")),
+        );
+      }
+      return;
+    }
 
     setState(() => _loading = true);
 
     try {
       PhoneAuthCredential credential = PhoneAuthProvider.credential(
-        verificationId: widget.verificationId,
+        verificationId: _verificationId,
         smsCode: _otp,
       );
 
@@ -46,6 +92,60 @@ class _OtpScreenState extends State<OtpScreen> {
           context,
         ).showSnackBar(const SnackBar(content: Text("Invalid OTP")));
       }
+    }
+  }
+
+  Future<void> _resendOtp() async {
+    if (_resendSeconds > 0 || _resending || _loading) return;
+    if (widget.phoneNumber.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Phone number missing. Go back and retry.")),
+        );
+      }
+      return;
+    }
+
+    setState(() => _resending = true);
+    for (final controller in _controllers) {
+      controller.clear();
+    }
+
+    await _auth.verifyPhoneNumber(
+      phoneNumber: widget.phoneNumber,
+      forceResendingToken: _resendToken,
+      verificationCompleted: (PhoneAuthCredential credential) async {
+        await _auth.signInWithCredential(credential);
+        if (mounted) {
+          Navigator.popUntil(context, (route) => route.isFirst);
+        }
+      },
+      verificationFailed: (FirebaseAuthException e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.message ?? "Failed to resend OTP")),
+          );
+        }
+      },
+      codeSent: (String verificationId, int? resendToken) {
+        if (!mounted) return;
+        setState(() {
+          _verificationId = verificationId;
+          _resendToken = resendToken;
+        });
+        _startResendTimer();
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("OTP resent")));
+      },
+      codeAutoRetrievalTimeout: (String verificationId) {
+        if (!mounted) return;
+        setState(() => _verificationId = verificationId);
+      },
+    );
+
+    if (mounted) {
+      setState(() => _resending = false);
     }
   }
 
@@ -76,6 +176,15 @@ class _OtpScreenState extends State<OtpScreen> {
   }
 
   @override
+  void dispose() {
+    _timer?.cancel();
+    for (final controller in _controllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Center(
@@ -85,41 +194,15 @@ class _OtpScreenState extends State<OtpScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // RS Logo
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1F3A8A),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Center(
-                  child: Text(
-                    "RS",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 20,
-                    ),
-                  ),
+              // Logo
+              SizedBox(
+                width: 250,
+                // height: 250,
+                child: Image.asset(
+                  "assets/icons/app_icon.png",
+                  fit: BoxFit.contain,
                 ),
               ),
-
-              const SizedBox(height: 20),
-
-              const Text(
-                "Rank Sprint",
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              ),
-
-              const SizedBox(height: 6),
-
-              const Text(
-                "Your path to success",
-                style: TextStyle(color: Colors.grey),
-              ),
-
-              const SizedBox(height: 40),
 
               const Icon(
                 Icons.mail_outline,
@@ -131,7 +214,11 @@ class _OtpScreenState extends State<OtpScreen> {
 
               const Text(
                 "Verify OTP",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1F3A8A),
+                ),
               ),
 
               const SizedBox(height: 6),
@@ -157,6 +244,7 @@ class _OtpScreenState extends State<OtpScreen> {
                 child: ElevatedButton(
                   onPressed: _loading ? null : _verifyOtp,
                   style: ElevatedButton.styleFrom(
+                    textStyle: const TextStyle(color: Colors.white),
                     backgroundColor: const Color(0xFF1F3A8A),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
@@ -164,17 +252,24 @@ class _OtpScreenState extends State<OtpScreen> {
                   ),
                   child: _loading
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text("Verify & Continue"),
+                      : const Text(
+                          "Verify & Continue",
+                          style: TextStyle(color: Colors.white),
+                        ),
                 ),
               ),
 
               const SizedBox(height: 20),
 
               TextButton(
-                onPressed: () {},
-                child: const Text(
-                  "Resend OTP",
-                  style: TextStyle(color: Color(0xFF1F3A8A)),
+                onPressed: (_resendSeconds == 0 && !_resending && !_loading)
+                    ? _resendOtp
+                    : null,
+                child: Text(
+                  _resendSeconds == 0
+                      ? (_resending ? "Resending..." : "Resend OTP")
+                      : "Resend OTP in 00:${_resendSeconds.toString().padLeft(2, '0')}",
+                  style: const TextStyle(color: Color(0xFF1F3A8A)),
                 ),
               ),
 
@@ -218,12 +313,6 @@ class _OtpScreenState extends State<OtpScreen> {
               ),
 
               const SizedBox(height: 30),
-
-              const Text(
-                "By continuing, you agree to our Terms of Service and Privacy Policy",
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
             ],
           ),
         ),
