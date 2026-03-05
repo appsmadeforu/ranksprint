@@ -308,6 +308,41 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
     );
   }
 
+  void _showSubmitTestDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: true, // allows closing by tapping outside
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text("Submit Test"),
+          content: const Text(
+            "This will finish and submit the Test.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close dialog (Do nothing)
+              },
+              child: const Text("No"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close dialog first
+                SectionService.isLock = false;
+                _submitAttempt(); // Call your method
+              },
+              child: const Text("Yes"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+
   @override
   void dispose() {
     _timer?.cancel();
@@ -723,7 +758,26 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
                               ),
                             ),
                           )
-                              : ElevatedButton(
+                              :
+                          currentIndex == SectionService.totalQuestionLength ?
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: _showSubmitTestDialog,
+                              style: ElevatedButton.styleFrom(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 14),
+                                child: Text(
+                                  'Submit Test',
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                              ),
+                            ),
+                          ) :
+                          ElevatedButton(
                             onPressed: () {
                               if (_canOpenQuestion(currentIndex + 1)) {
                                 setState(() {

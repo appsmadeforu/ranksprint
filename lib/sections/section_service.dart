@@ -5,6 +5,7 @@ import 'package:ranksprint/sections/section_split.dart';
 class SectionService {
   final SectionDao _sectionDao = SectionDao();
   static int unlockedSectionLength = 0;
+  static int totalQuestionLength = 0;
   static bool isLock = true;
 
   Future<List<SectionBean>> getSections(String examId, String testId) {
@@ -60,6 +61,7 @@ class SectionService {
         arranged.addAll(grouped[sectionId]!);
       }
     }
+    totalQuestionLength = arranged.length - 1;
 
     return arranged;
   }
