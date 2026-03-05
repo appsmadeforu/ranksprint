@@ -3,6 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:ranksprint/sections/section_bean.dart';
+import 'package:ranksprint/sections/section_service.dart';
+import 'package:ranksprint/sections/sectionwise_navigation_screen.dart';
+import 'package:lottie/lottie.dart';
 
 class TestRunnerScreen extends StatefulWidget {
   final String examId;
@@ -32,10 +36,16 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
   int remainingSeconds = 0;
 
   bool loading = false;
+  List<SectionBean> sectionsBeans = [];
 
   @override
   void initState() {
     super.initState();
+    Future.delayed(const Duration(seconds: 5), () {
+      if (mounted && !loading && attemptId == null) {
+        _startAttempt();
+      }
+    });
     _loadTestMetadata(); // 👈 add this
   }
 
@@ -85,23 +95,6 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
       'answers': {},
     };
     await ref.set(attemptData);
-
-    // load test metadata (for duration)
-    final testDoc = await FirebaseFirestore.instance
-        .collection('exams')
-        .doc(widget.examId)
-        .collection('tests')
-        .doc(widget.testId)
-        .get();
-    int totalMinutes = 60;
-    try {
-      final tdata = testDoc.data();
-      if (tdata != null &&
-          tdata['timing'] is Map &&
-          (tdata['timing']['totalDurationMinutes'] != null)) {
-        totalMinutes = (tdata['timing']['totalDurationMinutes'] as num).toInt();
-      }
-    } catch (_) {}
 
     // fetch questions - try with orderBy first, fallback without orderBy if that fails
     List<QueryDocumentSnapshot<Map<String, dynamic>>> qdocs = [];
@@ -154,15 +147,21 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
       return m;
     }).toList();
 
+
     // debug logs to help runtime investigation
     // ignore: avoid_print
     print(
       'TestRunner: started attempt for exam=${widget.examId} test=${widget.testId} user=${user.uid} — questions found=${questions.length} ids=${qdocs.map((d) => d.id).toList()}',
     );
 
+    SectionService sectionService = SectionService();
+    sectionsBeans = await sectionService.getSections(widget.examId, widget.testId);
+    questions = sectionService.rearrangeQuestionsLikeDrawer(questions: questions, sections: sectionsBeans);
+
+
     setState(() {
       attemptId = ref.id;
-      remainingSeconds = totalMinutes * 60;
+      remainingSeconds = (SectionService.unlockedTime + SectionService.lockedTime) * 60;
       loading = false;
       currentIndex = 0;
       answers = {};
@@ -175,7 +174,13 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
       if (remainingSeconds <= 0) {
         t.cancel();
         _submitAttempt();
-      } else {
+      }else if(remainingSeconds <= SectionService.lockedTime * 60 && SectionService.isLock){
+        SectionService.isLock = false;
+        setState(() {
+          remainingSeconds -= 1;
+          SectionService.isLock = false;});
+      }
+      else {
         setState(() => remainingSeconds -= 1);
       }
     });
@@ -244,6 +249,12 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
       'createdAt': Timestamp.now(),
     });
 
+    SectionService.lockedTime = 0;
+    SectionService.unlockedSectionLength = 0;
+    SectionService.isLock = true;
+    SectionService.unlockedTime = 0;
+    SectionService.totalQuestionLength = 0;
+
     if (mounted) {
       ScaffoldMessenger.of(
         context,
@@ -251,6 +262,90 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
       Navigator.of(context).popUntil((route) => route.isFirst);
     }
   }
+
+  bool _canOpenQuestion(int index) {
+    if (index > SectionService.unlockedSectionLength && SectionService.isLock == true) {
+      return false;
+    }
+
+    if (index < SectionService.unlockedSectionLength && SectionService.isLock == false) {
+      return false;
+    }
+
+    return true;
+  }
+
+  void _showSubmitSectionDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: true, // allows closing by tapping outside
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text("Submit Section"),
+          content: const Text(
+            "This will submit the current unlocked section, and it will unlock the locked section.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close dialog (Do nothing)
+              },
+              child: const Text("No"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close dialog first
+                SectionService.isLock = false;
+                remainingSeconds = SectionService.lockedTime * 60;
+                _saveProgress();
+                if (!mounted) return;
+                Navigator.pop(context);// Call your method
+              },
+              child: const Text("Yes"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showSubmitTestDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: true, // allows closing by tapping outside
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text("Submit Test"),
+          content: const Text(
+            "This will finish and submit the Test.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close dialog (Do nothing)
+              },
+              child: const Text("No"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close dialog first
+                SectionService.isLock = false;
+                _submitAttempt(); // Call your method
+              },
+              child: const Text("Yes"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
 
   @override
   void dispose() {
@@ -387,75 +482,32 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
 
                 const SizedBox(height: 24),
 
-                const Text(
-                  "Questions",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                Center(
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                         _showSubmitSectionDialog();
+                      },
+                      icon: const Icon(Icons.cloud_done),
+                      label: const Text("Submit Current Unlocked Sections"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueGrey[100],
+                      ),
+                    ),
+                  ),
                 ),
 
                 const SizedBox(height: 12),
-
-                // Grid
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: questions.length,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 6,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 10,
-                  ),
-                  itemBuilder: (_, i) {
-                    final q = questions[i];
-                    final qid = q['__id'] as String;
-
-                    final isVisited = visited.contains(qid);
-                    final isAnswered = answers.containsKey(qid);
-                    final isMarked = markedForReview.contains(qid);
-
-                    Color bg = const Color(0xFFEAEFF6);
-                    Color textColor = Colors.black;
-
-                    if (isMarked && isAnswered) {
-                      bg = Colors.blue;
-                      textColor = Colors.white;
-                    } else if (isMarked) {
-                      bg = Colors.deepPurple;
-                      textColor = Colors.white;
-                    } else if (isAnswered) {
-                      bg = Colors.green;
-                      textColor = Colors.white;
-                    } else if (!isVisited) {
-                      bg = Colors.grey.shade300;
-                    } else {
-                      bg = Colors.red;
-                      textColor = Colors.white;
-                    }
-
-                    return GestureDetector(
-                      onTap: () {
-                        Navigator.pop(context);
-                        setState(() {
-                          currentIndex = i;
-                        });
-                      },
-                      child: Container(
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: bg,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          "${i + 1}",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: textColor,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
+                
+                ExamNavigationDrawer(sections: sectionsBeans,
+                  questions: questions,
+                  visited: visited,
+                  answers: answers,
+                  markedForReview: markedForReview,
+                  onQuestionTap: (index) { Navigator.pop(context); setState(() { currentIndex = index; }); },
+                  currentSectionTimeLeft: SectionService.isLock ? remainingSeconds - SectionService.lockedTime * 60 : remainingSeconds ,
                 ),
-
                 const SizedBox(height: 20),
               ],
             ),
@@ -548,18 +600,55 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
               if (!hasAttempt)
                 Expanded(
                   child: Center(
-                    child: loading
-                        ? const CircularProgressIndicator()
-                        : ElevatedButton(
-                            onPressed: _startAttempt,
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 28,
-                                vertical: 14,
-                              ),
-                            ),
-                            child: const Text('Start Test'),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+
+                        /// AI Animation
+                        SizedBox(
+                          height: 220,
+                          child: Lottie.network(
+                            "https://assets2.lottiefiles.com/packages/lf20_x62chJ.json",
+                            repeat: true,
                           ),
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        /// Title
+                        const Text(
+                          "AI Exam Engine",
+                          style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF2F6FEB),
+                          ),
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        /// Subtitle
+                        const Text(
+                          "Preparing your questions\nAnalyzing difficulty & timer",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: Colors.grey,
+                            height: 1.5,
+                          ),
+                        ),
+                        const SizedBox(height: 30),
+                        const CircularProgressIndicator(),
+                        const SizedBox(height: 30),
+                        const Text(
+                          "Your Test starting in a moment...",
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 )
               else if (questions.isEmpty)
@@ -704,14 +793,50 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
                             ),
                           ),
                           const SizedBox(width: 12),
+                          currentIndex == SectionService.unlockedSectionLength && SectionService.isLock
+                              ? Expanded(
+                            child: ElevatedButton(
+                              onPressed: _showSubmitSectionDialog,
+                              style: ElevatedButton.styleFrom(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 14),
+                                child: Text(
+                                  'Submit Section',
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                              ),
+                            ),
+                          )
+                              :
+                          currentIndex == SectionService.totalQuestionLength ?
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: _showSubmitTestDialog,
+                              style: ElevatedButton.styleFrom(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 14),
+                                child: Text(
+                                  'Submit Test',
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                              ),
+                            ),
+                          ) :
                           ElevatedButton(
                             onPressed: () {
-                              // next question
-                              setState(() {
-                                if (currentIndex < questions.length - 1) {
+                              if (_canOpenQuestion(currentIndex + 1)) {
+                                setState(() {
                                   currentIndex += 1;
-                                }
-                              });
+                                });
+                              }
                             },
                             style: ElevatedButton.styleFrom(
                               shape: RoundedRectangleBorder(
@@ -725,7 +850,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
                               ),
                               child: Icon(Icons.arrow_forward),
                             ),
-                          ),
+                          )
                         ],
                       ),
                     ],
