@@ -8,6 +8,7 @@ import 'package:ranksprint/sections/section_service.dart';
 import 'package:ranksprint/sections/sectionwise_navigation_screen.dart';
 import 'package:lottie/lottie.dart';
 import 'package:screen_protector/screen_protector.dart';
+import 'package:ranksprint/services/html_helper.dart';
 
 import '../../examSummary/exam_summary_screen.dart';
 
@@ -662,6 +663,18 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBinding
     );
   }
 
+  String _questionHtmlWithInlineNumber(int number, String html) {
+    final content = html.trim();
+    final prefix = '<span style="font-weight:600;">$number. </span>';
+    final pOpen = RegExp(r'^<p(\s[^>]*)?>', caseSensitive: false);
+
+    if (pOpen.hasMatch(content)) {
+      return content.replaceFirstMapped(pOpen, (m) => '${m.group(0)}$prefix');
+    }
+
+    return '$prefix$content';
+  }
+
   @override
   Widget build(BuildContext context) {
     final hasAttempt = attemptId != null;
@@ -824,8 +837,12 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBinding
                                 ],
                               ),
                               const SizedBox(height: 8),
-                              Text(
-                                '${currentIndex + 1}. ${questions[currentIndex]['questionText'] ?? ''}',
+                              HtmlHelper.renderHtml(
+                                _questionHtmlWithInlineNumber(
+                                  currentIndex + 1,
+                                  (questions[currentIndex]['questionText'] ?? '')
+                                      .toString(),
+                                ),
                                 style: const TextStyle(
                                   fontSize: 18,
                                   height: 1.4,
@@ -869,7 +886,10 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBinding
                                   backgroundColor: const Color(0xFFEAEFF6),
                                   child: Text(optId),
                                 ),
-                                title: Text(optText),
+                                title: HtmlHelper.renderHtml(
+                                  optText.toString(),
+                                  style: const TextStyle(fontSize: 16),
+                                ),
                                 onTap: () => _selectOption(qid, optId),
                                 tileColor: isSelected
                                     ? const Color(0xFFEEF6FF)

@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:ranksprint/services/html_helper.dart';
 
 class ExamResultScreen extends StatelessWidget {
   final List questions;
@@ -41,13 +42,9 @@ class ExamResultScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Exam Result"),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text("Exam Result"), centerTitle: true),
       body: Column(
         children: [
-
           /// SUMMARY CARD
           _buildSummary(),
 
@@ -58,19 +55,13 @@ class ExamResultScreen extends StatelessWidget {
             child: ListView.builder(
               itemCount: questions.length,
               itemBuilder: (context, index) {
-
                 final q = questions[index];
                 final qid = q['__id'];
 
                 final selected = answers[qid];
                 final correctOption = q['correctOption'];
 
-                return _questionCard(
-                  index + 1,
-                  q,
-                  selected,
-                  correctOption,
-                );
+                return _questionCard(index + 1, q, selected, correctOption);
               },
             ),
           ),
@@ -90,7 +81,6 @@ class ExamResultScreen extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-
           _stat("Correct", correct, Colors.green),
 
           _stat("Incorrect", incorrect, Colors.red),
@@ -118,12 +108,11 @@ class ExamResultScreen extends StatelessWidget {
   }
 
   Widget _questionCard(
-      int number,
-      dynamic q,
-      dynamic selected,
-      dynamic correct,
-      ) {
-
+    int number,
+    dynamic q,
+    dynamic selected,
+    dynamic correct,
+  ) {
     final options = q['options'];
 
     return Card(
@@ -134,25 +123,17 @@ class ExamResultScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
             /// QUESTION
-            Text(
-              "Q$number. ${q['questionText']}",
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
+            HtmlHelper.renderHtml(
+              '<span style="font-weight:600;">Q$number. </span>${(q['questionText'] ?? '').toString()}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 10),
 
             /// OPTIONS
             for (int i = 0; i < options.length; i++)
-              _optionTile(
-                i,
-                options[i]['text'],
-                selected,
-                correct,
-              ),
+              _optionTile(i, options[i]['text'], selected, correct),
 
             const SizedBox(height: 10),
 
@@ -187,12 +168,11 @@ class ExamResultScreen extends StatelessWidget {
   }
 
   Widget _optionTile(
-      int index,
-      String text,
-      dynamic selected,
-      dynamic correct,
-      ) {
-
+    int index,
+    String text,
+    dynamic selected,
+    dynamic correct,
+  ) {
     Color color = Colors.black;
 
     if (index.toString() == correct.toString()) {
@@ -211,13 +191,10 @@ class ExamResultScreen extends StatelessWidget {
         children: [
           Text(
             "${optionLetter(index)}. ",
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
+            style: TextStyle(fontWeight: FontWeight.bold, color: color),
           ),
           Expanded(
-            child: Text(
+            child: HtmlHelper.renderHtml(
               text,
               style: TextStyle(color: color),
             ),

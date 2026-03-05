@@ -193,27 +193,56 @@ class _TestsScreenState extends State<TestsScreen> {
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
-                    .collection('exams')
-                    .doc(selectedExamId)
-                    .collection('tests')
-                    .orderBy('createdAt')
+                    .collection('testAttempts')
+                    .where(
+                      'userId',
+                      isEqualTo: FirebaseAuth.instance.currentUser?.uid,
+                    )
+                    .where('examId', isEqualTo: selectedExamId)
                     .snapshots(),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
+                builder: (context, attemptsSnap) {
+                  final Map<String, int> attemptsByTestId = {};
+                  if (attemptsSnap.hasData) {
+                    for (final d in attemptsSnap.data!.docs) {
+                      final data = d.data() as Map<String, dynamic>;
+                      final testId = (data['testId'] ?? '').toString();
+                      if (testId.isEmpty) continue;
+                      // Count only submitted attempts so in-progress starts do not inflate limits.
+                      final isCompleted =
+                          (data['status'] ?? '').toString() == 'completed';
+                      if (!isCompleted) continue;
+                      attemptsByTestId[testId] =
+                          (attemptsByTestId[testId] ?? 0) + 1;
+                    }
                   }
 
-                  final tests = snapshot.data!.docs;
+                  return StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('exams')
+                        .doc(selectedExamId)
+                        .collection('tests')
+                        .orderBy('createdAt')
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
 
-                  if (tests.isEmpty) {
-                    return const Center(child: Text("No tests available"));
-                  }
+                      final tests = snapshot.data!.docs;
 
-                  return ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: tests.length,
-                    itemBuilder: (context, index) {
-                      return _buildTestCard(tests[index]);
+                      if (tests.isEmpty) {
+                        return const Center(child: Text("No tests available"));
+                      }
+
+                      return ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: tests.length,
+                        itemBuilder: (context, index) {
+                          final testDoc = tests[index];
+                          final usedAttempts = attemptsByTestId[testDoc.id] ?? 0;
+                          return _buildTestCard(testDoc, usedAttempts);
+                        },
+                      );
                     },
                   );
                 },
@@ -225,7 +254,7 @@ class _TestsScreenState extends State<TestsScreen> {
     );
   }
 
-  Widget _buildTestCard(QueryDocumentSnapshot test) {
+  Widget _buildTestCard(QueryDocumentSnapshot test, int usedAttempts) {
     final title = test['name'] ?? test.id;
 
     final Map<String, dynamic>? testData = test.data() as Map<String, dynamic>?;
@@ -241,6 +270,11 @@ class _TestsScreenState extends State<TestsScreen> {
     final duration = durationVal?.toString() ?? '0';
     final marks = test['totalMarks'] ?? test['marks'] ?? 0;
     final maxAttempts = test['attemptLimit'] ?? test['maxAttempts'] ?? 0;
+    final maxAttemptsInt = int.tryParse(maxAttempts.toString()) ?? 0;
+    final limitReached = maxAttemptsInt > 0 && usedAttempts >= maxAttemptsInt;
+    final attemptsText = maxAttemptsInt > 0
+        ? "Attempts: $usedAttempts/$maxAttemptsInt"
+        : "Attempts: $usedAttempts";
 
     final Map<String, dynamic>? tdata = test.data() as Map<String, dynamic>?;
 
@@ -251,6 +285,7 @@ class _TestsScreenState extends State<TestsScreen> {
     final hasPlan = _userHasPlanForExam[selectedExamId] ?? false;
 
     final isLocked = isPremium && !hasPlan;
+    final isDisabled = isLocked || limitReached;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 18),
@@ -269,6 +304,7 @@ class _TestsScreenState extends State<TestsScreen> {
               );
               return;
             }
+            if (limitReached) return;
 
             Navigator.push(
               context,
@@ -318,7 +354,7 @@ class _TestsScreenState extends State<TestsScreen> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        "Attempts: 0/$maxAttempts",
+                        attemptsText,
                         style: const TextStyle(
                           fontSize: 12,
                           color: Colors.grey,
@@ -328,7 +364,7 @@ class _TestsScreenState extends State<TestsScreen> {
                   ),
                 ),
                 ElevatedButton(
-                  onPressed: isLocked
+                  onPressed: isDisabled
                       ? null
                       : () {
                           Navigator.push(
@@ -354,9 +390,13 @@ class _TestsScreenState extends State<TestsScreen> {
                     elevation: isLocked ? 0 : 2,
                   ),
                   child: Text(
-                    isLocked ? "Unlock" : "Attempt",
+                    isLocked
+                        ? "Unlock"
+                        : (limitReached ? "Limit Reached" : "Attempt"),
                     style: TextStyle(
-                      color: isLocked ? Colors.orange : Colors.white,
+                      color: isLocked
+                          ? Colors.orange
+                          : (limitReached ? Colors.grey : Colors.white),
                     ),
                   ),
                 ),
