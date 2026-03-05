@@ -7,6 +7,8 @@ class SectionService {
   static int unlockedSectionLength = 0;
   static int totalQuestionLength = 0;
   static bool isLock = true;
+  static int unlockedTime = 0;
+  static int lockedTime = 0;
 
   Future<List<SectionBean>> getSections(String examId, String testId) {
     return _sectionDao.getSectionsOnce(examId, testId);
@@ -48,6 +50,7 @@ class SectionService {
     // 1️⃣ Add unlocked section questions first
     for (final section in unlockedSections) {
       final sectionId = section.id?.toString();
+      unlockedTime += section.sectionDurationMinutes!;
       if (sectionId != null && grouped.containsKey(sectionId)) {
         arranged.addAll(grouped[sectionId]!);
       }
@@ -57,6 +60,7 @@ class SectionService {
     // 2️⃣ Then add locked section questions
     for (final section in lockedSections) {
       final sectionId = section.id?.toString();
+      lockedTime += section.sectionDurationMinutes!;
       if (sectionId != null && grouped.containsKey(sectionId)) {
         arranged.addAll(grouped[sectionId]!);
       }

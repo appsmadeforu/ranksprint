@@ -103,15 +103,6 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
         .collection('tests')
         .doc(widget.testId)
         .get();
-    int totalMinutes = 60;
-    try {
-      final tdata = testDoc.data();
-      if (tdata != null &&
-          tdata['timing'] is Map &&
-          (tdata['timing']['totalDurationMinutes'] != null)) {
-        totalMinutes = (tdata['timing']['totalDurationMinutes'] as num).toInt();
-      }
-    } catch (_) {}
 
     // fetch questions - try with orderBy first, fallback without orderBy if that fails
     List<QueryDocumentSnapshot<Map<String, dynamic>>> qdocs = [];
@@ -178,7 +169,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
 
     setState(() {
       attemptId = ref.id;
-      remainingSeconds = totalMinutes * 60;
+      remainingSeconds = (SectionService.unlockedTime + SectionService.lockedTime) * 60;
       loading = false;
       currentIndex = 0;
       answers = {};
@@ -191,7 +182,13 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
       if (remainingSeconds <= 0) {
         t.cancel();
         _submitAttempt();
-      } else {
+      }else if(remainingSeconds <= SectionService.lockedTime * 60 && SectionService.isLock){
+        SectionService.isLock = false;
+        setState(() {
+          remainingSeconds -= 1;
+          SectionService.isLock = false;});
+      }
+      else {
         setState(() => remainingSeconds -= 1);
       }
     });
@@ -304,6 +301,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
               onPressed: () {
                 Navigator.of(context).pop(); // Close dialog first
                 SectionService.isLock = false;
+                remainingSeconds = SectionService.lockedTime * 60;
                 _saveProgress(); // Call your method
               },
               child: const Text("Yes"),
@@ -641,22 +639,6 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
                     ),
                   ),
                 )
-                /*Expanded(
-                  child: Center(
-                    child: loading
-                        ? const CircularProgressIndicator()
-                        : ElevatedButton(
-                            onPressed: _startAttempt,
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 28,
-                                vertical: 14,
-                              ),
-                            ),
-                            child: const Text('Start Test'),
-                          ),
-                  ),
-                )*/
               else if (questions.isEmpty)
                 const Expanded(child: Center(child: Text('No questions')))
               else
