@@ -16,16 +16,21 @@ class HelpFaqScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Help & FAQ")),
+      backgroundColor: const Color(0xFFF5F6FA),
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: const Color(0xFF2F6FEB),
+        centerTitle: true,
+        title: const Text(
+          "Help & FAQ",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        ),
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
       body: StreamBuilder<QuerySnapshot>(
-        // remove the `where` temporarily for debugging; uncomment once data is confirmed
-        stream: FirebaseFirestore.instance
-            .collection('helpFaqs')
-            //.where('isActive', isEqualTo: true)
-            .snapshots(),
+        stream: FirebaseFirestore.instance.collection('helpFaqs').snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            debugPrint('HelpFaqScreen snapshot error: ${snapshot.error}');
             return const Center(child: Text("Error loading FAQs"));
           }
 
@@ -34,19 +39,16 @@ class HelpFaqScreen extends StatelessWidget {
           }
 
           final docsList = snapshot.data?.docs;
-          debugPrint('HelpFaqScreen got ${docsList?.length ?? 0} documents');
 
           if (docsList == null || docsList.isEmpty) {
             return const Center(child: Text("No FAQs available"));
           }
 
-          /// Convert docs safely
           final docs = snapshot.data!.docs.map((doc) {
             final data = doc.data() as Map<String, dynamic>;
             return data;
           }).toList();
 
-          /// Sort by priority
           docs.sort(
             (a, b) => ((a['priority'] ?? 0) as num).compareTo(
               (b['priority'] ?? 0) as num,
@@ -62,29 +64,66 @@ class HelpFaqScreen extends StatelessWidget {
               final answerHtml = data['answer'] ?? "";
               final answer = htmlToPlainText(answerHtml);
 
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: ExpansionTile(
-                  title: Text(
-                    question,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                    ),
-                  ),
-                  childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  children: [
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        answer,
-                        style: const TextStyle(fontSize: 14, height: 1.5),
-                      ),
+              return Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
                     ),
                   ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: Container(
+                    color: Colors.white,
+                    child: Theme(
+                      data: Theme.of(
+                        context,
+                      ).copyWith(dividerColor: Colors.transparent),
+                      child: ExpansionTile(
+                        tilePadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 6,
+                        ),
+                        childrenPadding: const EdgeInsets.fromLTRB(
+                          20,
+                          0,
+                          20,
+                          20,
+                        ),
+                        iconColor: const Color(0xFF2F6FEB),
+                        collapsedIconColor: Colors.grey,
+                        title: Text(
+                          question,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                          ),
+                        ),
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF3F6FF),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              answer,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                height: 1.6,
+                                color: Colors.black87,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               );
             },

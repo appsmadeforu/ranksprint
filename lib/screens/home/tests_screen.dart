@@ -239,7 +239,8 @@ class _TestsScreenState extends State<TestsScreen> {
                         itemCount: tests.length,
                         itemBuilder: (context, index) {
                           final testDoc = tests[index];
-                          final usedAttempts = attemptsByTestId[testDoc.id] ?? 0;
+                          final usedAttempts =
+                              attemptsByTestId[testDoc.id] ?? 0;
                           return _buildTestCard(testDoc, usedAttempts);
                         },
                       );
