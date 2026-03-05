@@ -7,6 +7,10 @@ import 'package:ranksprint/sections/section_bean.dart';
 import 'package:ranksprint/sections/section_service.dart';
 import 'package:ranksprint/sections/sectionwise_navigation_screen.dart';
 import 'package:lottie/lottie.dart';
+import 'package:screen_protector/screen_protector.dart';
+
+import '../../examSummary/exam_summary_screen.dart';
+
 
 class TestRunnerScreen extends StatefulWidget {
   final String examId;
@@ -22,7 +26,7 @@ class TestRunnerScreen extends StatefulWidget {
   State<TestRunnerScreen> createState() => _TestRunnerScreenState();
 }
 
-class _TestRunnerScreenState extends State<TestRunnerScreen> {
+class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBindingObserver{
   String? attemptId;
   String? testName;
   String? examName;
@@ -37,16 +41,78 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
 
   bool loading = false;
   List<SectionBean> sectionsBeans = [];
+  int violationCount = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _blockScreenshots;
     Future.delayed(const Duration(seconds: 5), () {
       if (mounted && !loading && attemptId == null) {
         _startAttempt();
       }
     });
     _loadTestMetadata(); // 👈 add this
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive || state == AppLifecycleState.resumed) {
+      violationCount++;
+
+      if (violationCount >= 1) {
+        _autoSubmitTest;
+      } else {
+        _showWarning();
+      }
+    }
+  }
+
+  void _autoSubmitTest() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text("Test Submitted"),
+        content: const Text(
+          "You left the exam screen. The test has been submitted automatically.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _submitAttempt();
+            },
+            child: const Text("OK"),
+          )
+        ],
+      ),
+    );
+  }
+
+  void _showWarning() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text("Warning"),
+        content: const Text(
+          "Switching apps during the test is not allowed.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+            },
+            child: const Text("Continue Test"),
+          )
+        ],
+      ),
+    );
+  }
+
+  Future<void> _blockScreenshots() async {
+    await ScreenProtector.preventScreenshotOn();
   }
 
   Future<void> _loadTestMetadata() async {
@@ -200,7 +266,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
     if (mounted) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Progress saved')));
+      );
     }
   }
 
@@ -226,7 +292,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
       final selected = answers[qid];
       if (selected != null &&
           q['correctOption'] != null &&
-          q['correctOption'].toString() == selected) {
+          ExamResultScreen.optionLetter(q['correctOption'] ) == selected) {
         correct += 1;
       }
     }
@@ -258,8 +324,19 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
     if (mounted) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Test submitted')));
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      );
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ExamResultScreen(
+            questions: questions,
+            answers: answers,
+            correct: correct,
+            incorrect: total - correct,
+            unanswered: total - answers.length,
+          ),
+        ),
+      );
     }
   }
 
@@ -276,6 +353,41 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
   }
 
   void _showSubmitSectionDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: true, // allows closing by tapping outside
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text("Submit Section"),
+          content: const Text(
+            "This will submit the current unlocked section, and it will unlock the locked section.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close dialog (Do nothing)
+              },
+              child: const Text("No"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close dialog first
+                SectionService.isLock = false;
+                remainingSeconds = SectionService.lockedTime * 60;
+                _saveProgress();
+              },
+              child: const Text("Yes"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showSubmitSectionNavDialog() {
     showDialog(
       context: context,
       barrierDismissible: true, // allows closing by tapping outside
@@ -350,6 +462,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -487,7 +600,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       onPressed: () {
-                         _showSubmitSectionDialog();
+                         _showSubmitSectionNavDialog();
                       },
                       icon: const Icon(Icons.cloud_done),
                       label: const Text("Submit Current Unlocked Sections"),
@@ -553,7 +666,9 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
   Widget build(BuildContext context) {
     final hasAttempt = attemptId != null;
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
       body: SafeArea(
         child: Padding(
@@ -860,6 +975,6 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
           ),
         ),
       ),
-    );
+    ),);
   }
 }
