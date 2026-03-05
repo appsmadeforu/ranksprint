@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:ranksprint/sections/section_bean.dart';
 import 'package:ranksprint/sections/section_service.dart';
 import 'package:ranksprint/sections/sectionwise_navigation_screen.dart';
+import 'package:lottie/lottie.dart';
 
 class TestRunnerScreen extends StatefulWidget {
   final String examId;
@@ -40,6 +41,11 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
   @override
   void initState() {
     super.initState();
+    Future.delayed(const Duration(seconds: 5), () {
+      if (mounted && !loading && attemptId == null) {
+        _startAttempt();
+      }
+    });
     _loadTestMetadata(); // 👈 add this
   }
 
@@ -584,6 +590,59 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
               if (!hasAttempt)
                 Expanded(
                   child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+
+                        /// AI Animation
+                        SizedBox(
+                          height: 220,
+                          child: Lottie.network(
+                            "https://assets2.lottiefiles.com/packages/lf20_x62chJ.json",
+                            repeat: true,
+                          ),
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        /// Title
+                        const Text(
+                          "AI Exam Engine",
+                          style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF2F6FEB),
+                          ),
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        /// Subtitle
+                        const Text(
+                          "Preparing your questions\nAnalyzing difficulty & timer",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: Colors.grey,
+                            height: 1.5,
+                          ),
+                        ),
+                        const SizedBox(height: 30),
+                        const CircularProgressIndicator(),
+                        const SizedBox(height: 30),
+                        const Text(
+                          "Your Test starting in a moment...",
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+                /*Expanded(
+                  child: Center(
                     child: loading
                         ? const CircularProgressIndicator()
                         : ElevatedButton(
@@ -597,7 +656,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> {
                             child: const Text('Start Test'),
                           ),
                   ),
-                )
+                )*/
               else if (questions.isEmpty)
                 const Expanded(child: Center(child: Text('No questions')))
               else
