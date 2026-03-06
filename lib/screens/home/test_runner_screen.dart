@@ -59,37 +59,35 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBinding
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive || state == AppLifecycleState.resumed) {
+    if (state == AppLifecycleState.paused ) {
       violationCount++;
 
-      if (violationCount >= 1) {
-        _autoSubmitTest;
+      if (violationCount >= 2) {
+        //print("violations: $violationCount");
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text("Test Submitted"),
+            content: const Text(
+              "You left the exam screen. The test has been submitted automatically.",
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  _submitAttempt();
+                },
+                child: const Text("OK"),
+              )
+            ],
+          ),
+        );
       } else {
         _showWarning();
       }
     }
   }
 
-  void _autoSubmitTest() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text("Test Submitted"),
-        content: const Text(
-          "You left the exam screen. The test has been submitted automatically.",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              _submitAttempt();
-            },
-            child: const Text("OK"),
-          )
-        ],
-      ),
-    );
-  }
 
   void _showWarning() {
     showDialog(
@@ -311,6 +309,8 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBinding
       'correct': correct,
       'incorrect': total - correct,
       'unanswered': total - answers.length,
+      'answers': answers,
+      'question': questions,
       'percentile': 0,
       'rank': 0,
       'createdAt': Timestamp.now(),

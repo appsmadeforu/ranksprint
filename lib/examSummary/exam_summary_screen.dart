@@ -155,7 +155,7 @@ class ExamResultScreen extends StatelessWidget {
             ),
 
             Text(
-              "Explanationgit: ${optionLetter(correct)}",
+              "Explanation:  ${q['explanationText']}",
               style: const TextStyle(
                 color: Colors.green,
                 fontWeight: FontWeight.bold,
