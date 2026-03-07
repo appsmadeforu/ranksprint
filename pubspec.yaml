@@ -47,6 +47,7 @@ dependencies:
   url_launcher: any
   flutter_html: ^3.0.0
   rxdart: ^0.28.0
+  in_app_purchase: ^3.2.3
 url_launcher: ^6.2.2
 
 dependency_overrides:
