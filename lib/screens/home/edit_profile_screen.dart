@@ -27,6 +27,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String _authEmail = '';
   String _authPhone = '';
 
+  final Map<String, String> cityStateMap = {
+    "Mumbai": "Maharashtra",
+    "Pune": "Maharashtra",
+    "Bangalore": "Karnataka",
+    "Kochi": "Kerala",
+    "Chennai": "Tamil Nadu",
+    "Hyderabad": "Telangana",
+    "Delhi": "Delhi",
+    "Ahmedabad": "Gujarat",
+    "Jaipur": "Rajasthan",
+  };
+
   @override
   void initState() {
     super.initState();
@@ -39,51 +51,38 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     final authEmail = (user.email ?? '').trim();
     final authPhone = (user.phoneNumber ?? '').trim();
-    final hasPhoneProvider = user.providerData.any(
-      (p) => p.providerId == 'phone',
-    );
-    final hasEmailProvider = user.providerData.any(
-      (p) => p.providerId == 'google.com' || p.providerId == 'password',
-    );
 
     final doc = await FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
         .get();
 
-    final data = doc.data() ?? <String, dynamic>{};
+    final data = doc.data() ?? {};
 
     setState(() {
-      nameController.text = (data['name'] is String) ? data['name'] : '';
+      nameController.text = data['name'] ?? '';
       emailController.text = authEmail.isNotEmpty
           ? authEmail
-          : ((data['email'] is String) ? data['email'] : '');
+          : (data['email'] ?? '');
       phoneController.text = authPhone.isNotEmpty
           ? authPhone
-          : ((data['phone'] is String) ? data['phone'] : '');
-      pincodeController.text = (data['pincode'] is String)
-          ? data['pincode']
-          : '';
-      cityController.text = (data['city'] is String) ? data['city'] : '';
-      stateController.text = (data['state'] is String) ? data['state'] : '';
-      _authEmail = authEmail;
-      _authPhone = authPhone;
-      if (hasPhoneProvider && !hasEmailProvider) {
-        _phoneLocked = true;
-        _emailLocked = false;
-      } else if (hasEmailProvider && !hasPhoneProvider) {
-        _emailLocked = true;
-        _phoneLocked = false;
-      } else {
-        _emailLocked = authEmail.isNotEmpty;
-        _phoneLocked = authPhone.isNotEmpty;
-      }
-      gender = (data['gender'] is String) ? data['gender'] : null;
+          : (data['phone'] ?? '');
+
+      pincodeController.text = data['pincode'] ?? '';
+      cityController.text = data['city'] ?? '';
+      stateController.text = data['state'] ?? '';
+
+      gender = data['gender'];
+
       if (data['dob'] is Timestamp) {
         dob = (data['dob'] as Timestamp).toDate();
-      } else {
-        dob = null;
       }
+
+      _authEmail = authEmail;
+      _authPhone = authPhone;
+
+      _emailLocked = authEmail.isNotEmpty;
+      _phoneLocked = authPhone.isNotEmpty;
     });
   }
 
@@ -95,7 +94,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     setState(() => loading = true);
 
-    final Map<String, dynamic> updateData = {
+    final updateData = {
       'name': nameController.text.trim(),
       'email': _emailLocked ? _authEmail : emailController.text.trim(),
       'phone': _phoneLocked ? _authPhone : phoneController.text.trim(),
@@ -104,14 +103,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       'state': stateController.text.trim(),
       'gender': gender,
       'updatedAt': Timestamp.now(),
+      'dob': dob != null ? Timestamp.fromDate(dob!) : "",
     };
-
-    // Only add dob if selected
-    if (dob != null) {
-      updateData['dob'] = Timestamp.fromDate(dob!);
-    } else {
-      updateData['dob'] = ""; // Clear dob if not selected
-    }
 
     try {
       await FirebaseFirestore.instance
@@ -119,20 +112,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           .doc(user.uid)
           .set(updateData, SetOptions(merge: true));
 
-      if (mounted) {
-        Navigator.pop(context);
-      }
+      if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to save profile: $e')));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => loading = false);
-      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to save profile: $e')));
     }
+
+    if (mounted) setState(() => loading = false);
   }
 
   Future<void> _pickDob() async {
@@ -164,10 +151,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
-        title: const Text("Edit Profile"),
         backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
         elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.black),
+        titleSpacing: 0,
+        title: Row(
+          children: [Image.asset("assets/icons/account_icon.png", height: 180)],
+        ),
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
@@ -178,76 +168,108 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 child: Column(
                   children: [
                     _buildTextField(nameController, "Full Name"),
+
                     _buildTextField(
                       emailController,
                       "Email ID",
                       enabled: !_emailLocked,
                       keyboardType: TextInputType.emailAddress,
-                      validator: (value) {
-                        final v = (value ?? '').trim();
-                        if (v.isEmpty) return "Email is required";
-                        final emailRegex = RegExp(
-                          r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-                        );
-                        if (!emailRegex.hasMatch(v)) {
-                          return "Enter a valid email";
-                        }
-                        return null;
-                      },
                     ),
+
                     _buildTextField(
                       phoneController,
                       "Phone Number",
                       enabled: !_phoneLocked,
                       keyboardType: TextInputType.phone,
-                      validator: (value) {
-                        final v = (value ?? '').trim();
-                        if (v.isEmpty) return "Phone number is required";
-                        if (v.length < 10) return "Enter a valid phone number";
-                        return null;
-                      },
                     ),
+
                     _buildTextField(pincodeController, "Pincode"),
-                    _buildTextField(cityController, "City"),
-                    _buildTextField(stateController, "State"),
 
-                    const SizedBox(height: 12),
+                    /// CITY DROPDOWN
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: DropdownButtonFormField<String>(
+                        value: cityController.text.isEmpty
+                            ? null
+                            : cityController.text,
+                        decoration: _inputDecoration("City"),
+                        items: cityStateMap.keys.map((city) {
+                          return DropdownMenuItem(
+                            value: city,
+                            child: Text(city),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() {
+                              cityController.text = value;
+                              stateController.text = cityStateMap[value] ?? '';
+                            });
+                          }
+                        },
+                      ),
+                    ),
 
-                    DropdownButtonFormField<String>(
-                      value: gender,
-                      decoration: _inputDecoration("Gender"),
-                      items: const [
-                        DropdownMenuItem(value: "Male", child: Text("Male")),
-                        DropdownMenuItem(
-                          value: "Female",
-                          child: Text("Female"),
-                        ),
-                        DropdownMenuItem(value: "Other", child: Text("Other")),
-                      ],
-                      onChanged: (val) => setState(() => gender = val),
+                    /// STATE (AUTO FILLED)
+                    _buildTextField(
+                      stateController,
+                      "State",
+                      enabled: false,
+                      helperText: "Auto filled based on city",
                     ),
 
                     const SizedBox(height: 12),
 
-                    GestureDetector(
-                      onTap: _pickDob,
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 16,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: gender,
+                            decoration: _inputDecoration("Gender"),
+                            items: const [
+                              DropdownMenuItem(
+                                value: "Male",
+                                child: Text("Male"),
+                              ),
+                              DropdownMenuItem(
+                                value: "Female",
+                                child: Text("Female"),
+                              ),
+                              DropdownMenuItem(
+                                value: "Other",
+                                child: Text("Other"),
+                              ),
+                            ],
+                            onChanged: (val) {
+                              setState(() => gender = val);
+                            },
+                          ),
                         ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
+
+                        const SizedBox(width: 12),
+
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: _pickDob,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 16,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                dob != null
+                                    ? "${dob!.day}/${dob!.month}/${dob!.year}"
+                                    : "Select DOB",
+                                style: const TextStyle(fontSize: 16),
+                              ),
+                            ),
+                          ),
                         ),
-                        child: Text(
-                          dob != null
-                              ? "${dob!.day}/${dob!.month}/${dob!.year}"
-                              : "Select Date of Birth",
-                          style: const TextStyle(fontSize: 16),
-                        ),
-                      ),
+                      ],
                     ),
 
                     const SizedBox(height: 20),
@@ -279,7 +301,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     bool enabled = true,
     TextInputType keyboardType = TextInputType.text,
     String? helperText,
-    String? Function(String?)? validator,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -287,7 +308,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         controller: controller,
         enabled: enabled,
         keyboardType: keyboardType,
-        validator: validator,
         decoration: _inputDecoration(label, helperText: helperText),
       ),
     );

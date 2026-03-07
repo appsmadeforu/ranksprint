@@ -705,7 +705,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 30),
                   const Center(
                     child: Text(
-                      'Rank Sprint v1.0.0\n© 2026 Rank Sprint',
+                      'RankSprintAI v1.0.0\n© 2026 RankSprintAI',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.grey),
                     ),

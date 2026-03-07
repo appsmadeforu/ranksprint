@@ -57,10 +57,8 @@ class PyqChaptersScreen extends StatelessWidget {
 
               final title =
                   data['name'] ?? data['title'] ?? 'Chapter ${index + 1}';
-              final pdfUrl =
-                  data['pdfUrl'] ?? data['notesPdfUrl'] ?? '';
-              final qCount =
-                  data['questionCount']?.toString() ?? '';
+              final pdfUrl = data['pdfUrl'] ?? data['notesPdfUrl'] ?? '';
+              final qCount = data['questionCount']?.toString() ?? '';
 
               final List<String> allPdfUrls = docs
                   .map((document) {
@@ -82,11 +80,9 @@ class PyqChaptersScreen extends StatelessWidget {
                   elevation: 3,
                   child: InkWell(
                     borderRadius: BorderRadius.circular(18),
-                    splashColor:
-                        const Color(0xFF2F6FEB).withOpacity(0.1),
+                    splashColor: const Color(0xFF2F6FEB).withOpacity(0.1),
                     onTap: () {
-                      if (pdfUrl.isNotEmpty &&
-                          allPdfUrls.isNotEmpty) {
+                      if (pdfUrl.isNotEmpty && allPdfUrls.isNotEmpty) {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -94,17 +90,13 @@ class PyqChaptersScreen extends StatelessWidget {
                               pdfUrl: pdfUrl,
                               title: title,
                               pdfUrls: allPdfUrls,
-                              currentIndex:
-                                  allPdfUrls.indexOf(pdfUrl),
+                              currentIndex: allPdfUrls.indexOf(pdfUrl),
                             ),
                           ),
                         );
                       } else {
-                        ScaffoldMessenger.of(context)
-                            .showSnackBar(
-                          const SnackBar(
-                              content:
-                                  Text('PDF not available')),
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('PDF not available')),
                         );
                       }
                     },
@@ -117,19 +109,15 @@ class PyqChaptersScreen extends StatelessWidget {
                             width: 52,
                             height: 52,
                             decoration: BoxDecoration(
-                              color:
-                                  const Color(0xFFEFF3FF),
-                              borderRadius:
-                                  BorderRadius.circular(14),
+                              color: const Color(0xFFEFF3FF),
+                              borderRadius: BorderRadius.circular(14),
                             ),
                             child: Center(
                               child: Text(
                                 '${index + 1}',
                                 style: const TextStyle(
-                                  color:
-                                      Color(0xFF2F6FEB),
-                                  fontWeight:
-                                      FontWeight.bold,
+                                  color: Color(0xFF2F6FEB),
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ),
@@ -140,36 +128,29 @@ class PyqChaptersScreen extends StatelessWidget {
                           // Text content
                           Expanded(
                             child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   title,
                                   style: const TextStyle(
                                     fontSize: 16,
-                                    fontWeight:
-                                        FontWeight.w600,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
                                 if (qCount.isNotEmpty)
                                   Text(
-                                    "$qCount papers available",
-                                    style:
-                                        const TextStyle(
+                                    "$qCount Questions available",
+                                    style: const TextStyle(
                                       fontSize: 13,
-                                      color:
-                                          Colors.grey,
+                                      color: Colors.grey,
                                     ),
                                   ),
                               ],
                             ),
                           ),
 
-                          const Icon(
-                            Icons.chevron_right,
-                            color: Colors.grey,
-                          )
+                          const Icon(Icons.chevron_right, color: Colors.grey),
                         ],
                       ),
                     ),

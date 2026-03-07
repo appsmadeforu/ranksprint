@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/gestures.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class PrivacyPolicyScreen extends StatelessWidget {
   const PrivacyPolicyScreen({super.key});
@@ -45,7 +47,20 @@ class PrivacyPolicyScreen extends StatelessWidget {
 
           final doc = snapshot.data!.docs.first;
           final html = doc['content'] ?? doc['body'] ?? doc['text'] ?? "";
-          final text = htmlToPlainText(html);
+
+          String text = htmlToPlainText(html);
+
+          // Change email
+          text = text.replaceAll(
+            RegExp(r'Email\s*:\s*.*', caseSensitive: false),
+            'Email: support@ranksprintai.com',
+          );
+
+          // Change phone line
+          text = text.replaceAll(
+            RegExp(r'Phone\s*:\s*.*', caseSensitive: false),
+            'For more info visit ranksprintai.com',
+          );
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
@@ -66,12 +81,61 @@ class PrivacyPolicyScreen extends StatelessWidget {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Text(
-                  text,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    height: 1.7,
-                    color: Colors.black87,
+                child: RichText(
+                  text: TextSpan(
+                    style: const TextStyle(
+                      fontSize: 15,
+                      height: 1.8,
+                      color: Colors.black87,
+                    ),
+                    children: [
+                      TextSpan(
+                        text: text
+                            .replaceAll("Email: support@ranksprintai.com", "")
+                            .replaceAll(
+                              "For more info visit ranksprintai.com",
+                              "",
+                            ),
+                      ),
+
+                      const TextSpan(text: "\n\nEmail: "),
+
+                      TextSpan(
+                        text: "support@ranksprintai.com",
+                        style: const TextStyle(
+                          color: Colors.blue,
+                          decoration: TextDecoration.underline,
+                        ),
+                        recognizer: TapGestureRecognizer()
+                          ..onTap = () async {
+                            final Uri email = Uri.parse(
+                              "mailto:support@ranksprintai.com",
+                            );
+                            if (await canLaunchUrl(email)) {
+                              await launchUrl(email);
+                            }
+                          },
+                      ),
+
+                      const TextSpan(text: "\n\nFor more info visit "),
+
+                      TextSpan(
+                        text: "ranksprintai.com",
+                        style: const TextStyle(
+                          color: Colors.blue,
+                          decoration: TextDecoration.underline,
+                        ),
+                        recognizer: TapGestureRecognizer()
+                          ..onTap = () async {
+                            final Uri url = Uri.parse(
+                              "https://ranksprintai.com",
+                            );
+                            if (await canLaunchUrl(url)) {
+                              await launchUrl(url);
+                            }
+                          },
+                      ),
+                    ],
                   ),
                 ),
               ),

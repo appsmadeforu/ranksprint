@@ -48,6 +48,7 @@ dependencies:
   flutter_html: ^3.0.0
   rxdart: ^0.28.0
 url_launcher: ^6.2.2
+dropdown_search: ^5.0.6
 
 dependency_overrides:
   xml: 6.5.0
@@ -75,6 +76,7 @@ flutter:
   assets:
     - assets/images/google.png
     - assets/icons/app_icon.png
+    - assets/icons/account_icon.png
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.

@@ -259,7 +259,7 @@ class _PyqScreenState extends State<PyqScreen> {
                                                               height: 4,
                                                             ),
                                                             Text(
-                                                              "$paperCount papers available",
+                                                              "$paperCount chapters available",
                                                               style:
                                                                   const TextStyle(
                                                                     fontSize:
