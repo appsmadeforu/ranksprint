@@ -1,13 +1,22 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:ranksprint/sections/section_bean.dart';
 import 'package:ranksprint/services/html_helper.dart';
 
-class ExamResultScreen extends StatelessWidget {
+enum ResultFilter {
+  all,
+  correct,
+  incorrect,
+  answered,
+  unanswered
+}
+
+class ExamResultScreen extends StatefulWidget {
   final List questions;
   final Map answers;
   final int correct;
   final int incorrect;
   final int unanswered;
+  final List<SectionBean> section;
 
   const ExamResultScreen({
     super.key,
@@ -16,8 +25,35 @@ class ExamResultScreen extends StatelessWidget {
     required this.correct,
     required this.incorrect,
     required this.unanswered,
+    required this.section,
   });
 
+  @override
+  State<ExamResultScreen> createState() => ExamResultScreenState();
+}
+
+class ExamResultScreenState extends State<ExamResultScreen>
+    with SingleTickerProviderStateMixin {
+
+  late TabController _tabController;
+
+  Map<String, List> groupedQuestions = {};
+
+  ResultFilter selectedFilter = ResultFilter.all;
+
+  @override
+  void initState() {
+    super.initState();
+
+    groupedQuestions = groupQuestions();
+
+    _tabController = TabController(
+      length: widget.section.length,
+      vsync: this,
+    );
+  }
+
+  /// OPTION LETTER
   static String optionLetter(dynamic index) {
     switch (index.toString()) {
       case '0':
@@ -33,97 +69,185 @@ class ExamResultScreen extends StatelessWidget {
     }
   }
 
+  /// COLOR FOR ANSWER
   Color getColor(selected, correct) {
     if (selected == null) return Colors.grey;
     if (selected.toString() == correct.toString()) return Colors.green;
     return Colors.red;
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Exam Result"), centerTitle: true),
-      body: Column(
-        children: [
-          /// SUMMARY CARD
-          _buildSummary(),
+  /// GROUP QUESTIONS BY SECTION
+  Map<String, List> groupQuestions() {
 
-          const SizedBox(height: 10),
+    Map<String, List> map = {};
 
-          /// QUESTION LIST
-          Expanded(
-            child: ListView.builder(
-              itemCount: questions.length,
-              itemBuilder: (context, index) {
-                final q = questions[index];
-                final qid = q['__id'];
+    for (var q in widget.questions) {
 
-                final selected = answers[qid];
-                final correctOption = q['correctOption'];
+      final secId = q['sectionId'] ?? '';
 
-                return _questionCard(index + 1, q, selected, correctOption);
-              },
-            ),
-          ),
-        ],
-      ),
-    );
+      if (!map.containsKey(secId)) {
+        map[secId] = [];
+      }
+
+      map[secId]!.add(q);
+    }
+
+    return map;
   }
 
-  Widget _buildSummary() {
+  /// APPLY FILTER
+  List applyFilter(List questions) {
+
+    if (selectedFilter == ResultFilter.all) return questions;
+
+    return questions.where((q) {
+
+      final qid = q['__id'];
+      final selected = widget.answers[qid];
+      final correct = optionLetter(q['correctOption']);
+
+      if (selectedFilter == ResultFilter.correct) {
+        return selected != null &&
+            selected.toString() == correct.toString();
+      }
+
+      if (selectedFilter == ResultFilter.incorrect) {
+        return selected != null &&
+            selected.toString() != correct.toString();
+      }
+
+      if (selectedFilter == ResultFilter.answered) {
+        return selected != null;
+      }
+
+      if (selectedFilter == ResultFilter.unanswered) {
+        return selected == null;
+      }
+
+      return true;
+
+    }).toList();
+  }
+
+  /// SUMMARY CARD
+/*  Widget buildSummary() {
+
+    int total = widget.questions.length;
+
+    double accuracy =
+    total == 0 ? 0 : widget.correct / total * 100;
+
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.blue.shade50,
-        borderRadius: BorderRadius.circular(14),
+        gradient: LinearGradient(
+          colors: [Colors.blue.shade400, Colors.blue.shade700],
+        ),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _stat("Correct", correct, Colors.green),
 
-          _stat("Incorrect", incorrect, Colors.red),
+          stat("Correct", widget.correct),
 
-          _stat("Unanswered", unanswered, Colors.grey),
+          stat("Incorrect", widget.incorrect),
+
+          stat("Unanswered", widget.unanswered),
+
+          stat("Accuracy", "${accuracy.toStringAsFixed(1)}%"),
         ],
       ),
     );
-  }
+  }*/
 
-  Widget _stat(String label, int value, Color color) {
+  Widget stat(String label, dynamic value) {
+
     return Column(
       children: [
         Text(
           "$value",
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
+          style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.white),
         ),
-        Text(label),
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white),
+        ),
       ],
     );
   }
 
-  Widget _questionCard(
-    int number,
-    dynamic q,
-    dynamic selected,
-    dynamic correct,
-  ) {
+  /// FILTER BAR
+  Widget buildFilterBar() {
+
+    Widget chip(String label, ResultFilter filter) {
+
+      bool selected = selectedFilter == filter;
+
+      return GestureDetector(
+        onTap: () {
+          setState(() {
+            selectedFilter = filter;
+          });
+        },
+        child: Container(
+          padding:
+          const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          margin: const EdgeInsets.only(right: 8),
+          decoration: BoxDecoration(
+            color: selected ? Colors.blue : Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+                color: selected ? Colors.white : Colors.black),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            chip("All", ResultFilter.all),
+            chip("Correct", ResultFilter.correct),
+            chip("Incorrect", ResultFilter.incorrect),
+            chip("Answered", ResultFilter.answered),
+            chip("Unanswered", ResultFilter.unanswered),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// QUESTION CARD
+  Widget questionCard(
+      int number,
+      dynamic q,
+      dynamic selected,
+      dynamic correct,
+      ) {
+
     final options = q['options'];
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      margin:
+      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       elevation: 3,
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            /// QUESTION
+
             HtmlHelper.renderHtml(
               '<span style="font-weight:600;">Q$number. </span>${(q['questionText'] ?? '').toString()}',
               style: const TextStyle(fontWeight: FontWeight.bold),
@@ -131,15 +255,13 @@ class ExamResultScreen extends StatelessWidget {
 
             const SizedBox(height: 10),
 
-            /// OPTIONS
             for (int i = 0; i < options.length; i++)
-              _optionTile(i, options[i]['text'], selected, correct),
+              optionTile(i, options[i]['text'], selected, optionLetter(correct)),
 
             const SizedBox(height: 10),
 
-            /// ANSWER SUMMARY
             Text(
-              "Your Answer: ${selected}",
+              "Your Answer: ${selected ?? '-'}",
               style: TextStyle(
                 color: getColor(selected, optionLetter(correct)),
                 fontWeight: FontWeight.bold,
@@ -149,17 +271,15 @@ class ExamResultScreen extends StatelessWidget {
             Text(
               "Correct Answer: ${optionLetter(correct)}",
               style: const TextStyle(
-                color: Colors.green,
-                fontWeight: FontWeight.bold,
-              ),
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold),
             ),
 
+            const SizedBox(height: 6),
+
             Text(
-              "Explanation:  ${q['explanationText']}",
-              style: const TextStyle(
-                color: Colors.green,
-                fontWeight: FontWeight.bold,
-              ),
+              "Explanation: ${q['explanationText'] ?? ''}",
+              style: const TextStyle(color: Colors.black87),
             ),
           ],
         ),
@@ -167,12 +287,14 @@ class ExamResultScreen extends StatelessWidget {
     );
   }
 
-  Widget _optionTile(
-    int index,
-    String text,
-    dynamic selected,
-    dynamic correct,
-  ) {
+  /// OPTION TILE
+  Widget optionTile(
+      int index,
+      String text,
+      dynamic selected,
+      dynamic correct,
+      ) {
+
     Color color = Colors.black;
 
     if (index.toString() == correct.toString()) {
@@ -189,14 +311,97 @@ class ExamResultScreen extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         children: [
+
           Text(
             "${optionLetter(index)}. ",
-            style: TextStyle(fontWeight: FontWeight.bold, color: color),
+            style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: color),
           ),
+
           Expanded(
             child: HtmlHelper.renderHtml(
               text,
               style: TextStyle(color: color),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// BUILD SECTION TAB
+  Widget buildSectionTab(SectionBean sec) {
+
+    final secQuestions = groupedQuestions[sec.id] ?? [];
+
+    final filteredQuestions = applyFilter(secQuestions);
+
+    return Column(
+      children: [
+
+        const SizedBox(height: 10),
+
+        buildFilterBar(),
+
+        const SizedBox(height: 10),
+
+        Expanded(
+          child: ListView(
+            children: filteredQuestions.map((q) {
+
+              final qid = q['__id'];
+              final selected = widget.answers[qid];
+              final correctOption = q['correctOption'];
+
+              final number =
+                  widget.questions.indexOf(q) + 1;
+
+              return questionCard(
+                number,
+                q,
+                selected,
+                correctOption,
+              );
+
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Exam Result"),
+        centerTitle: true,
+      ),
+
+      body: Column(
+        children: [
+
+          //buildSummary(),
+
+          TabBar(
+            controller: _tabController,
+            isScrollable: true,
+            labelColor: Colors.blue,
+            tabs: widget.section.map((sec) {
+              return Tab(
+                text: sec.name ?? "Section",
+              );
+            }).toList(),
+          ),
+
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: widget.section.map((sec) {
+                return buildSectionTab(sec);
+              }).toList(),
             ),
           ),
         ],

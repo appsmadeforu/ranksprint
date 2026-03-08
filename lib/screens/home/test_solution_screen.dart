@@ -1,6 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:ranksprint/sections/section_bean.dart';
+import 'package:ranksprint/sections/section_service.dart';
 
+import '../../examSummary/exam_summary_screen.dart';
 import '../../widgets/top_header.dart';
 
 class TestSolutionScreen extends StatefulWidget {
@@ -21,6 +24,8 @@ class TestSolutionScreen extends StatefulWidget {
 
 class _TestSolutionScreenState extends State<TestSolutionScreen> {
   late final Future<_Vm> _future;
+  SectionService sectionService = SectionService();
+  List<SectionBean> sectionBeans =[];
 
   @override
   void initState() {
@@ -34,6 +39,7 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
 
     final examId = (attempt['examId'] ?? '').toString();
     final testId = (attempt['testId'] ?? '').toString();
+    sectionBeans = await sectionService.getSections(examId, testId);
     final answersRaw = attempt['answers'];
     final answers = <String, String>{};
     if (answersRaw is Map) {
@@ -344,10 +350,17 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
                           width: double.infinity,
                           child: ElevatedButton.icon(
                             onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Question-wise solutions coming soon',
+
+                              Navigator.pushReplacement(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ExamResultScreen(
+                                    questions: widget.resultData['question'],
+                                    answers: widget.resultData['answers'],
+                                    correct: widget.resultData['correct'],
+                                    section: sectionBeans,
+                                    incorrect: widget.resultData['incorrect'],
+                                    unanswered: widget.resultData['unanswered'],
                                   ),
                                 ),
                               );
