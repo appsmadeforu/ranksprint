@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:ranksprint/screens/home/test_solution_screen.dart';
 import 'package:ranksprint/sections/section_bean.dart';
 import 'package:ranksprint/sections/section_service.dart';
 import 'package:ranksprint/sections/sectionwise_navigation_screen.dart';
@@ -24,10 +25,10 @@ class TestRunnerScreen extends StatefulWidget {
   });
 
   @override
-  State<TestRunnerScreen> createState() => _TestRunnerScreenState();
+  State<TestRunnerScreen> createState() => TestRunnerScreenState();
 }
 
-class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBindingObserver{
+class TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBindingObserver{
   String? attemptId;
   String? testName;
   String? examName;
@@ -36,6 +37,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBinding
   Map<String, String> answers = {}; // questionId -> selected option id
   Set<String> markedForReview = {};
   Set<String> visited = {};
+  Set<String> reported = {};
 
   Timer? _timer;
   int remainingSeconds = 0;
@@ -259,6 +261,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBinding
     await attemptRef.update({
       'answers': answers,
       'markedForReview': markedForReview.toList(),
+      'reported': reported.toList(),
       'visited': visited.toList(),
       'lastSavedAt': Timestamp.now(),
     });
@@ -291,7 +294,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBinding
       final selected = answers[qid];
       if (selected != null &&
           q['correctOption'] != null &&
-          ExamResultScreen.optionLetter(q['correctOption'] ) == selected) {
+          ExamResultScreenState.optionLetter(q['correctOption'] ) == selected) {
         correct += 1;
       }
     }
@@ -321,6 +324,8 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBinding
     SectionService.isLock = true;
     SectionService.unlockedTime = 0;
     SectionService.totalQuestionLength = 0;
+    Map<String, dynamic> attemptData = (await attemptRef.get()).data()!;
+    final Map<String, dynamic> resultData = (await resRef.get()).data()!;
 
     if (mounted) {
       ScaffoldMessenger.of(
@@ -329,12 +334,10 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBinding
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => ExamResultScreen(
-            questions: questions,
-            answers: answers,
-            correct: correct,
-            incorrect: total - correct,
-            unanswered: total - answers.length,
+          builder: (_) =>  TestSolutionScreen(
+            attemptId: attemptId!,
+            attemptData: attemptData,
+            resultData: resultData,
           ),
         ),
       );
@@ -426,6 +429,117 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBinding
   }
 
   void _showSubmitTestDialog() {
+
+    int notVisited = 0;
+    int answered = 0;
+    int notAnswered = 0;
+    int marked = 0;
+    int answeredAndMarked = 0;
+
+    for (final q in questions) {
+      final qid = q['__id'] as String;
+
+      final isVisited = visited.contains(qid);
+      final isAnswered = answers.containsKey(qid);
+      final isMarked = markedForReview.contains(qid);
+
+      if (!isVisited) {
+        notVisited++;
+      } else if (!isAnswered) {
+        notAnswered++;
+      }
+
+      if (isAnswered) answered++;
+      if (isMarked && !isAnswered) marked++;
+      if (isMarked && isAnswered) answeredAndMarked++;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+
+          title: const Text("Submit Test"),
+
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+
+                Text(
+                  "${examName ?? ''} - ${testName ?? ''}",
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                const Text(
+                  "Questions Overview",
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    _buildCounter(notVisited, "Not Visited", Colors.grey),
+                    _buildCounter(notAnswered, "Not Answered", Colors.red),
+                    _buildCounter(answered, "Answered", Colors.green),
+                    _buildCounter(marked, "Marked", Colors.deepPurple),
+                    _buildCounter(
+                      answeredAndMarked,
+                      "Answered & Marked",
+                      Colors.blue,
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+
+                const Text(
+                  "This will finish and submit the test.",
+                  style: TextStyle(fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+
+          actions: [
+
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text("No"),
+            ),
+
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                SectionService.isLock = false;
+                _submitAttempt();
+              },
+              child: const Text("Yes"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showAddForReviewQuestionDialog(String qid) {
     showDialog(
       context: context,
       barrierDismissible: true, // allows closing by tapping outside
@@ -434,9 +548,9 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBinding
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          title: const Text("Submit Test"),
+          title: const Text("Submit Section"),
           content: const Text(
-            "This will finish and submit the Test.",
+            "Are you sure you want to report this question?",
           ),
           actions: [
             TextButton(
@@ -448,8 +562,8 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBinding
             ElevatedButton(
               onPressed: () {
                 Navigator.of(context).pop(); // Close dialog first
-                SectionService.isLock = false;
-                _submitAttempt(); // Call your method
+                reported.add(qid);
+                _saveProgress();
               },
               child: const Text("Yes"),
             ),
@@ -458,6 +572,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBinding
       },
     );
   }
+
 
 
   @override
@@ -630,6 +745,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBinding
       },
     );
   }
+
 
   String _formatTime(int secs) {
     final m = (secs ~/ 60).toString().padLeft(2, '0');
@@ -820,17 +936,18 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBinding
                                     children: [
                                       IconButton(
                                         onPressed: () {
-                                          /* flag/warning */
+                                          final qid =
+                                          questions[currentIndex]['__id'] as String;
+                                          _showAddForReviewQuestionDialog(qid);
+                                          if (_canOpenQuestion(currentIndex + 1)) {
+                                            setState(() {
+                                              currentIndex += 1;
+                                            });
+                                          }
                                         },
                                         icon: const Icon(
                                           Icons.report_problem_outlined,
                                         ),
-                                      ),
-                                      IconButton(
-                                        onPressed: () {
-                                          /* bookmark */
-                                        },
-                                        icon: const Icon(Icons.bookmark_border),
                                       ),
                                     ],
                                   ),
@@ -879,7 +996,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBinding
 
                             return Card(
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: BorderRadius.circular(0),
                               ),
                               child: ListTile(
                                 leading: CircleAvatar(
@@ -892,7 +1009,7 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBinding
                                 ),
                                 onTap: () => _selectOption(qid, optId),
                                 tileColor: isSelected
-                                    ? const Color(0xFFEEF6FF)
+                                    ? const Color(0x6796C196)
                                     : null,
                               ),
                             );
@@ -909,6 +1026,11 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBinding
                                 final qid =
                                     questions[currentIndex]['__id'] as String;
                                 _toggleReview(qid);
+                                if (_canOpenQuestion(currentIndex + 1)) {
+                                  setState(() {
+                                    currentIndex += 1;
+                                  });
+                                }
                               },
                               style: OutlinedButton.styleFrom(
                                 shape: RoundedRectangleBorder(
@@ -931,7 +1053,9 @@ class _TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBinding
                           currentIndex == SectionService.unlockedSectionLength && SectionService.isLock
                               ? Expanded(
                             child: ElevatedButton(
-                              onPressed: _showSubmitSectionDialog,
+                              onPressed:
+                                _showSubmitSectionDialog
+                                ,
                               style: ElevatedButton.styleFrom(
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
