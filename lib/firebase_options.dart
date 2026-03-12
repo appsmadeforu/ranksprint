@@ -41,46 +41,49 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyAdRlA_h0OBrgn3QLNDFXlEpQPIRkQJJlw',
-    appId: '1:860899860233:web:07e0f64ce91b70c1633dd8',
-    messagingSenderId: '860899860233',
-    projectId: 'ranksprint',
-    authDomain: 'ranksprint.firebaseapp.com',
-    storageBucket: 'ranksprint.firebasestorage.app',
+    apiKey: 'AIzaSyBf-ifIEgNMr_l39PvhNyGvIXQm39xDJUg',
+    appId: '1:469236570222:web:abf1507242e7460330ee7f',
+    messagingSenderId: '469236570222',
+    projectId: 'ranksprintai-1eff8',
+    authDomain: 'ranksprintai-1eff8.firebaseapp.com',
+    storageBucket: 'ranksprintai-1eff8.firebasestorage.app',
+    measurementId: 'G-KDTNQFY9B3',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyCDWde0ByUjtKkhZKpWMaWemvUcfXWWD64',
-    appId: '1:860899860233:android:b9b9f1c4b77504be633dd8',
-    messagingSenderId: '860899860233',
-    projectId: 'ranksprint',
-    storageBucket: 'ranksprint.firebasestorage.app',
+    apiKey: 'AIzaSyBAkfRiSqFQVqhPXXbpZ7ywjBP5vmaoq94',
+    appId: '1:469236570222:android:ae32b29256347c3c30ee7f',
+    messagingSenderId: '469236570222',
+    projectId: 'ranksprintai-1eff8',
+    storageBucket: 'ranksprintai-1eff8.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyCqCgFwRy3PRpZ0dZNl-bCYvwqU3samvXM',
-    appId: '1:860899860233:ios:97aecbfc3b361ddf633dd8',
-    messagingSenderId: '860899860233',
-    projectId: 'ranksprint',
-    storageBucket: 'ranksprint.firebasestorage.app',
+    apiKey: 'AIzaSyAvMUSQWWlWAnsYze_AWjl5AmQaZrXOleE',
+    appId: '1:469236570222:ios:e98e5d8866e6225430ee7f',
+    messagingSenderId: '469236570222',
+    projectId: 'ranksprintai-1eff8',
+    storageBucket: 'ranksprintai-1eff8.firebasestorage.app',
     iosBundleId: 'com.example.ranksprint',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyCqCgFwRy3PRpZ0dZNl-bCYvwqU3samvXM',
-    appId: '1:860899860233:ios:97aecbfc3b361ddf633dd8',
-    messagingSenderId: '860899860233',
-    projectId: 'ranksprint',
-    storageBucket: 'ranksprint.firebasestorage.app',
+    apiKey: 'AIzaSyAvMUSQWWlWAnsYze_AWjl5AmQaZrXOleE',
+    appId: '1:469236570222:ios:e98e5d8866e6225430ee7f',
+    messagingSenderId: '469236570222',
+    projectId: 'ranksprintai-1eff8',
+    storageBucket: 'ranksprintai-1eff8.firebasestorage.app',
     iosBundleId: 'com.example.ranksprint',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyAdRlA_h0OBrgn3QLNDFXlEpQPIRkQJJlw',
-    appId: '1:860899860233:web:3f094ccbce4df82c633dd8',
-    messagingSenderId: '860899860233',
-    projectId: 'ranksprint',
-    authDomain: 'ranksprint.firebaseapp.com',
-    storageBucket: 'ranksprint.firebasestorage.app',
+    apiKey: 'AIzaSyBf-ifIEgNMr_l39PvhNyGvIXQm39xDJUg',
+    appId: '1:469236570222:web:82535637f60778ae30ee7f',
+    messagingSenderId: '469236570222',
+    projectId: 'ranksprintai-1eff8',
+    authDomain: 'ranksprintai-1eff8.firebaseapp.com',
+    storageBucket: 'ranksprintai-1eff8.firebasestorage.app',
+    measurementId: 'G-HN3DR28XHT',
   );
+
 }

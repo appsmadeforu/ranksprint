@@ -2,23 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'screens/auth_wrapper.dart';
+// import 'dev/dummy_feeder.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // Run the full seeder only in debug mode to avoid overwriting production data on every startup.
+  // Run feeder once in debug mode when you need dummy data.
+  // Uncomment the import above, then uncomment this block:
   // if (kDebugMode) {
   //   try {
-  //     await FullFirestoreSeeder.seed();
+  //     await DummyFirestoreFeeder.seedSampleData();
   //   } catch (e) {
-  //     // swallow seeder errors in debug but print for visibility
-  //     if (kDebugMode) {
-  //       print('Seeder failed: $e');
-  //     }
+  //     print('Dummy feeder failed: $e');
   //   }
   // }
+
   runApp(const MyApp());
 }
 
