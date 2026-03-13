@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../screens/home/main_navigation.dart';
 import 'notification_bell.dart';
 
 class TopHeader extends StatelessWidget {
@@ -9,6 +10,7 @@ class TopHeader extends StatelessWidget {
   final Function(String) onExamChanged;
   final bool showExamDropdown;
   final VoidCallback? onBellTap;
+  final bool enableTitleNavigation;
 
   const TopHeader({
     super.key,
@@ -17,6 +19,7 @@ class TopHeader extends StatelessWidget {
     required this.onExamChanged,
     this.showExamDropdown = true,
     this.onBellTap,
+    this.enableTitleNavigation = true,
   });
 
   @override
@@ -38,14 +41,32 @@ class TopHeader extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             // App name on left
-            const Padding(
-              padding: EdgeInsets.only(right: 8),
-              child: Text(
-                'RankSprintAI',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black,
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: enableTitleNavigation
+                    ? () {
+                        Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(
+                            builder: (_) => const MainNavigation(
+                              initialIndex: 1,
+                            ),
+                          ),
+                          (route) => false,
+                        );
+                      }
+                    : null,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                  child: Text(
+                    'RankSprintAI',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black,
+                    ),
+                  ),
                 ),
               ),
             ),

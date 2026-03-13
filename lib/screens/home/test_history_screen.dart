@@ -355,25 +355,38 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
     required int totalMinutes,
   }) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 16, 14, 25),
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF27439A),
-        borderRadius: BorderRadius.circular(0),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF24439A), Color(0xFF3459B9)],
+        ),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Test History',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 25,
-                  fontWeight: FontWeight.w700,
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Test History',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      'Track all your completed tests',
+                      style: TextStyle(color: Colors.white70, fontSize: 11),
+                    ),
+                  ],
                 ),
               ),
-              OutlinedButton(
+              TextButton(
                 onPressed: () {
                   Navigator.push(
                     context,
@@ -382,31 +395,54 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
                     ),
                   );
                 },
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: const BorderSide(color: Colors.white70),
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF1E3A8A),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                child: const Text('View Trends'),
+                child: const Text(
+                  'View Trends',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
           Row(
             children: [
-              Expanded(child: _summaryTile('$totalTests', 'Tests')),
+              Expanded(
+                child: _historyMetric('Tests Attempted', '$totalTests'),
+              ),
               const SizedBox(width: 10),
               Expanded(
-                child: _summaryTile(
+                child: _historyMetric(
+                  'Average Score',
                   '${avgScore.toStringAsFixed(0)}%',
-                  'Avg Score',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _historyMetric(
+                  'Best Score',
+                  '${bestScore.toStringAsFixed(0)}%',
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: _summaryTile('${bestScore.toStringAsFixed(0)}%', 'Best'),
+                child: _historyMetric('Total Time', _formatHours(totalMinutes)),
               ),
-              const SizedBox(width: 10),
-              Expanded(child: _summaryTile(_formatHours(totalMinutes), 'Time')),
             ],
           ),
         ],
@@ -414,26 +450,28 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
     );
   }
 
-  Widget _summaryTile(String value, String label) {
+  Widget _historyMetric(String title, String value) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.14),
-        borderRadius: BorderRadius.circular(10),
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text(
+            title,
+            style: const TextStyle(color: Colors.white70, fontSize: 10),
+          ),
+          const SizedBox(height: 4),
           Text(
             value,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 20,
+              fontSize: 22,
               fontWeight: FontWeight.w700,
             ),
-          ),
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ],
       ),
@@ -760,7 +798,7 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
           border: Border.all(color: const Color(0xFFE5E7EB)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 8,
               offset: const Offset(0, 3),
             ),

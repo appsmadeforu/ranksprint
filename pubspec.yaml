@@ -43,6 +43,7 @@ dependencies:
   google_sign_in: ^6.2.0
   cloud_firestore: ^6.1.2
   cloud_functions: ^6.0.6
+  in_app_purchase: ^3.2.3
   syncfusion_flutter_pdfviewer: ^32.2.7
   url_launcher: any
   flutter_html: ^3.0.0

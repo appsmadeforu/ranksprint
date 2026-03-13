@@ -14,6 +14,9 @@ class AnalyticsScreen extends StatefulWidget {
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
   String? selectedExamId;
   List<String> userExamIds = [];
+  final TextEditingController _leaderboardSearchController =
+      TextEditingController();
+  String _leaderboardQuery = '';
 
   @override
   void initState() {
@@ -36,6 +39,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       userExamIds = exams;
       selectedExamId = exams.isNotEmpty ? exams.first : null;
     });
+  }
+
+  @override
+  void dispose() {
+    _leaderboardSearchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -121,141 +130,229 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           return const Center(child: Text('No leaderboard data'));
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: entries.length,
-          itemBuilder: (context, index) {
-            final e = entries[index];
-            final isCurrentUser =
-                currentUser != null && currentUser.uid == e.userId;
+        return FutureBuilder<List<_LeaderboardRow>>(
+          future: _hydrateLeaderboard(entries),
+          builder: (context, rowsSnap) {
+            if (!rowsSnap.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-            return Container(
-              margin: const EdgeInsets.only(bottom: 14),
-              child: Material(
-                elevation: 6,
-                borderRadius: BorderRadius.circular(22),
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(22),
-                    gradient: isCurrentUser
-                        ? const LinearGradient(
-                            colors: [Color(0xFF2F6FEB), Color(0xFF6EA8FF)],
-                          )
-                        : null,
-                    color: isCurrentUser ? null : Colors.white,
-                  ),
-                  child: Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(22),
-                      color: isCurrentUser
-                          ? Colors.white.withOpacity(0.95)
-                          : Colors.white,
+            final allRows = rowsSnap.data!;
+            final visibleRows = allRows.where(_matchesLeaderboardQuery).toList();
+
+            if (visibleRows.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    _buildLeaderboardSearch(),
+                    const Expanded(
+                      child: Center(child: Text('No leaderboard matches found')),
                     ),
-                    child: Row(
-                      children: [
-                        // 🏅 Rank Badge
-                        Container(
-                          width: 56,
-                          height: 56,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: index == 0
-                                ? Colors.amber
-                                : index == 1
-                                ? Colors.grey
-                                : index == 2
-                                ? Colors.brown
-                                : const Color(0xFFEFF3FF),
-                          ),
-                          child: Center(
-                            child: index < 3
-                                ? const Icon(
-                                    Icons.emoji_events,
-                                    color: Colors.white,
-                                  )
-                                : Text(
-                                    '#${index + 1}',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF2F6FEB),
-                                    ),
-                                  ),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-
-                        // 👤 User Name + Stats
-                        Expanded(
-                          child: FutureBuilder<DocumentSnapshot>(
-                            future: FirebaseFirestore.instance
-                                .collection('users')
-                                .doc(e.userId)
-                                .get(),
-                            builder: (context, userSnap) {
-                              String displayName = e.userId;
-                              if (userSnap.hasData && userSnap.data!.exists) {
-                                final udata =
-                                    userSnap.data!.data()
-                                        as Map<String, dynamic>;
-                                displayName = (udata['name'] ?? e.userId)
-                                    .toString();
-                              }
-
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    displayName,
-                                    style: const TextStyle(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    '${e.testsTaken} tests - ${e.avgPercentile.toStringAsFixed(1)} %ile',
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
-                          ),
-                        ),
-
-                        // 💎 Score
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              e.avgScore.toStringAsFixed(1),
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            const Text(
-                              'avg score',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
+                  ],
                 ),
+              );
+            }
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                children: [
+                  _buildLeaderboardSearch(),
+                  const SizedBox(height: 14),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: visibleRows.length,
+                      itemBuilder: (context, index) {
+                        final row = visibleRows[index];
+                        return _buildLeaderboardCard(
+                          row: row,
+                          isCurrentUser:
+                              currentUser != null &&
+                              currentUser.uid == row.entry.userId,
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
             );
           },
         );
       },
+    );
+  }
+
+  Widget _buildLeaderboardSearch() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: TextField(
+        controller: _leaderboardSearchController,
+        onChanged: (value) {
+          setState(() {
+            _leaderboardQuery = value.trim().toLowerCase();
+          });
+        },
+        decoration: InputDecoration(
+          hintText: 'Search by name or rank...',
+          prefixIcon: const Icon(Icons.search),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide.none,
+          ),
+          filled: true,
+          fillColor: Colors.white,
+        ),
+      ),
+    );
+  }
+
+  Future<List<_LeaderboardRow>> _hydrateLeaderboard(
+    List<_LeaderboardAgg> entries,
+  ) async {
+    final futures = List.generate(entries.length, (index) async {
+      final entry = entries[index];
+      String displayName = entry.userId;
+
+      try {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(entry.userId)
+            .get();
+        if (userDoc.exists) {
+          final data = userDoc.data() ?? <String, dynamic>{};
+          displayName = (data['name'] ?? data['displayName'] ?? entry.userId)
+              .toString();
+        }
+      } catch (_) {}
+
+      return _LeaderboardRow(
+        entry: entry,
+        rank: index + 1,
+        displayName: displayName,
+      );
+    });
+
+    return Future.wait(futures);
+  }
+
+  bool _matchesLeaderboardQuery(_LeaderboardRow row) {
+    if (_leaderboardQuery.isEmpty) return true;
+
+    return row.displayName.toLowerCase().contains(_leaderboardQuery) ||
+        row.rank.toString().contains(_leaderboardQuery);
+  }
+
+  Widget _buildLeaderboardCard({
+    required _LeaderboardRow row,
+    required bool isCurrentUser,
+  }) {
+    final rank = row.rank;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      child: Material(
+        elevation: 6,
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            gradient: isCurrentUser
+                ? const LinearGradient(
+                    colors: [Color(0xFF2F6FEB), Color(0xFF6EA8FF)],
+                  )
+                : null,
+            color: isCurrentUser ? null : Colors.white,
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              color: isCurrentUser
+                  ? Colors.white.withValues(alpha: 0.95)
+                  : Colors.white,
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: rank == 1
+                        ? Colors.amber
+                        : rank == 2
+                        ? Colors.grey
+                        : rank == 3
+                        ? Colors.brown
+                        : const Color(0xFFEFF3FF),
+                  ),
+                  child: Center(
+                    child: rank <= 3
+                        ? const Icon(
+                            Icons.emoji_events,
+                            color: Colors.white,
+                          )
+                        : Text(
+                            '#$rank',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF2F6FEB),
+                            ),
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        row.displayName,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '${row.entry.testsTaken} tests - ${row.entry.avgPercentile.toStringAsFixed(1)} %ile',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      row.entry.avgScore.toStringAsFixed(1),
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      isCurrentUser ? 'your score' : 'avg score',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -267,7 +364,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
-          .collection('results')
+          .collection('testAttempts')
           .where('examId', isEqualTo: selectedExamId)
           .where('userId', isEqualTo: user.uid)
           .snapshots(),
@@ -276,95 +373,538 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final docs = snap.data!.docs;
-        if (docs.isEmpty) {
+        final attempts = snap.data!.docs
+            .cast<QueryDocumentSnapshot<Map<String, dynamic>>>()
+            .where((doc) {
+              final status = (doc.data()['status'] ?? 'completed')
+                  .toString()
+                  .toLowerCase();
+              return status == 'completed';
+            })
+            .toList()
+          ..sort((a, b) {
+            final aTs =
+                _toDate(a.data()['submittedAt']) ??
+                _toDate(a.data()['startedAt']) ??
+                DateTime.fromMillisecondsSinceEpoch(0);
+            final bTs =
+                _toDate(b.data()['submittedAt']) ??
+                _toDate(b.data()['startedAt']) ??
+                DateTime.fromMillisecondsSinceEpoch(0);
+            return aTs.compareTo(bTs);
+          });
+
+        if (attempts.isEmpty) {
           return const Center(child: Text('No analytics data'));
         }
 
-        final records =
-            docs.map((d) => d.data() as Map<String, dynamic>).toList()
-              ..sort((a, b) {
-                final aTs =
-                    (a['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
-                final bTs =
-                    (b['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
-                return aTs.compareTo(bTs);
-              });
+        return FutureBuilder<_DashboardVm>(
+          future: _loadDashboardVm(user.uid, selectedExamId!, attempts),
+          builder: (context, vmSnap) {
+            if (!vmSnap.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-        final total = records.length;
-        double avg = 0;
-        int best = 0;
-        final recentScores = <double>[];
+            final vm = vmSnap.data!;
 
-        for (final data in records) {
-          final score = (data['score'] as num?)?.toDouble() ?? 0;
-          avg += score;
-          if (score.toInt() > best) best = score.toInt();
-          recentScores.add(score);
-        }
-
-        avg = avg / (total == 0 ? 1 : total);
-        final chartScores = recentScores.length > 8
-            ? recentScores.sublist(recentScores.length - 8)
-            : recentScores;
-
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            children: [
-              _buildPremiumCard(
-                child: Row(
-                  children: [
-                    _buildStat('Attempts', '$total'),
-                    _buildStat('Avg Score', avg.toStringAsFixed(1)),
-                    _buildStat('Best Score', '$best'),
-                  ],
-                ),
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _metricCard(
+                          icon: Icons.checklist_rounded,
+                          iconColor: const Color(0xFF16A34A),
+                          value: '${vm.testsTaken}',
+                          label: 'Tests Taken',
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _metricCard(
+                          icon: Icons.workspace_premium_outlined,
+                          iconColor: const Color(0xFFF97316),
+                          value: vm.bestRank > 0 ? '${vm.bestRank}' : '-',
+                          label: 'Top Rank',
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _metricCard(
+                          icon: Icons.query_stats_rounded,
+                          iconColor: const Color(0xFF1D4ED8),
+                          value: '${vm.avgScore.toStringAsFixed(0)}%',
+                          label: 'Avg Score',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _dashboardSection(
+                    title: 'Performance Trend',
+                    child: Column(
+                      children: [
+                        SizedBox(
+                          height: 180,
+                          child: vm.trend.length < 2
+                              ? const Center(
+                                  child: Text(
+                                    'Need at least 2 attempts to show trend',
+                                  ),
+                                )
+                              : _DashboardTrendChart(points: vm.trend),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _dashboardSection(
+                    title: 'Subject-wise Accuracy',
+                    child: vm.subjects.isEmpty
+                        ? const Text('No subject data available')
+                        : Column(
+                            children: vm.subjects
+                                .map(
+                                  (subject) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 12),
+                                    child: _subjectRow(subject),
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                  ),
+                  const SizedBox(height: 16),
+                  _dashboardSection(
+                    title: 'Time per Question',
+                    child: Column(
+                      children: [
+                        SizedBox(
+                          height: 170,
+                          child: _TimePerQuestionChart(buckets: vm.timeBuckets),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Average time: ${vm.avgSecondsPerQuestion.toStringAsFixed(0)} seconds per question',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (vm.improvements.isNotEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF7E8),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFF4C95D)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Areas to Improve',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          ...vm.improvements.map(
+                            (item) => Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      item.name,
+                                      style: const TextStyle(fontSize: 13),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFDE68A),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Text(
+                                      '${item.accuracy.toStringAsFixed(0)}% accuracy',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF92400E),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
               ),
-              const SizedBox(height: 18),
-              _buildPremiumCard(
-                child: SizedBox(
-                  height: 160,
-                  child: _buildScoreTrend(chartScores),
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
   }
 
-  Widget _buildScoreTrend(List<double> scores) {
-    if (scores.isEmpty) {
-      return const Center(child: Text('No trend data'));
+  Future<_DashboardVm> _loadDashboardVm(
+    String userId,
+    String examId,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
+  ) async {
+    final resultMap = await _loadDashboardResultMap(attempts, userId, examId);
+    final subjects = await _dashboardSubjectStats(attempts);
+    subjects.sort((a, b) => b.accuracy.compareTo(a.accuracy));
+
+    final trend = <_DashboardPoint>[];
+    final timeBuckets = <_TimeBucket>[
+      _TimeBucket(label: '0-30s', minSeconds: 0, maxSeconds: 30),
+      _TimeBucket(label: '30-60s', minSeconds: 30, maxSeconds: 60),
+      _TimeBucket(label: '60-90s', minSeconds: 60, maxSeconds: 90),
+      _TimeBucket(label: '90s+', minSeconds: 90, maxSeconds: null),
+    ];
+
+    double totalScore = 0;
+    double totalSecondsPerQuestion = 0;
+    int spqCount = 0;
+    int bestRank = 0;
+
+    for (int i = 0; i < attempts.length; i++) {
+      final attempt = attempts[i].data();
+      final result = resultMap[attempts[i].id] ?? const <String, dynamic>{};
+      final score = _dashboardScorePct(attempt, result);
+      totalScore += score;
+      trend.add(_DashboardPoint(label: 'Test ${i + 1}', value: score));
+
+      final rank = _toInt(result['rank']) ?? 0;
+      if (rank > 0 && (bestRank == 0 || rank < bestRank)) {
+        bestRank = rank;
+      }
+
+      final secondsPerQuestion = _secondsPerQuestion(attempt, result);
+      if (secondsPerQuestion != null) {
+        totalSecondsPerQuestion += secondsPerQuestion;
+        spqCount++;
+        for (final bucket in timeBuckets) {
+          if (bucket.matches(secondsPerQuestion)) {
+            bucket.count++;
+            break;
+          }
+        }
+      }
     }
 
-    final maxVal = scores.reduce((a, b) => a > b ? a : b);
-    final safeMax = maxVal <= 0 ? 1.0 : maxVal;
+    final avgScore = attempts.isEmpty ? 0.0 : totalScore / attempts.length;
+    final avgSecondsPerQuestion =
+        spqCount == 0 ? 0.0 : totalSecondsPerQuestion / spqCount;
 
+    return _DashboardVm(
+      testsTaken: attempts.length,
+      bestRank: bestRank,
+      avgScore: avgScore,
+      trend: trend,
+      subjects: subjects,
+      timeBuckets: timeBuckets,
+      avgSecondsPerQuestion: avgSecondsPerQuestion,
+      improvements: List<_SubjectMetric>.from(
+        subjects.reversed.take(2).toList().reversed,
+      ),
+    );
+  }
+
+  Future<Map<String, Map<String, dynamic>>> _loadDashboardResultMap(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
+    String userId,
+    String examId,
+  ) async {
+    if (attempts.isEmpty) return {};
+
+    final out = <String, Map<String, dynamic>>{};
+    final ids = attempts.map((a) => a.id).toList();
+
+    try {
+      for (int i = 0; i < ids.length; i += 10) {
+        final chunk = ids.sublist(i, (i + 10).clamp(0, ids.length));
+        final snap = await FirebaseFirestore.instance
+            .collection('results')
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get();
+        for (final doc in snap.docs) {
+          out[doc.id] = doc.data();
+        }
+      }
+    } catch (_) {}
+
+    final unresolved = attempts.where((attempt) => !out.containsKey(attempt.id)).toList();
+    if (unresolved.isEmpty) return out;
+
+    QuerySnapshot<Map<String, dynamic>> allResults;
+    try {
+      allResults = await FirebaseFirestore.instance
+          .collection('results')
+          .where('userId', isEqualTo: userId)
+          .where('examId', isEqualTo: examId)
+          .get();
+    } catch (_) {
+      allResults = await FirebaseFirestore.instance
+          .collection('results')
+          .where('userId', isEqualTo: userId)
+          .get();
+    }
+
+    final byTest = <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+    for (final doc in allResults.docs) {
+      final testId = (doc.data()['testId'] ?? '').toString();
+      byTest.putIfAbsent(testId, () => []).add(doc);
+    }
+
+    final used = <String>{};
+    for (final attempt in unresolved) {
+      final data = attempt.data();
+      final testId = (data['testId'] ?? '').toString();
+      final candidates = byTest[testId] ?? const [];
+      if (candidates.isEmpty) continue;
+
+      final attemptTime =
+          _toDate(data['submittedAt']) ??
+          _toDate(data['startedAt']) ??
+          DateTime.fromMillisecondsSinceEpoch(0);
+
+      QueryDocumentSnapshot<Map<String, dynamic>>? best;
+      int bestDelta = 1 << 62;
+      for (final candidate in candidates) {
+        if (used.contains(candidate.id)) continue;
+        final resultTime =
+            _toDate(candidate.data()['createdAt']) ??
+            DateTime.fromMillisecondsSinceEpoch(0);
+        final delta =
+            (resultTime.millisecondsSinceEpoch -
+                    attemptTime.millisecondsSinceEpoch)
+                .abs();
+        if (delta < bestDelta) {
+          bestDelta = delta;
+          best = candidate;
+        }
+      }
+      if (best != null) {
+        out[attempt.id] = best.data();
+        used.add(best.id);
+      }
+    }
+
+    return out;
+  }
+
+  Future<List<_SubjectMetric>> _dashboardSubjectStats(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
+  ) async {
+    final out = <String, _SubjectMetric>{};
+    final cache = <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+
+    for (final attemptDoc in attempts) {
+      final attempt = attemptDoc.data();
+      final examId = (attempt['examId'] ?? '').toString();
+      final testId = (attempt['testId'] ?? '').toString();
+      if (examId.isEmpty || testId.isEmpty) continue;
+
+      final cacheKey = '$examId|$testId';
+      if (!cache.containsKey(cacheKey)) {
+        try {
+          final qs = await FirebaseFirestore.instance
+              .collection('exams')
+              .doc(examId)
+              .collection('tests')
+              .doc(testId)
+              .collection('questions')
+              .get();
+          cache[cacheKey] = qs.docs;
+        } catch (_) {
+          cache[cacheKey] = const [];
+        }
+      }
+
+      final questions = cache[cacheKey] ?? const [];
+      final answers = <String, String>{};
+      if (attempt['answers'] is Map) {
+        final raw = attempt['answers'] as Map;
+        for (final entry in raw.entries) {
+          answers[entry.key.toString()] = (entry.value ?? '').toString();
+        }
+      }
+
+      for (final qDoc in questions) {
+        final question = qDoc.data();
+        final subject =
+            (question['subject'] ??
+                    question['sectionName'] ??
+                    question['section'] ??
+                    'General')
+                .toString();
+        final metric = out.putIfAbsent(subject, () => _SubjectMetric(subject));
+        metric.total++;
+        final selected = answers[qDoc.id] ?? '';
+        final correct = (question['correctOption'] ?? '').toString();
+        if (selected.isNotEmpty && selected == correct) {
+          metric.correct++;
+        }
+      }
+    }
+
+    return out.values.toList();
+  }
+
+  double _dashboardScorePct(Map<String, dynamic> attempt, Map<String, dynamic> result) {
+    final correct = _toInt(result['correct']) ?? _toInt(result['score']) ?? 0;
+    final incorrect = _toInt(result['incorrect']) ?? _toInt(attempt['wrong']) ?? 0;
+    final unanswered =
+        _toInt(result['unanswered']) ?? _toInt(attempt['skipped']) ?? 0;
+    final total = (correct + incorrect + unanswered) > 0
+        ? (correct + incorrect + unanswered)
+        : 20;
+    return (correct * 100.0 / total).clamp(0.0, 100.0);
+  }
+
+  double? _secondsPerQuestion(
+    Map<String, dynamic> attempt,
+    Map<String, dynamic> result,
+  ) {
+    final mins = _attemptMinutes(attempt);
+    final totalQuestions =
+        _toInt(result['correct']) != null ||
+            _toInt(result['incorrect']) != null ||
+            _toInt(result['unanswered']) != null
+        ? (_toInt(result['correct']) ?? 0) +
+              (_toInt(result['incorrect']) ?? 0) +
+              (_toInt(result['unanswered']) ?? 0)
+        : _toInt(result['totalQuestions']) ?? 0;
+    if (mins <= 0 || totalQuestions <= 0) return null;
+    return (mins * 60.0) / totalQuestions;
+  }
+
+  int _attemptMinutes(Map<String, dynamic> attempt) {
+    final timeTaken = _toInt(attempt['timeTaken']);
+    if (timeTaken != null) return timeTaken;
+    final started = _toDate(attempt['startedAt']);
+    final submitted = _toDate(attempt['submittedAt']);
+    if (started == null || submitted == null) return 0;
+    return submitted.difference(started).inMinutes;
+  }
+
+  DateTime? _toDate(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    return null;
+  }
+
+  int? _toInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  Widget _dashboardSection({required String title, required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFD6DBE4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _metricCard({
+    required IconData icon,
+    required Color iconColor,
+    required String value,
+    required String label,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFD6DBE4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: iconColor),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _subjectRow(_SubjectMetric subject) {
+    final color = _subjectColor(subject.name);
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: List.generate(scores.length, (i) {
-        final s = scores[i];
-        final h = (s / safeMax) * 120;
-        return Column(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Text(s.toStringAsFixed(0), style: const TextStyle(fontSize: 10)),
-            const SizedBox(height: 4),
-            Container(
-              width: 18,
-              height: h < 4 ? 4 : h,
-              decoration: BoxDecoration(
-                color: const Color(0xFF2F6FEB),
-                borderRadius: BorderRadius.circular(4),
-              ),
+      children: [
+        Expanded(
+          child: Text(
+            subject.name,
+            style: const TextStyle(fontSize: 12),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          flex: 3,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              minHeight: 8,
+              value: (subject.accuracy / 100).clamp(0.0, 1.0),
+              backgroundColor: const Color(0xFFE5E7EB),
+              color: color,
             ),
-          ],
-        );
-      }),
+          ),
+        ),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 34,
+          child: Text(
+            '${subject.accuracy.toStringAsFixed(0)}%',
+            textAlign: TextAlign.right,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
     );
   }
 
@@ -406,29 +946,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     return out;
   }
 
-  Widget _buildPremiumCard({required Widget child}) {
-    return Material(
-      borderRadius: BorderRadius.circular(18),
-      color: Colors.white,
-      elevation: 3,
-      child: Padding(padding: const EdgeInsets.all(20), child: child),
-    );
-  }
-
-  Widget _buildStat(String title, String value) {
-    return Expanded(
-      child: Column(
-        children: [
-          Text(title, style: const TextStyle(color: Colors.grey)),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _LeaderboardAgg {
@@ -441,4 +958,244 @@ class _LeaderboardAgg {
   double avgPercentile = 0;
 
   _LeaderboardAgg({required this.userId});
+}
+
+class _LeaderboardRow {
+  final _LeaderboardAgg entry;
+  final int rank;
+  final String displayName;
+
+  const _LeaderboardRow({
+    required this.entry,
+    required this.rank,
+    required this.displayName,
+  });
+}
+
+class _SubjectMetric {
+  final String name;
+  int total = 0;
+  int correct = 0;
+
+  _SubjectMetric(this.name);
+
+  double get accuracy => total == 0 ? 0 : (correct * 100.0 / total);
+}
+
+class _DashboardVm {
+  final int testsTaken;
+  final int bestRank;
+  final double avgScore;
+  final List<_DashboardPoint> trend;
+  final List<_SubjectMetric> subjects;
+  final List<_TimeBucket> timeBuckets;
+  final double avgSecondsPerQuestion;
+  final List<_SubjectMetric> improvements;
+
+  const _DashboardVm({
+    required this.testsTaken,
+    required this.bestRank,
+    required this.avgScore,
+    required this.trend,
+    required this.subjects,
+    required this.timeBuckets,
+    required this.avgSecondsPerQuestion,
+    required this.improvements,
+  });
+}
+
+class _DashboardPoint {
+  final String label;
+  final double value;
+
+  const _DashboardPoint({required this.label, required this.value});
+}
+
+class _TimeBucket {
+  final String label;
+  final double minSeconds;
+  final double? maxSeconds;
+  int count = 0;
+
+  _TimeBucket({
+    required this.label,
+    required this.minSeconds,
+    required this.maxSeconds,
+  });
+
+  bool matches(double value) {
+    final lowerOk = value >= minSeconds;
+    final upperOk = maxSeconds == null ? true : value < maxSeconds!;
+    return lowerOk && upperOk;
+  }
+}
+
+class _DashboardTrendChart extends StatelessWidget {
+  final List<_DashboardPoint> points;
+
+  const _DashboardTrendChart({required this.points});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(
+          child: CustomPaint(
+            size: Size.infinite,
+            painter: _DashboardTrendPainter(points: points),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: points
+              .map(
+                (point) => Expanded(
+                  child: Text(
+                    point.label,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Color(0xFF6B7280),
+                    ),
+                  ),
+                ),
+              )
+              .toList(),
+        ),
+      ],
+    );
+  }
+}
+
+class _DashboardTrendPainter extends CustomPainter {
+  final List<_DashboardPoint> points;
+
+  _DashboardTrendPainter({required this.points});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final left = 22.0;
+    final top = 12.0;
+    final right = size.width - 8;
+    final bottom = size.height - 14;
+    final width = right - left;
+    final height = bottom - top;
+
+    final grid = Paint()
+      ..color = const Color(0xFFE5E7EB)
+      ..strokeWidth = 1;
+    for (int i = 0; i <= 4; i++) {
+      final y = top + (height * i / 4);
+      canvas.drawLine(Offset(left, y), Offset(right, y), grid);
+    }
+
+    final axis = Paint()
+      ..color = const Color(0xFFCBD5E1)
+      ..strokeWidth = 1.2;
+    canvas.drawLine(Offset(left, top), Offset(left, bottom), axis);
+    canvas.drawLine(Offset(left, bottom), Offset(right, bottom), axis);
+
+    if (points.isEmpty) return;
+
+    final path = Path();
+    final linePaint = Paint()
+      ..color = const Color(0xFF1E3A8A)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    final dotPaint = Paint()..color = const Color(0xFF1E3A8A);
+
+    for (int i = 0; i < points.length; i++) {
+      final x = left + (width * i / (points.length == 1 ? 1 : points.length - 1));
+      final y = bottom - (points[i].value.clamp(0.0, 100.0) / 100) * height;
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+      canvas.drawCircle(Offset(x, y), 3.5, dotPaint);
+    }
+
+    canvas.drawPath(path, linePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashboardTrendPainter oldDelegate) =>
+      oldDelegate.points != points;
+}
+
+class _TimePerQuestionChart extends StatelessWidget {
+  final List<_TimeBucket> buckets;
+
+  const _TimePerQuestionChart({required this.buckets});
+
+  @override
+  Widget build(BuildContext context) {
+    final maxCount = buckets.fold<int>(0, (max, bucket) {
+      return bucket.count > max ? bucket.count : max;
+    });
+    final safeMax = maxCount == 0 ? 1 : maxCount;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: buckets
+          .map(
+            (bucket) => Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${bucket.count}',
+                      style: const TextStyle(fontSize: 10),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      height: 120 * (bucket.count / safeMax),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF97316),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      bucket.label,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF6B7280),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )
+          .toList(),
+    );
+  }
+}
+
+Color _subjectColor(String subject) {
+  final normalized = subject.trim().toLowerCase();
+  if (normalized.isEmpty) {
+    return const Color(0xFF16A34A);
+  }
+
+  const palette = <Color>[
+    Color(0xFF2563EB),
+    Color(0xFF16A34A),
+    Color(0xFFF97316),
+    Color(0xFFDC2626),
+    Color(0xFF7C3AED),
+    Color(0xFF0891B2),
+    Color(0xFFCA8A04),
+    Color(0xFFDB2777),
+  ];
+
+  var hash = 0;
+  for (final unit in normalized.codeUnits) {
+    hash = ((hash * 31) + unit) & 0x7fffffff;
+  }
+
+  return palette[hash % palette.length];
 }

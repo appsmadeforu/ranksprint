@@ -12,7 +12,12 @@
           "package_name": "com.example.ranksprint"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "469236570222-7qrfm9h3i37hrnddlt86vmnuqg5m02j2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBAkfRiSqFQVqhPXXbpZ7ywjBP5vmaoq94"
@@ -20,7 +25,71 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "469236570222-7qrfm9h3i37hrnddlt86vmnuqg5m02j2.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "469236570222-2jldg2r05nmlrp5o23v0n2qod2jkhpl6.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.ranksprint"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:469236570222:android:bc9d7096d0eb6b5730ee7f",
+        "android_client_info": {
+          "package_name": "com.ranksprint.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "469236570222-chp5e33b685172h9pp3ghuufqqpoo16e.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ranksprint.app",
+            "certificate_hash": "3b6b9102fc67088113f6de3ede9f3b76c7c3554b"
+          }
+        },
+        {
+          "client_id": "469236570222-hf5ggemmtku5totiuf3vv9p7n9kp8hmd.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ranksprint.app",
+            "certificate_hash": "3a2dc002d174e0df936c3bcfb461548fc9e96072"
+          }
+        },
+        {
+          "client_id": "469236570222-7qrfm9h3i37hrnddlt86vmnuqg5m02j2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBAkfRiSqFQVqhPXXbpZ7ywjBP5vmaoq94"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "469236570222-7qrfm9h3i37hrnddlt86vmnuqg5m02j2.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "469236570222-2jldg2r05nmlrp5o23v0n2qod2jkhpl6.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.ranksprint"
+              }
+            }
+          ]
         }
       }
     }

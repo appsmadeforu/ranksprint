@@ -1,5 +1,5 @@
 
-package com.example.ranksprint
+package com.ranksprint.app
 
 import android.os.Bundle
 import android.view.WindowManager

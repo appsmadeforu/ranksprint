@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../services/subscription_access_service.dart';
 import '../../widgets/top_header.dart';
 import 'test_detail_screen.dart';
 import 'subscription_screen.dart';
@@ -18,8 +19,8 @@ class _TestsScreenState extends State<TestsScreen> {
   List<String> userExamIds = [];
   String? selectedExamId;
   bool _examIsPremium = false;
-
-  final Map<String, bool> _userHasPlanForExam = {};
+  List<String> _examSubscriptionPlanIds = const [];
+  Set<String> _activePlanIds = <String>{};
 
   @override
   void initState() {
@@ -49,59 +50,22 @@ class _TestsScreenState extends State<TestsScreen> {
       });
 
       _loadExamMetadata(selectedExamId!);
-      _checkUserHasPlanForExam(selectedExamId!);
+      _loadActivePlans();
     }
   }
 
-  Future<void> _checkUserHasPlanForExam(String examId) async {
+  Future<void> _loadActivePlans() async {
     try {
-      final user = FirebaseAuth.instance.currentUser!;
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-
-      final subIds = List<String>.from(
-        userDoc.data()?['subscriptionIds'] ?? [],
-      );
-
-      bool has = false;
-
-      for (final sid in subIds) {
-        final sdoc = await FirebaseFirestore.instance
-            .collection('subscriptions')
-            .doc(sid)
-            .get();
-
-        if (!sdoc.exists) continue;
-
-        final sdata = sdoc.data() ?? {};
-        if ((sdata['status'] ?? '') != 'active') continue;
-
-        final planId = sdata['planId'] as String?;
-        if (planId == null) continue;
-
-        final pdoc = await FirebaseFirestore.instance
-            .collection('subscriptionPlans')
-            .doc(planId)
-            .get();
-
-        if (!pdoc.exists) continue;
-
-        final included = List<String>.from(pdoc.data()?['examsIncluded'] ?? []);
-
-        if (included.contains(examId)) {
-          has = true;
-          break;
-        }
-      }
-
+      final activePlanIds =
+          await SubscriptionAccessService.getCurrentUserActivePlanIds();
+      if (!mounted) return;
       setState(() {
-        _userHasPlanForExam[examId] = has;
+        _activePlanIds = activePlanIds;
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() {
-        _userHasPlanForExam[examId] = false;
+        _activePlanIds = <String>{};
       });
     }
   }
@@ -114,18 +78,19 @@ class _TestsScreenState extends State<TestsScreen> {
           .get();
 
       final data = doc.data();
+      final examPlanIds = SubscriptionAccessService.readPlanIds(data);
 
       final isPremium =
-          (data != null &&
-          (data['subscriptionPlanIds'] is List) &&
-          (data['subscriptionPlanIds'] as List).isNotEmpty);
+          data != null && examPlanIds.isNotEmpty;
 
       setState(() {
         _examIsPremium = isPremium;
+        _examSubscriptionPlanIds = examPlanIds;
       });
     } catch (_) {
       setState(() {
         _examIsPremium = false;
+        _examSubscriptionPlanIds = const [];
       });
     }
   }
@@ -152,7 +117,6 @@ class _TestsScreenState extends State<TestsScreen> {
                   selectedExamId = value;
                 });
                 _loadExamMetadata(value);
-                _checkUserHasPlanForExam(value);
               },
             ),
 
@@ -228,7 +192,7 @@ class _TestsScreenState extends State<TestsScreen> {
                         return const Center(child: CircularProgressIndicator());
                       }
 
-                      final tests = snapshot.data!.docs;
+                      final tests = snapshot.data!.docs.where(_isTestVisible).toList();
 
                       if (tests.isEmpty) {
                         return const Center(child: Text("No tests available"));
@@ -253,6 +217,34 @@ class _TestsScreenState extends State<TestsScreen> {
         ),
       ),
     );
+  }
+
+  bool _isTestVisible(QueryDocumentSnapshot test) {
+    final data = test.data() as Map<String, dynamic>? ?? <String, dynamic>{};
+    final status = (data['status'] ?? 'published').toString().toLowerCase();
+    if (status != 'published') {
+      return false;
+    }
+
+    final now = DateTime.now();
+    final visibilityStart = _readDateTime(data['visibilityStart']);
+    final visibilityEnd = _readDateTime(data['visibilityEnd']);
+
+    if (visibilityStart != null && now.isBefore(visibilityStart)) {
+      return false;
+    }
+
+    if (visibilityEnd != null && !now.isBefore(visibilityEnd)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  DateTime? _readDateTime(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    return null;
   }
 
   Widget _buildTestCard(QueryDocumentSnapshot test, int usedAttempts) {
@@ -280,13 +272,22 @@ class _TestsScreenState extends State<TestsScreen> {
     final Map<String, dynamic>? tdata = test.data() as Map<String, dynamic>?;
 
     final isPremium = (tdata != null && tdata.containsKey('isPremium'))
-        ? (tdata['isPremium'] ?? false)
+        ? (tdata['isPremium'] ?? false) == true
         : _examIsPremium;
+    final isExplicitlyLocked = (tdata?['isLocked'] ?? false) == true;
+    final itemPlanIds = SubscriptionAccessService.readPlanIds(tdata);
+    final requiredPlanIds = itemPlanIds.isNotEmpty
+        ? itemPlanIds
+        : _examSubscriptionPlanIds;
+    final requiresSubscription = isPremium || requiredPlanIds.isNotEmpty;
+    final hasPlanAccess = requiredPlanIds.isEmpty ||
+        SubscriptionAccessService.hasRequiredPlanAccess(
+          activePlanIds: _activePlanIds,
+          requiredPlanIds: requiredPlanIds,
+        );
 
-    final hasPlan = _userHasPlanForExam[selectedExamId] ?? false;
-
-    final isLocked = isPremium && !hasPlan;
-    final isDisabled = isLocked || limitReached;
+    final isLocked =
+        isExplicitlyLocked || (requiresSubscription && !hasPlanAccess);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 18),
@@ -296,12 +297,20 @@ class _TestsScreenState extends State<TestsScreen> {
         elevation: 3,
         child: InkWell(
           borderRadius: BorderRadius.circular(18),
-          splashColor: const Color(0xFF2F6FEB).withOpacity(0.1),
+          splashColor: const Color(0xFF2F6FEB).withValues(alpha: 0.1),
           onTap: () {
             if (isLocked) {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
+                MaterialPageRoute(
+                  builder: (_) => SubscriptionScreen(
+                    initialExamId: selectedExamId,
+                    initialPlanId:
+                        requiredPlanIds.isNotEmpty ? requiredPlanIds.first : null,
+                    lockedItemLabel: title.toString(),
+                    lockedItemType: 'test',
+                  ),
+                ),
               );
               return;
             }
@@ -365,9 +374,25 @@ class _TestsScreenState extends State<TestsScreen> {
                   ),
                 ),
                 ElevatedButton(
-                  onPressed: isDisabled
+                  onPressed: limitReached
                       ? null
                       : () {
+                          if (isLocked) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => SubscriptionScreen(
+                                  initialExamId: selectedExamId,
+                                  initialPlanId: requiredPlanIds.isNotEmpty
+                                      ? requiredPlanIds.first
+                                      : null,
+                                  lockedItemLabel: title.toString(),
+                                  lockedItemType: 'test',
+                                ),
+                              ),
+                            );
+                            return;
+                          }
                           Navigator.push(
                             context,
                             MaterialPageRoute(

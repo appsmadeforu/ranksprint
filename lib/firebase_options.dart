@@ -64,7 +64,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '469236570222',
     projectId: 'ranksprintai-1eff8',
     storageBucket: 'ranksprintai-1eff8.firebasestorage.app',
-    iosBundleId: 'com.example.ranksprint',
+    iosBundleId: 'com.ranksprint.app',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
@@ -73,7 +73,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '469236570222',
     projectId: 'ranksprintai-1eff8',
     storageBucket: 'ranksprintai-1eff8.firebasestorage.app',
-    iosBundleId: 'com.example.ranksprint',
+    iosBundleId: 'com.ranksprint.app',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
@@ -85,5 +85,4 @@ class DefaultFirebaseOptions {
     storageBucket: 'ranksprintai-1eff8.firebasestorage.app',
     measurementId: 'G-HN3DR28XHT',
   );
-
 }
