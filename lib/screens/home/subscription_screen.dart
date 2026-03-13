@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import '../../services/subscription_access_service.dart';
 
 class SubscriptionScreen extends StatefulWidget {
   final String? initialPlanId;
@@ -30,6 +31,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
   List<Map<String, dynamic>> subscriptionPlans = [];
   String? selectedExamId;
+  String? _selectedExamName;
+  List<String> _selectedExamPlanIds = const [];
   bool isLoadingPlans = false;
   bool _isPurchasing = false;
   StreamSubscription<List<PurchaseDetails>>? _purchaseSubscription;
@@ -41,6 +44,29 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     selectedExamId = widget.initialExamId;
     _listenToPurchases();
     _loadSubscriptionPlans();
+  }
+
+  Future<void> _loadSelectedExamContext() async {
+    if (selectedExamId == null || selectedExamId!.isEmpty) {
+      _selectedExamName = null;
+      _selectedExamPlanIds = const [];
+      return;
+    }
+
+    try {
+      final examDoc = await FirebaseFirestore.instance
+          .collection('exams')
+          .doc(selectedExamId)
+          .get();
+      final examData = examDoc.data() ?? const <String, dynamic>{};
+      _selectedExamName = (examData['name'] ?? selectedExamId).toString();
+      _selectedExamPlanIds = List<String>.from(
+        examData['subscriptionPlanIds'] ?? const <String>[],
+      );
+    } catch (_) {
+      _selectedExamName = selectedExamId;
+      _selectedExamPlanIds = const [];
+    }
   }
 
   void _listenToPurchases() {
@@ -99,6 +125,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     setState(() => isLoadingPlans = true);
 
     try {
+      await _loadSelectedExamContext();
       final snapshot = await FirebaseFirestore.instance
           .collection('subscriptionPlans')
           .where('isActive', isEqualTo: true)
@@ -153,14 +180,19 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
       plans.sort((a, b) => (a['price'] as int).compareTo(b['price'] as int));
 
+      if (plans.isNotEmpty) {
+        if (selectedPlanId.isEmpty ||
+            !plans.any((plan) => plan['id'] == selectedPlanId)) {
+          selectedPlanId = _resolveInitialPlanId(plans);
+        }
+        selectedExamId ??= _resolveInitialExamId(plans, selectedPlanId);
+        await _loadSelectedExamContext();
+      }
+
       setState(() {
         subscriptionPlans = plans;
         if (plans.isNotEmpty) {
-          if (selectedPlanId.isEmpty ||
-              !plans.any((plan) => plan['id'] == selectedPlanId)) {
-            selectedPlanId = _resolveInitialPlanId(plans);
-          }
-          selectedExamId ??= _resolveInitialExamId(plans, selectedPlanId);
+          _syncSelectionWithExam();
         }
         isLoadingPlans = false;
       });
@@ -184,11 +216,52 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   }
 
   Map<String, dynamic>? _selectedPlanOrNull() {
-    if (subscriptionPlans.isEmpty) return null;
-    for (final p in subscriptionPlans) {
+    final visiblePlans = _visiblePlans();
+    if (visiblePlans.isEmpty) return null;
+    for (final p in visiblePlans) {
       if (p['id'] == selectedPlanId) return p;
     }
-    return subscriptionPlans.first;
+    return visiblePlans.first;
+  }
+
+  List<Map<String, dynamic>> _visiblePlans() {
+    if (selectedExamId == null || selectedExamId!.isEmpty) {
+      return subscriptionPlans;
+    }
+
+    return subscriptionPlans.where(_planMatchesSelectedExam).toList();
+  }
+
+  bool _planMatchesSelectedExam(Map<String, dynamic> plan) {
+    final examId = selectedExamId;
+    if (examId == null || examId.isEmpty) {
+      return true;
+    }
+
+    final planId = plan['id'].toString();
+    if (_selectedExamPlanIds.contains(planId)) {
+      return true;
+    }
+
+    return SubscriptionAccessService.planIncludesExam(
+      plan['examsIncluded'],
+      examId,
+    );
+  }
+
+  void _syncSelectionWithExam() {
+    final visiblePlans = _visiblePlans();
+    if (visiblePlans.isEmpty) {
+      selectedPlanId = '';
+      return;
+    }
+
+    if (selectedPlanId.isNotEmpty &&
+        visiblePlans.any((plan) => plan['id'] == selectedPlanId)) {
+      return;
+    }
+
+    selectedPlanId = visiblePlans.first['id'].toString();
   }
 
   String _resolveInitialPlanId(List<Map<String, dynamic>> plans) {
@@ -331,6 +404,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
     await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
       'subscriptionStatus': 'paid',
+      'activePlanIds': FieldValue.arrayUnion([plan['id']]),
       'subscriptionIds': FieldValue.arrayUnion([subRef.id]),
     }, SetOptions(merge: true));
   }
@@ -341,6 +415,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    final visiblePlans = _visiblePlans();
     final selectedPlan = _selectedPlanOrNull();
     if (selectedPlan == null) {
       return Scaffold(
@@ -350,8 +425,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           backgroundColor: const Color(0xFF2F3E8F),
           foregroundColor: Colors.white,
         ),
-        body: const Center(
-          child: Text('No active subscription plans available right now.'),
+        body: Center(
+          child: Text(
+            (selectedExamId ?? '').isNotEmpty
+                ? 'No active subscription plans available for ${_selectedExamName ?? selectedExamId}.'
+                : 'No active subscription plans available right now.',
+          ),
         ),
       );
     }
@@ -408,8 +487,29 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                         ],
                       ),
                     ),
+                  if ((selectedExamId ?? '').isNotEmpty)
+                    _sectionCard(
+                      color: const Color(0xFFEAF4FF),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.school_outlined,
+                            color: Color(0xFF2F3E8F),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Showing plans for exam: ${_selectedExamName ?? selectedExamId}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   /// PLAN CARDS
-                  ...subscriptionPlans.map((plan) {
+                  ...visiblePlans.map((plan) {
                     final isSelected = plan['id'] == selectedPlanId;
                     final isPopular = plan['durationDays'] == 180;
 

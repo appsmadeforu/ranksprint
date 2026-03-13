@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../services/content_access_service.dart';
 import '../../services/subscription_access_service.dart';
 import '../../widgets/top_header.dart';
 import 'test_detail_screen.dart';
@@ -181,18 +182,19 @@ class _TestsScreenState extends State<TestsScreen> {
                   }
 
                   return StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('exams')
-                        .doc(selectedExamId)
-                        .collection('tests')
-                        .orderBy('createdAt')
-                        .snapshots(),
+                    stream: ContentAccessService.publishedTestsQuery(
+                      selectedExamId!,
+                    ).snapshots(),
                     builder: (context, snapshot) {
                       if (!snapshot.hasData) {
                         return const Center(child: CircularProgressIndicator());
                       }
 
-                      final tests = snapshot.data!.docs.where(_isTestVisible).toList();
+                      final tests = snapshot.data!.docs
+                          .cast<QueryDocumentSnapshot<Map<String, dynamic>>>()
+                          .where(_isTestVisible)
+                          .toList()
+                        ..sort(ContentAccessService.compareCreatedAtAsc);
 
                       if (tests.isEmpty) {
                         return const Center(child: Text("No tests available"));
@@ -219,32 +221,9 @@ class _TestsScreenState extends State<TestsScreen> {
     );
   }
 
-  bool _isTestVisible(QueryDocumentSnapshot test) {
-    final data = test.data() as Map<String, dynamic>? ?? <String, dynamic>{};
-    final status = (data['status'] ?? 'published').toString().toLowerCase();
-    if (status != 'published') {
-      return false;
-    }
-
-    final now = DateTime.now();
-    final visibilityStart = _readDateTime(data['visibilityStart']);
-    final visibilityEnd = _readDateTime(data['visibilityEnd']);
-
-    if (visibilityStart != null && now.isBefore(visibilityStart)) {
-      return false;
-    }
-
-    if (visibilityEnd != null && !now.isBefore(visibilityEnd)) {
-      return false;
-    }
-
-    return true;
-  }
-
-  DateTime? _readDateTime(dynamic value) {
-    if (value is Timestamp) return value.toDate();
-    if (value is DateTime) return value;
-    return null;
+  bool _isTestVisible(QueryDocumentSnapshot<Map<String, dynamic>> test) {
+    final data = test.data();
+    return ContentAccessService.isVisibleNow(data);
   }
 
   Widget _buildTestCard(QueryDocumentSnapshot test, int usedAttempts) {
@@ -271,23 +250,14 @@ class _TestsScreenState extends State<TestsScreen> {
 
     final Map<String, dynamic>? tdata = test.data() as Map<String, dynamic>?;
 
-    final isPremium = (tdata != null && tdata.containsKey('isPremium'))
-        ? (tdata['isPremium'] ?? false) == true
-        : _examIsPremium;
-    final isExplicitlyLocked = (tdata?['isLocked'] ?? false) == true;
-    final itemPlanIds = SubscriptionAccessService.readPlanIds(tdata);
-    final requiredPlanIds = itemPlanIds.isNotEmpty
-        ? itemPlanIds
-        : _examSubscriptionPlanIds;
-    final requiresSubscription = isPremium || requiredPlanIds.isNotEmpty;
-    final hasPlanAccess = requiredPlanIds.isEmpty ||
-        SubscriptionAccessService.hasRequiredPlanAccess(
-          activePlanIds: _activePlanIds,
-          requiredPlanIds: requiredPlanIds,
-        );
-
-    final isLocked =
-        isExplicitlyLocked || (requiresSubscription && !hasPlanAccess);
+    final access = ContentAccessService.resolveAccess(
+      itemData: tdata,
+      examPlanIds: _examSubscriptionPlanIds,
+      activePlanIds: _activePlanIds,
+      fallbackPremium: _examIsPremium,
+    );
+    final requiredPlanIds = access.requiredPlanIds;
+    final isLocked = access.isLocked;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 18),

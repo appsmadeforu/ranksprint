@@ -164,6 +164,120 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return '${months[d.month - 1]} ${d.day}, ${d.year}';
   }
 
+  String? _effectiveSelectedExamId(List<String> selectedExams) {
+    if (selectedExamId != null && selectedExams.contains(selectedExamId)) {
+      return selectedExamId;
+    }
+    return selectedExams.isNotEmpty ? selectedExams.first : null;
+  }
+
+  Future<_ProfileSubscriptionVm> _loadSubscriptionVm({
+    required String? examId,
+    required List<String> activePlanIds,
+    required List<String> subscriptionIds,
+  }) async {
+    if (examId == null || examId.isEmpty) {
+      return const _ProfileSubscriptionVm(
+        title: 'Free Plan',
+        subtitle: 'Select an exam to manage subscriptions',
+      );
+    }
+
+    final planSnap = await FirebaseFirestore.instance
+        .collection('subscriptionPlans')
+        .where('isActive', isEqualTo: true)
+        .get();
+
+    final examDoc = await FirebaseFirestore.instance
+        .collection('exams')
+        .doc(examId)
+        .get();
+    final examData = examDoc.data() ?? const <String, dynamic>{};
+    final examName = (examData['name'] ?? examId).toString();
+    final examPlanIds = List<String>.from(
+      examData['subscriptionPlanIds'] ?? const <String>[],
+    );
+
+    final plans = planSnap.docs
+        .map((doc) => <String, dynamic>{'id': doc.id, ...doc.data()})
+        .toList();
+
+    final examPlans = plans.where((plan) {
+      final planId = plan['id'].toString();
+      if (examPlanIds.contains(planId)) {
+        return true;
+      }
+
+      final examsIncluded = plan['examsIncluded'];
+      if (examsIncluded is Map) {
+        return examsIncluded.keys.map((value) => value.toString()).contains(
+          examId,
+        );
+      }
+      if (examsIncluded is Iterable) {
+        return examsIncluded.map((value) => value.toString()).contains(examId);
+      }
+      return false;
+    }).toList();
+
+    if (examPlans.isEmpty) {
+      return _ProfileSubscriptionVm(
+        title: 'Free Plan',
+        subtitle: 'No subscription plans available for $examName',
+      );
+    }
+
+    final recommendedPlanId = examPlans.first['id']?.toString();
+    final matchingActivePlans = examPlans.where((plan) {
+      return activePlanIds.contains(plan['id'].toString());
+    }).toList();
+
+    DateTime? expiresAt;
+    String? activePlanId;
+    if (matchingActivePlans.isNotEmpty && subscriptionIds.isNotEmpty) {
+      for (final subscriptionId in subscriptionIds) {
+        final doc = await FirebaseFirestore.instance
+            .collection('subscriptions')
+            .doc(subscriptionId)
+            .get();
+        if (!doc.exists) continue;
+        final data = doc.data() ?? <String, dynamic>{};
+        final planId = (data['planId'] ?? '').toString();
+        final status = (data['status'] ?? '').toString().toLowerCase();
+        if (status != 'active') continue;
+        if (!matchingActivePlans.any((plan) => plan['id'].toString() == planId)) {
+          continue;
+        }
+        final rawExpiry = data['expiresAt'];
+        final expiry = rawExpiry is Timestamp ? rawExpiry.toDate().toLocal() : null;
+        if (expiry == null || expiry.isBefore(DateTime.now())) continue;
+        activePlanId = planId;
+        expiresAt = expiry;
+        break;
+      }
+    }
+
+    if (activePlanId != null) {
+      final activePlan = matchingActivePlans.firstWhere(
+        (plan) => plan['id'].toString() == activePlanId,
+        orElse: () => matchingActivePlans.first,
+      );
+      return _ProfileSubscriptionVm(
+        title: activePlan['name']?.toString() ?? 'Premium Plan',
+        subtitle: expiresAt != null
+            ? 'Valid until ${_formatDate(expiresAt)}'
+            : 'Active for $examName',
+        initialPlanId: activePlanId,
+      );
+    }
+
+    return _ProfileSubscriptionVm(
+      title: 'Free Plan',
+      subtitle: 'Upgrade to unlock ${examPlans.first['name'] ?? 'premium access'} for $examName',
+      initialPlanId: recommendedPlanId,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -202,9 +316,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final email = data['email'] ?? '';
           final phone = data['phone'] ?? '';
           final selectedExams = List<String>.from(data['selectedExams'] ?? []);
+          final activePlanIds = List<String>.from(data['activePlanIds'] ?? []);
           final subscriptionIds = List<String>.from(
             data['subscriptionIds'] ?? [],
           );
+          final effectiveSelectedExamId = _effectiveSelectedExamId(selectedExams);
 
           return SafeArea(
             child: SingleChildScrollView(
@@ -212,9 +328,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   // Top header with functional dropdown
                   TopHeader(
-                    selectedExamId:
-                        selectedExamId ??
-                        (selectedExams.isNotEmpty ? selectedExams.first : null),
+                    selectedExamId: effectiveSelectedExamId,
                     userExamIds: selectedExams,
                     onExamChanged: (examId) {
                       setState(() {
@@ -342,32 +456,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   // Subscription card
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: FutureBuilder<DocumentSnapshot?>(
-                      future: subscriptionIds.isNotEmpty
-                          ? FirebaseFirestore.instance
-                                .collection('subscriptions')
-                                .doc(subscriptionIds.first)
-                                .get()
-                          : Future.value(null),
+                    child: FutureBuilder<_ProfileSubscriptionVm>(
+                      key: ValueKey<String?>(
+                        effectiveSelectedExamId,
+                      ),
+                      future: _loadSubscriptionVm(
+                        examId: effectiveSelectedExamId,
+                        activePlanIds: activePlanIds,
+                        subscriptionIds: subscriptionIds,
+                      ),
                       builder: (context, subSnap) {
-                        DateTime? expires;
-                        if (subSnap.hasData &&
-                            subSnap.data != null &&
-                            subSnap.data!.exists) {
-                          final sdata =
-                              subSnap.data!.data() as Map<String, dynamic>? ??
-                              {};
-                          if (sdata['expiresAt'] is Timestamp) {
-                            expires = (sdata['expiresAt'] as Timestamp)
-                                .toDate()
-                                .toLocal();
-                          }
+                        if (!subSnap.hasData) {
+                          return const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(12),
+                              child: CircularProgressIndicator(),
+                            ),
+                          );
                         }
 
-                        final isPremium = expires != null;
-                        final expiryText = expires != null
-                            ? 'Valid until ${_formatDate(expires)}'
-                            : '';
+                        final vm = subSnap.data!;
 
                         return Container(
                           width: double.infinity,
@@ -401,9 +509,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          isPremium
-                                              ? 'Premium Plan'
-                                              : 'Free Plan',
+                                          vm.title,
                                           style: const TextStyle(
                                             color: Colors.white,
                                             fontSize: 16,
@@ -412,9 +518,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         ),
                                         const SizedBox(height: 6),
                                         Text(
-                                          isPremium
-                                              ? expiryText
-                                              : 'Upgrade to unlock all features',
+                                          vm.subtitle,
                                           style: const TextStyle(
                                             color: Colors.white70,
                                           ),
@@ -429,12 +533,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 width: double.infinity,
                                 child: OutlinedButton(
                                   onPressed: () {
-                                    // Navigate to subscription screen
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                        builder: (_) =>
-                                            const SubscriptionScreen(),
+                                        builder: (_) => SubscriptionScreen(
+                                          initialExamId: effectiveSelectedExamId,
+                                          initialPlanId: vm.initialPlanId,
+                                        ),
                                       ),
                                     );
                                   },
@@ -492,7 +597,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) => const TestHistoryScreen(),
+                                      builder: (_) => TestHistoryScreen(
+                                        initialExamId: effectiveSelectedExamId,
+                                      ),
                                     ),
                                   );
                                 },
@@ -506,8 +613,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) =>
-                                          const PerformanceTrendsScreen(),
+                                      builder: (_) => PerformanceTrendsScreen(
+                                        initialExamId: effectiveSelectedExamId,
+                                      ),
                                     ),
                                   );
                                 },
@@ -719,4 +827,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
+}
+
+class _ProfileSubscriptionVm {
+  final String title;
+  final String subtitle;
+  final String? initialPlanId;
+
+  const _ProfileSubscriptionVm({
+    required this.title,
+    required this.subtitle,
+    this.initialPlanId,
+  });
 }

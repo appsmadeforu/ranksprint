@@ -1,0 +1,198 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function adminDoc() {
+      return get(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function examDoc(examId) {
+      return get(/databases/$(database)/documents/exams/$(examId));
+    }
+
+    function testDoc(examId, testId) {
+      return get(/databases/$(database)/documents/exams/$(examId)/tests/$(testId));
+    }
+
+    function pyqDoc(examId, pyqId) {
+      return get(/databases/$(database)/documents/exams/$(examId)/pyqs/$(pyqId));
+    }
+
+    function activePlanIds() {
+      return signedIn() &&
+          userDoc().exists() &&
+          userDoc().data.activePlanIds is list
+          ? userDoc().data.activePlanIds
+          : [];
+    }
+
+    function isAdmin() {
+      return signedIn() && (
+          adminDoc().exists() ||
+          (userDoc().exists() &&
+              userDoc().data.role is string &&
+              userDoc().data.role in ['admin', 'superadmin', 'super_admin', 'content_admin'])
+      );
+    }
+
+    function adminHasAllPermissions() {
+      return adminDoc().exists() &&
+          adminDoc().data.permissions is list &&
+          adminDoc().data.permissions.hasAny(['all']);
+    }
+
+    function adminHasBypassRole() {
+      return adminDoc().exists() &&
+          adminDoc().data.role is string &&
+          adminDoc().data.role in ['admin', 'superadmin', 'super_admin', 'content_admin'];
+    }
+
+    function isPrivilegedAdmin() {
+      return signedIn() && (adminHasBypassRole() || adminHasAllPermissions());
+    }
+
+    function planIdsFrom(data) {
+      return data.subscriptionPlanIds is list ? data.subscriptionPlanIds : [];
+    }
+
+    function requiredPlanIds(itemData, examId) {
+      return planIdsFrom(itemData).size() > 0
+          ? planIdsFrom(itemData)
+          : (examDoc(examId).exists() ? planIdsFrom(examDoc(examId).data) : []);
+    }
+
+    function isPublished(data) {
+      return !(data.status is string) || data.status == 'published';
+    }
+
+    function afterVisibilityStart(data) {
+      return !(data.visibilityStart is timestamp) ||
+          request.time >= data.visibilityStart;
+    }
+
+    function beforeVisibilityEnd(data) {
+      return !(data.visibilityEnd is timestamp) ||
+          request.time < data.visibilityEnd;
+    }
+
+    function isVisible(data) {
+      return isPublished(data) &&
+          afterVisibilityStart(data) &&
+          beforeVisibilityEnd(data);
+    }
+
+    function examIsAvailable(examId) {
+      return examDoc(examId).exists() &&
+          (!(examDoc(examId).data.isActive is bool) ||
+              examDoc(examId).data.isActive == true) &&
+          isVisible(examDoc(examId).data);
+    }
+
+    function hasPlanAccess(itemData, examId) {
+      return requiredPlanIds(itemData, examId).size() == 0 ||
+          activePlanIds().hasAny(requiredPlanIds(itemData, examId));
+    }
+
+    function canReadExamChild(itemData, examId) {
+      return (isAdmin() || signedIn()) &&
+          examIsAvailable(examId) &&
+          isVisible(itemData) &&
+          hasPlanAccess(itemData, examId);
+    }
+
+    function ownsExistingDoc() {
+      return signedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    function ownsIncomingDoc() {
+      return signedIn() && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isPrivilegedAdmin() || (signedIn() && request.auth.uid == userId);
+
+      match /notifications/{notificationId} {
+        allow read, write: if isPrivilegedAdmin() || (signedIn() && request.auth.uid == userId);
+      }
+    }
+
+    match /admins/{adminId} {
+      allow read, write: if isPrivilegedAdmin();
+    }
+
+    match /subscriptionPlans/{planId} {
+      allow read: if isPrivilegedAdmin() || (signedIn() && resource.data.isActive == true);
+      allow write: if isPrivilegedAdmin();
+    }
+
+    match /subscriptions/{subscriptionId} {
+      allow read: if isPrivilegedAdmin() || ownsExistingDoc();
+      allow create: if isPrivilegedAdmin() || ownsIncomingDoc();
+      allow update, delete: if isPrivilegedAdmin() || (ownsExistingDoc() && ownsIncomingDoc());
+    }
+
+    match /policies/{policyId} {
+      allow read: if isPrivilegedAdmin() || resource.data.isActive == true;
+      allow write: if isPrivilegedAdmin();
+    }
+
+    match /notification/{notificationId} {
+      allow read: if signedIn();
+      allow write: if isPrivilegedAdmin();
+    }
+
+    match /testAttempts/{attemptId} {
+      allow read: if isPrivilegedAdmin() || ownsExistingDoc();
+      allow create: if isPrivilegedAdmin() || ownsIncomingDoc();
+      allow update, delete: if isPrivilegedAdmin() || (ownsExistingDoc() && ownsIncomingDoc());
+    }
+
+    match /results/{resultId} {
+      allow read: if signedIn();
+      allow create: if isPrivilegedAdmin() || ownsIncomingDoc();
+      allow update, delete: if isPrivilegedAdmin() || (ownsExistingDoc() && ownsIncomingDoc());
+    }
+
+    match /exams/{examId} {
+      // Collection queries in the current app do not include status/visibility
+      // filters, so strict per-document gating causes Firestore to reject the
+      // entire query. Keep read access broad for signed-in users and enforce
+      // visibility/subscription in the client for now.
+      allow read: if signedIn();
+      allow write: if isPrivilegedAdmin();
+
+      match /tests/{testId} {
+        allow read: if signedIn();
+        allow write: if isPrivilegedAdmin();
+
+        match /questions/{questionId} {
+          allow read: if signedIn();
+          allow write: if isPrivilegedAdmin();
+        }
+
+        match /sections/{sectionId} {
+          allow read: if signedIn();
+          allow write: if isPrivilegedAdmin();
+        }
+      }
+
+      match /pyqs/{pyqId} {
+        allow read: if signedIn();
+        allow write: if isPrivilegedAdmin();
+
+        match /chapters/{chapterId} {
+          allow read: if signedIn();
+          allow write: if isPrivilegedAdmin();
+        }
+      }
+    }
+  }
+}

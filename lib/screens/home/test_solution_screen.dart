@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:ranksprint/sections/section_bean.dart';
 import 'package:ranksprint/sections/section_service.dart';
+import 'package:ranksprint/services/result_data_service.dart';
 
 import '../../examSummary/exam_summary_screen.dart';
 import '../../widgets/top_header.dart';
@@ -35,7 +36,11 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
 
   Future<_Vm> _loadVm() async {
     final attempt = widget.attemptData;
-    final result = await _resolveResultData(attempt, widget.resultData);
+    final result = await ResultDataService.resolveResultForAttempt(
+      attemptId: widget.attemptId,
+      attemptData: attempt,
+      initialResultData: widget.resultData,
+    );
 
     final examId = (attempt['examId'] ?? '').toString();
     final testId = (attempt['testId'] ?? '').toString();
@@ -112,6 +117,7 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
 
     return _Vm(
       examId: examId,
+      resultData: result,
       correct: correct,
       incorrect: incorrect,
       skipped: skipped,
@@ -152,53 +158,17 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
         return aTs.compareTo(bTs);
       });
 
-    final resultsSnap = await FirebaseFirestore.instance
-        .collection('results')
-        .where('userId', isEqualTo: userId)
-        .where('examId', isEqualTo: examId)
-        .where('testId', isEqualTo: testId)
-        .get();
-    final resultDocs = resultsSnap.docs;
+    final resultById = await ResultDataService.loadResultsMap(
+      attempts: attempts,
+      userId: userId,
+      examId: examId,
+    );
 
-    final resultById = <String, Map<String, dynamic>>{};
-    for (final r in resultDocs) {
-      resultById[r.id] = r.data();
-    }
-
-    final usedResultIds = <String>{};
     final points = <_TrendPoint>[];
     for (final attempt in attempts) {
       final a = attempt.data();
       Map<String, dynamic> r =
           resultById[attempt.id] ?? const <String, dynamic>{};
-      if (r.isNotEmpty) {
-        usedResultIds.add(attempt.id);
-      } else if (resultDocs.isNotEmpty) {
-        final attemptTs =
-            _toDate(a['submittedAt']) ??
-            _toDate(a['startedAt']) ??
-            DateTime.fromMillisecondsSinceEpoch(0);
-        QueryDocumentSnapshot<Map<String, dynamic>>? best;
-        int bestDelta = 1 << 62;
-        for (final doc in resultDocs) {
-          if (usedResultIds.contains(doc.id)) continue;
-          final rt =
-              _toDate(doc.data()['createdAt']) ??
-              DateTime.fromMillisecondsSinceEpoch(0);
-          final delta =
-              (rt.millisecondsSinceEpoch - attemptTs.millisecondsSinceEpoch)
-                  .abs();
-          if (delta < bestDelta) {
-            bestDelta = delta;
-            best = doc;
-          }
-        }
-        if (best != null) {
-          r = best.data();
-          usedResultIds.add(best.id);
-        }
-      }
-
       final acc = _computeAccuracyPct(a, r);
       final mins = _timeMinutes(a).toDouble();
       points.add(_TrendPoint(timeMinutes: mins, accuracy: acc));
@@ -206,55 +176,6 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
 
     if (points.length <= 8) return points;
     return points.sublist(points.length - 8);
-  }
-
-  Future<Map<String, dynamic>> _resolveResultData(
-    Map<String, dynamic> attempt,
-    Map<String, dynamic> initial,
-  ) async {
-    if (_hasCoreResultFields(initial)) return initial;
-
-    final userId = (attempt['userId'] ?? '').toString();
-    final examId = (attempt['examId'] ?? '').toString();
-    final testId = (attempt['testId'] ?? '').toString();
-    if (userId.isEmpty || examId.isEmpty || testId.isEmpty) return initial;
-
-    final snap = await FirebaseFirestore.instance
-        .collection('results')
-        .where('userId', isEqualTo: userId)
-        .where('examId', isEqualTo: examId)
-        .where('testId', isEqualTo: testId)
-        .get();
-
-    if (snap.docs.isEmpty) return initial;
-
-    final attemptTs =
-        _toDate(attempt['submittedAt']) ??
-        _toDate(attempt['startedAt']) ??
-        DateTime.fromMillisecondsSinceEpoch(0);
-
-    QueryDocumentSnapshot<Map<String, dynamic>> best = snap.docs.first;
-    int bestDelta = 1 << 62;
-    for (final doc in snap.docs) {
-      final ts =
-          _toDate(doc.data()['createdAt']) ??
-          DateTime.fromMillisecondsSinceEpoch(0);
-      final delta =
-          (ts.millisecondsSinceEpoch - attemptTs.millisecondsSinceEpoch).abs();
-      if (delta < bestDelta) {
-        bestDelta = delta;
-        best = doc;
-      }
-    }
-
-    return best.data();
-  }
-
-  bool _hasCoreResultFields(Map<String, dynamic> result) {
-    return result.containsKey('correct') ||
-        result.containsKey('incorrect') ||
-        result.containsKey('unanswered') ||
-        result.containsKey('score');
   }
 
   double _computeAccuracyPct(
@@ -288,7 +209,7 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
     final started = (data['startedAt'] as Timestamp?)?.toDate();
     final submitted = (data['submittedAt'] as Timestamp?)?.toDate();
     if (started != null && submitted != null) {
-      return submitted.difference(started).inMinutes.clamp(0, 100000) as int;
+      return submitted.difference(started).inMinutes.clamp(0, 100000);
     }
     return 0;
   }
@@ -355,12 +276,12 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
                                 context,
                                 MaterialPageRoute(
                                   builder: (_) => ExamResultScreen(
-                                    questions: widget.resultData['question'],
-                                    answers: widget.resultData['answers'],
-                                    correct: widget.resultData['correct'],
+                                    questions: vm.resultData['question'],
+                                    answers: vm.resultData['answers'],
+                                    correct: vm.resultData['correct'],
                                     section: sectionBeans,
-                                    incorrect: widget.resultData['incorrect'],
-                                    unanswered: widget.resultData['unanswered'],
+                                    incorrect: vm.resultData['incorrect'],
+                                    unanswered: vm.resultData['unanswered'],
                                   ),
                                 ),
                               );
@@ -466,7 +387,7 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.12),
+        color: Colors.white.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -753,6 +674,7 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
 
 class _Vm {
   final String examId;
+  final Map<String, dynamic> resultData;
   final int correct;
   final int incorrect;
   final int skipped;
@@ -766,6 +688,7 @@ class _Vm {
 
   _Vm({
     required this.examId,
+    required this.resultData,
     required this.correct,
     required this.incorrect,
     required this.skipped,

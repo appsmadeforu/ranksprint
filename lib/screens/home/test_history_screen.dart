@@ -2,13 +2,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../services/result_data_service.dart';
 import '../../widgets/top_header.dart';
 import 'performance_trends_screen.dart';
 import 'test_solution_screen.dart';
 import 'test_runner_screen.dart';
 
 class TestHistoryScreen extends StatefulWidget {
-  const TestHistoryScreen({super.key});
+  final String? initialExamId;
+
+  const TestHistoryScreen({super.key, this.initialExamId});
 
   @override
   State<TestHistoryScreen> createState() => _TestHistoryScreenState();
@@ -58,7 +61,12 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
 
     setState(() {
       userExamIds = exams;
-      selectedExamId = exams.isNotEmpty ? exams.first : null;
+      if (widget.initialExamId != null &&
+          exams.contains(widget.initialExamId)) {
+        selectedExamId = widget.initialExamId;
+      } else {
+        selectedExamId = exams.isNotEmpty ? exams.first : null;
+      }
     });
   }
 
@@ -91,85 +99,12 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
     List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
   ) async {
     if (attempts.isEmpty) return {};
-
-    final ids = attempts.map((d) => d.id).toList();
-    final chunks = <List<String>>[];
-
-    for (int i = 0; i < ids.length; i += 10) {
-      chunks.add(ids.sublist(i, i + 10 > ids.length ? ids.length : i + 10));
-    }
-
-    final out = <String, Map<String, dynamic>>{};
-    for (final chunk in chunks) {
-      final snap = await FirebaseFirestore.instance
-          .collection('results')
-          .where(FieldPath.documentId, whereIn: chunk)
-          .get();
-
-      for (final doc in snap.docs) {
-        out[doc.id] = doc.data();
-      }
-    }
-
-    // Fallback: if result doc IDs are not equal to attempt IDs, match by
-    // (userId + examId + testId) and nearest createdAt/start-submitted time.
-    final unresolved = attempts.where((a) => !out.containsKey(a.id)).toList();
-    if (unresolved.isNotEmpty) {
-      final userId = (unresolved.first.data()['userId'] ?? '').toString();
-      if (userId.isNotEmpty) {
-        final userResultsSnap = await FirebaseFirestore.instance
-            .collection('results')
-            .where('userId', isEqualTo: userId)
-            .get();
-
-        final buckets =
-            <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
-        for (final doc in userResultsSnap.docs) {
-          final d = doc.data();
-          final key =
-              '${(d['examId'] ?? '').toString()}|${(d['testId'] ?? '').toString()}';
-          buckets.putIfAbsent(key, () => []).add(doc);
-        }
-
-        final usedResultDocIds = <String>{};
-        for (final attempt in unresolved) {
-          final a = attempt.data();
-          final key =
-              '${(a['examId'] ?? '').toString()}|${(a['testId'] ?? '').toString()}';
-          final candidates = buckets[key] ?? const [];
-          if (candidates.isEmpty) continue;
-
-          final attemptTs =
-              _toDate(a['submittedAt']) ??
-              _toDate(a['startedAt']) ??
-              DateTime.fromMillisecondsSinceEpoch(0);
-
-          QueryDocumentSnapshot<Map<String, dynamic>>? best;
-          int bestDelta = 1 << 62;
-
-          for (final c in candidates) {
-            if (usedResultDocIds.contains(c.id)) continue;
-            final cTs =
-                _toDate(c.data()['createdAt']) ??
-                DateTime.fromMillisecondsSinceEpoch(0);
-            final delta =
-                (cTs.millisecondsSinceEpoch - attemptTs.millisecondsSinceEpoch)
-                    .abs();
-            if (delta < bestDelta) {
-              bestDelta = delta;
-              best = c;
-            }
-          }
-
-          if (best != null) {
-            out[attempt.id] = best.data();
-            usedResultDocIds.add(best.id);
-          }
-        }
-      }
-    }
-
-    return out;
+    final first = attempts.first.data();
+    return ResultDataService.loadResultsMap(
+      attempts: attempts,
+      userId: (first['userId'] ?? '').toString(),
+      examId: selectedExamId ?? (first['examId'] ?? '').toString(),
+    );
   }
 
   bool _passesTypeFilter(Map<String, dynamic> data) {
@@ -262,7 +197,14 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
                   }
 
                   if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    return const Center(child: Text('No test history found.'));
+                    final emptyExamId = selectedExamId;
+                    return Center(
+                      child: Text(
+                        (emptyExamId ?? '').isNotEmpty
+                            ? 'No test history found for the selected exam.'
+                            : 'No test history found.',
+                      ),
+                    );
                   }
 
                   final attempts =
@@ -1141,11 +1083,6 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
     if (value is int) return value;
     if (value is num) return value.toInt();
     return int.tryParse(value?.toString() ?? '');
-  }
-
-  DateTime? _toDate(dynamic value) {
-    if (value is Timestamp) return value.toDate();
-    return null;
   }
 
   String _testType(Map<String, dynamic> data) {

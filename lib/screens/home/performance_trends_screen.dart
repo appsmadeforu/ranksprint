@@ -4,12 +4,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../services/result_data_service.dart';
 import '../../widgets/top_header.dart';
 import 'test_history_screen.dart';
 import 'tests_screen.dart';
 
 class PerformanceTrendsScreen extends StatefulWidget {
-  const PerformanceTrendsScreen({super.key});
+  final String? initialExamId;
+
+  const PerformanceTrendsScreen({super.key, this.initialExamId});
 
   @override
   State<PerformanceTrendsScreen> createState() =>
@@ -38,7 +41,12 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
     if (!mounted) return;
     setState(() {
       _examIds = exams;
-      _examId = exams.isNotEmpty ? exams.first : null;
+      if (widget.initialExamId != null &&
+          exams.contains(widget.initialExamId)) {
+        _examId = widget.initialExamId;
+      } else {
+        _examId = exams.isNotEmpty ? exams.first : null;
+      }
     });
   }
 
@@ -64,6 +72,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
               child: _examId == null
                   ? const Center(child: Text('No exam selected'))
                   : FutureBuilder<_Vm>(
+                      key: ValueKey<String>('${_examId ?? ''}:${_window.name}'),
                       future: _loadVm(uid, _examId!, _window),
                       builder: (context, snap) {
                         if (snap.connectionState == ConnectionState.waiting) {
@@ -830,8 +839,10 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
     final attempts =
         attemptSnap.docs.where((d) {
           final data = d.data();
+          final attemptExamId = (data['examId'] ?? '').toString();
           final status = (data['status'] ?? 'completed').toString();
           final date = _attemptDate(data);
+          if (attemptExamId != examId) return false;
           if (status != 'completed' || date == null) return false;
           if (cutoff == null) return true;
           return !date.isBefore(cutoff);
@@ -924,76 +935,11 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
     String uid,
     String examId,
   ) async {
-    if (attempts.isEmpty) return {};
-    final ids = attempts.map((e) => e.id).toList();
-    final out = <String, Map<String, dynamic>>{};
-
-    try {
-      for (int i = 0; i < ids.length; i += 10) {
-        final chunk = ids.sublist(i, math.min(i + 10, ids.length));
-        final s = await FirebaseFirestore.instance
-            .collection('results')
-            .where(FieldPath.documentId, whereIn: chunk)
-            .get();
-        for (final d in s.docs) {
-          out[d.id] = d.data();
-        }
-      }
-    } catch (_) {
-      // Continue with fallback matching query below.
-    }
-
-    final unresolved = attempts.where((a) => !out.containsKey(a.id)).toList();
-    if (unresolved.isEmpty) return out;
-
-    QuerySnapshot<Map<String, dynamic>> all;
-    try {
-      all = await FirebaseFirestore.instance
-          .collection('results')
-          .where('userId', isEqualTo: uid)
-          .where('examId', isEqualTo: examId)
-          .get();
-    } catch (_) {
-      all = await FirebaseFirestore.instance
-          .collection('results')
-          .where('userId', isEqualTo: uid)
-          .get();
-    }
-
-    final byTest =
-        <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
-    for (final d in all.docs) {
-      final t = (d.data()['testId'] ?? '').toString();
-      byTest.putIfAbsent(t, () => []).add(d);
-    }
-
-    final used = <String>{};
-    for (final a in unresolved) {
-      final ad = a.data();
-      final testId = (ad['testId'] ?? '').toString();
-      final cands = byTest[testId] ?? const [];
-      if (cands.isEmpty) continue;
-      final at = _attemptDate(ad) ?? DateTime.fromMillisecondsSinceEpoch(0);
-      QueryDocumentSnapshot<Map<String, dynamic>>? best;
-      int delta = 1 << 62;
-      for (final c in cands) {
-        if (used.contains(c.id)) continue;
-        final rt =
-            _toDate(c.data()['createdAt']) ??
-            DateTime.fromMillisecondsSinceEpoch(0);
-        final d = (rt.millisecondsSinceEpoch - at.millisecondsSinceEpoch).abs();
-        if (d < delta) {
-          delta = d;
-          best = c;
-        }
-      }
-      if (best != null) {
-        out[a.id] = best.data();
-        used.add(best.id);
-      }
-    }
-
-    return out;
+    return ResultDataService.loadResultsMap(
+      attempts: attempts,
+      userId: uid,
+      examId: examId,
+    );
   }
 
   Future<double> _platformAvg(String examId, DateTime? cutoff) async {

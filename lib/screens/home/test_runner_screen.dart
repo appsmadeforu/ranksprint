@@ -7,6 +7,7 @@ import 'package:ranksprint/screens/home/test_solution_screen.dart';
 import 'package:ranksprint/sections/section_bean.dart';
 import 'package:ranksprint/sections/section_service.dart';
 import 'package:ranksprint/sections/sectionwise_navigation_screen.dart';
+import 'package:ranksprint/services/result_schema_contract.dart';
 import 'package:lottie/lottie.dart';
 import 'package:screen_protector/screen_protector.dart';
 import 'package:ranksprint/services/html_helper.dart';
@@ -151,7 +152,9 @@ class TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBindingO
     setState(() => loading = true);
 
     // create attempt doc
-    final ref = FirebaseFirestore.instance.collection('testAttempts').doc();
+    final ref = FirebaseFirestore.instance
+        .collection(ResultSchemaContract.attemptCollection)
+        .doc();
     final attemptData = {
       'userId': user.uid,
       'examId': widget.examId,
@@ -256,7 +259,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBindingO
   Future<void> _saveProgress() async {
     if (attemptId == null) return;
     final attemptRef = FirebaseFirestore.instance
-        .collection('testAttempts')
+        .collection(ResultSchemaContract.attemptCollection)
         .doc(attemptId);
     await attemptRef.update({
       'answers': answers,
@@ -278,7 +281,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBindingO
     _timer?.cancel();
 
     final attemptRef = FirebaseFirestore.instance
-        .collection('testAttempts')
+        .collection(ResultSchemaContract.attemptCollection)
         .doc(attemptId);
     await attemptRef.update({
       'status': 'completed',
@@ -301,8 +304,10 @@ class TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBindingO
 
     final score = correct; // simple 1 point per correct for placeholder
 
+    // Keep result doc id equal to attempt id so analytics/history can resolve
+    // the finalized result without timestamp guessing.
     final resRef = FirebaseFirestore.instance
-        .collection('results')
+        .collection(ResultSchemaContract.resultCollection)
         .doc(attemptId);
     await resRef.set({
       'userId': FirebaseAuth.instance.currentUser?.uid,

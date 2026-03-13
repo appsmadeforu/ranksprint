@@ -13,6 +13,13 @@ class SubscriptionAccessService {
         .doc(user.uid)
         .get();
 
+    final inlineActivePlanIds = List<String>.from(
+      userDoc.data()?['activePlanIds'] ?? const [],
+    ).where((id) => id.isNotEmpty);
+    if (inlineActivePlanIds.isNotEmpty) {
+      return inlineActivePlanIds.toSet();
+    }
+
     final subscriptionIds = List<String>.from(
       userDoc.data()?['subscriptionIds'] ?? const [],
     );

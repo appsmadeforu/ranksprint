@@ -44,6 +44,7 @@ class _LoginScreenState extends State<LoginScreen> {
             await userDoc.set({
               'email': user.email ?? '',
               'selectedExams': [],
+              'activePlanIds': [],
               'subscriptionIds': [],
               'createdAt': Timestamp.now(),
             });
@@ -121,6 +122,7 @@ class _LoginScreenState extends State<LoginScreen> {
             'email': user.email ?? '',
             'phone': user.phoneNumber ?? '',
             'selectedExams': [],
+            'activePlanIds': [],
             'subscriptionIds': [],
             'createdAt': Timestamp.now(),
           });

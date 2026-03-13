@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../services/result_data_service.dart';
 import '../../widgets/top_header.dart';
 
 class AnalyticsScreen extends StatefulWidget {
@@ -17,6 +18,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   final TextEditingController _leaderboardSearchController =
       TextEditingController();
   String _leaderboardQuery = '';
+  final Map<String, String> _userNameCache = <String, String>{};
+  final Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+      _questionCache =
+      <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
 
   @override
   void initState() {
@@ -213,30 +218,50 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   Future<List<_LeaderboardRow>> _hydrateLeaderboard(
     List<_LeaderboardAgg> entries,
   ) async {
-    final futures = List.generate(entries.length, (index) async {
+    await _loadUserDisplayNames(entries.map((entry) => entry.userId));
+
+    return List.generate(entries.length, (index) {
       final entry = entries[index];
-      String displayName = entry.userId;
-
-      try {
-        final userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(entry.userId)
-            .get();
-        if (userDoc.exists) {
-          final data = userDoc.data() ?? <String, dynamic>{};
-          displayName = (data['name'] ?? data['displayName'] ?? entry.userId)
-              .toString();
-        }
-      } catch (_) {}
-
       return _LeaderboardRow(
         entry: entry,
         rank: index + 1,
-        displayName: displayName,
+        displayName: _userNameCache[entry.userId] ?? entry.userId,
       );
     });
+  }
 
-    return Future.wait(futures);
+  Future<void> _loadUserDisplayNames(Iterable<String> userIds) async {
+    final missing = userIds
+        .where((id) => id.isNotEmpty && !_userNameCache.containsKey(id))
+        .toSet()
+        .toList();
+    if (missing.isEmpty) return;
+
+    for (int i = 0; i < missing.length; i += 10) {
+      final chunk = missing.sublist(i, (i + 10).clamp(0, missing.length));
+      try {
+        final snap = await FirebaseFirestore.instance
+            .collection('users')
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get();
+
+        final found = <String>{};
+        for (final doc in snap.docs) {
+          final data = doc.data();
+          _userNameCache[doc.id] =
+              (data['name'] ?? data['displayName'] ?? doc.id).toString();
+          found.add(doc.id);
+        }
+
+        for (final id in chunk) {
+          _userNameCache.putIfAbsent(id, () => id);
+        }
+      } catch (_) {
+        for (final id in chunk) {
+          _userNameCache.putIfAbsent(id, () => id);
+        }
+      }
+    }
   }
 
   bool _matchesLeaderboardQuery(_LeaderboardRow row) {
@@ -566,6 +591,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     String examId,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
   ) async {
+    // Dashboard metrics are derived from completed attempt/result pairs.
     final resultMap = await _loadDashboardResultMap(attempts, userId, examId);
     final subjects = await _dashboardSubjectStats(attempts);
     subjects.sort((a, b) => b.accuracy.compareTo(a.accuracy));
@@ -631,89 +657,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     String userId,
     String examId,
   ) async {
-    if (attempts.isEmpty) return {};
-
-    final out = <String, Map<String, dynamic>>{};
-    final ids = attempts.map((a) => a.id).toList();
-
-    try {
-      for (int i = 0; i < ids.length; i += 10) {
-        final chunk = ids.sublist(i, (i + 10).clamp(0, ids.length));
-        final snap = await FirebaseFirestore.instance
-            .collection('results')
-            .where(FieldPath.documentId, whereIn: chunk)
-            .get();
-        for (final doc in snap.docs) {
-          out[doc.id] = doc.data();
-        }
-      }
-    } catch (_) {}
-
-    final unresolved = attempts.where((attempt) => !out.containsKey(attempt.id)).toList();
-    if (unresolved.isEmpty) return out;
-
-    QuerySnapshot<Map<String, dynamic>> allResults;
-    try {
-      allResults = await FirebaseFirestore.instance
-          .collection('results')
-          .where('userId', isEqualTo: userId)
-          .where('examId', isEqualTo: examId)
-          .get();
-    } catch (_) {
-      allResults = await FirebaseFirestore.instance
-          .collection('results')
-          .where('userId', isEqualTo: userId)
-          .get();
-    }
-
-    final byTest = <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
-    for (final doc in allResults.docs) {
-      final testId = (doc.data()['testId'] ?? '').toString();
-      byTest.putIfAbsent(testId, () => []).add(doc);
-    }
-
-    final used = <String>{};
-    for (final attempt in unresolved) {
-      final data = attempt.data();
-      final testId = (data['testId'] ?? '').toString();
-      final candidates = byTest[testId] ?? const [];
-      if (candidates.isEmpty) continue;
-
-      final attemptTime =
-          _toDate(data['submittedAt']) ??
-          _toDate(data['startedAt']) ??
-          DateTime.fromMillisecondsSinceEpoch(0);
-
-      QueryDocumentSnapshot<Map<String, dynamic>>? best;
-      int bestDelta = 1 << 62;
-      for (final candidate in candidates) {
-        if (used.contains(candidate.id)) continue;
-        final resultTime =
-            _toDate(candidate.data()['createdAt']) ??
-            DateTime.fromMillisecondsSinceEpoch(0);
-        final delta =
-            (resultTime.millisecondsSinceEpoch -
-                    attemptTime.millisecondsSinceEpoch)
-                .abs();
-        if (delta < bestDelta) {
-          bestDelta = delta;
-          best = candidate;
-        }
-      }
-      if (best != null) {
-        out[attempt.id] = best.data();
-        used.add(best.id);
-      }
-    }
-
-    return out;
+    return ResultDataService.loadResultsMap(
+      attempts: attempts,
+      userId: userId,
+      examId: examId,
+    );
   }
 
   Future<List<_SubjectMetric>> _dashboardSubjectStats(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
   ) async {
     final out = <String, _SubjectMetric>{};
-    final cache = <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
 
     for (final attemptDoc in attempts) {
       final attempt = attemptDoc.data();
@@ -722,7 +676,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       if (examId.isEmpty || testId.isEmpty) continue;
 
       final cacheKey = '$examId|$testId';
-      if (!cache.containsKey(cacheKey)) {
+      if (!_questionCache.containsKey(cacheKey)) {
         try {
           final qs = await FirebaseFirestore.instance
               .collection('exams')
@@ -731,13 +685,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               .doc(testId)
               .collection('questions')
               .get();
-          cache[cacheKey] = qs.docs;
+          _questionCache[cacheKey] = qs.docs;
         } catch (_) {
-          cache[cacheKey] = const [];
+          _questionCache[cacheKey] = const [];
         }
       }
 
-      final questions = cache[cacheKey] ?? const [];
+      final questions = _questionCache[cacheKey] ?? const [];
       final answers = <String, String>{};
       if (attempt['answers'] is Map) {
         final raw = attempt['answers'] as Map;

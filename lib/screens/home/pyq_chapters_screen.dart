@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../../services/content_access_service.dart';
 import '../../services/subscription_access_service.dart';
 import 'pdf_viewer_screen.dart';
 import 'subscription_screen.dart';
@@ -49,14 +50,10 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
   }
 
   Stream<QuerySnapshot> _chaptersStream() {
-    return FirebaseFirestore.instance
-        .collection('exams')
-        .doc(widget.examId)
-        .collection('pyqs')
-        .doc(widget.subjectId)
-        .collection('chapters')
-        .orderBy('createdAt')
-        .snapshots();
+    return ContentAccessService.publishedPyqChaptersQuery(
+      examId: widget.examId,
+      subjectId: widget.subjectId,
+    ).snapshots();
   }
 
   void _openSubscription({
@@ -93,7 +90,11 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final docs = snapshot.data!.docs.where(_isPublishedChapter).toList();
+          final docs = snapshot.data!.docs
+              .cast<QueryDocumentSnapshot<Map<String, dynamic>>>()
+              .where(_isPublishedChapter)
+              .toList()
+            ..sort(ContentAccessService.compareCreatedAtAsc);
 
           if (docs.isEmpty) {
             return const Center(child: Text('No chapters available'));
@@ -110,17 +111,13 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
                   data['name'] ?? data['title'] ?? 'Chapter ${index + 1}';
               final pdfUrl = data['pdfUrl'] ?? data['notesPdfUrl'] ?? '';
               final qCount = data['questionCount']?.toString() ?? '';
-              final isExplicitlyLocked = (data['isLocked'] ?? false) == true;
-              final itemPlanIds = SubscriptionAccessService.readPlanIds(data);
-              final requiredPlanIds = itemPlanIds.isNotEmpty
-                  ? itemPlanIds
-                  : _examSubscriptionPlanIds;
-              final hasPlanAccess = requiredPlanIds.isEmpty ||
-                  SubscriptionAccessService.hasRequiredPlanAccess(
-                    activePlanIds: _activePlanIds,
-                    requiredPlanIds: requiredPlanIds,
-                  );
-              final isLocked = isExplicitlyLocked || !hasPlanAccess;
+              final access = ContentAccessService.resolveAccess(
+                itemData: data,
+                examPlanIds: _examSubscriptionPlanIds,
+                activePlanIds: _activePlanIds,
+              );
+              final requiredPlanIds = access.requiredPlanIds;
+              final isLocked = access.isLocked;
 
               final List<String> allPdfUrls = docs
                   .map((document) {
@@ -240,9 +237,8 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
     );
   }
 
-  bool _isPublishedChapter(QueryDocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>? ?? <String, dynamic>{};
-    final status = (data['status'] ?? 'published').toString().toLowerCase();
-    return status == 'published';
+  bool _isPublishedChapter(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data();
+    return ContentAccessService.isVisibleNow(data);
   }
 }

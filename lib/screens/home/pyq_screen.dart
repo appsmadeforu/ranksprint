@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../../services/content_access_service.dart';
 import '../../services/subscription_access_service.dart';
 import '../../widgets/top_header.dart';
 import 'pyq_chapters_screen.dart';
@@ -69,11 +70,7 @@ class _PyqScreenState extends State<PyqScreen> {
   }
 
   Stream<QuerySnapshot> _getPyqs(String examId) {
-    return FirebaseFirestore.instance
-        .collection('exams')
-        .doc(examId)
-        .collection('pyqs')
-        .snapshots();
+    return ContentAccessService.publishedPyqsQuery(examId).snapshots();
   }
 
   void _openSubscription({
@@ -123,7 +120,11 @@ class _PyqScreenState extends State<PyqScreen> {
                           );
                         }
 
-                        final docs = snapshot.data!.docs.where(_isPublishedPyq).toList();
+                        final docs = snapshot.data!.docs
+                            .cast<QueryDocumentSnapshot<Map<String, dynamic>>>()
+                            .where(_isPublishedPyq)
+                            .toList()
+                          ..sort(ContentAccessService.compareCreatedAtAsc);
 
                         if (docs.isEmpty) {
                           return const Center(child: Text("No PYQs available"));
@@ -161,26 +162,23 @@ class _PyqScreenState extends State<PyqScreen> {
                                   final title = doc['name'] ?? doc.id;
                                   final data =
                                       doc.data() as Map<String, dynamic>? ?? {};
-                                  final isExplicitlyLocked =
-                                      (data['isLocked'] ?? false) == true;
-                                  final itemPlanIds =
-                                      SubscriptionAccessService.readPlanIds(data);
-                                  final requiredPlanIds = itemPlanIds.isNotEmpty
-                                      ? itemPlanIds
-                                      : _examSubscriptionPlanIds;
-                                  final hasPlanAccess =
-                                      requiredPlanIds.isEmpty ||
-                                          SubscriptionAccessService
-                                              .hasRequiredPlanAccess(
-                                            activePlanIds: _activePlanIds,
-                                            requiredPlanIds: requiredPlanIds,
-                                          );
-                                  final isLocked =
-                                      isExplicitlyLocked || !hasPlanAccess;
+                                  final access = ContentAccessService.resolveAccess(
+                                    itemData: data,
+                                    examPlanIds: _examSubscriptionPlanIds,
+                                    activePlanIds: _activePlanIds,
+                                  );
+                                  final requiredPlanIds =
+                                      access.requiredPlanIds;
+                                  final isLocked = access.isLocked;
 
-                                  return FutureBuilder<QuerySnapshot>(
-                                    future: doc.reference
-                                        .collection('chapters')
+                                  return FutureBuilder<
+                                    QuerySnapshot<Map<String, dynamic>>
+                                  >(
+                                    future: ContentAccessService
+                                        .publishedPyqChaptersQuery(
+                                          examId: selectedExamId!,
+                                          subjectId: doc.id,
+                                        )
                                         .get(),
                                     builder: (context, chapterSnap) {
                                        final paperCount = chapterSnap.hasData
@@ -378,9 +376,8 @@ class _PyqScreenState extends State<PyqScreen> {
     );
   }
 
-  bool _isPublishedPyq(QueryDocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>? ?? <String, dynamic>{};
-    final status = (data['status'] ?? 'published').toString().toLowerCase();
-    return status == 'published';
+  bool _isPublishedPyq(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data();
+    return ContentAccessService.isVisibleNow(data);
   }
 }

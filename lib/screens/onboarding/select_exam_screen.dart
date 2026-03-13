@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../services/content_access_service.dart';
 
 class SelectExamScreen extends StatefulWidget {
   const SelectExamScreen({super.key});
@@ -36,10 +37,7 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
   }
 
   Future<List<QueryDocumentSnapshot>> _fetchExams() async {
-    final snapshot = await FirebaseFirestore.instance
-        .collection('exams')
-        .where('isActive', isEqualTo: true)
-        .get();
+    final snapshot = await ContentAccessService.activeExamsQuery().get();
 
     return snapshot.docs;
   }
