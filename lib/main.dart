@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'screens/auth_wrapper.dart';
+import 'screens/splash_screen.dart';
 // import 'dev/dummy_feeder.dart';
 
 void main() async {
@@ -29,7 +29,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return const MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: AuthWrapper(),
+      home: SplashScreen(),
     );
   }
 }
