@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/content_access_service.dart';
+import '../services/user_exam_preference_service.dart';
 import '../screens/home/main_navigation.dart';
 import 'notification_bell.dart';
 
@@ -137,6 +138,9 @@ class TopHeader extends StatelessWidget {
                             onChanged: (value) {
                               if (value != null &&
                                   userExamIds.contains(value)) {
+                                UserExamPreferenceService.savePreferredExamId(
+                                  value,
+                                );
                                 onExamChanged(value);
                               }
                             },

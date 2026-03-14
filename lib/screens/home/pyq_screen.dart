@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../services/content_access_service.dart';
 import '../../services/subscription_access_service.dart';
+import '../../services/user_exam_preference_service.dart';
 import '../../widgets/top_header.dart';
 import 'pyq_chapters_screen.dart';
 import 'subscription_screen.dart';
@@ -28,7 +29,18 @@ class _PyqScreenState extends State<PyqScreen> {
   @override
   void initState() {
     super.initState();
+    UserExamPreferenceService.preferredExamNotifier.addListener(
+      _handlePreferredExamChanged,
+    );
     _loadUserExams();
+  }
+
+  @override
+  void dispose() {
+    UserExamPreferenceService.preferredExamNotifier.removeListener(
+      _handlePreferredExamChanged,
+    );
+    super.dispose();
   }
 
   Future<void> _loadUserExams() async {
@@ -41,15 +53,35 @@ class _PyqScreenState extends State<PyqScreen> {
         .get();
 
     final exams = List<String>.from(doc.data()?['selectedExams'] ?? []);
+    final preferredExamId = await UserExamPreferenceService.loadPreferredExamId(
+      availableExamIds: exams,
+    );
 
+    if (!mounted) return;
     setState(() {
       userExamIds = exams;
-      selectedExamId = exams.isNotEmpty ? exams.first : null;
+      selectedExamId = preferredExamId;
     });
 
     if (selectedExamId != null) {
       await _loadExamAccess(selectedExamId!);
     }
+  }
+
+  void _handlePreferredExamChanged() {
+    final preferredExamId =
+        UserExamPreferenceService.preferredExamNotifier.value;
+    if (!mounted ||
+        preferredExamId == null ||
+        preferredExamId == selectedExamId ||
+        !userExamIds.contains(preferredExamId)) {
+      return;
+    }
+
+    setState(() {
+      selectedExamId = preferredExamId;
+    });
+    _loadExamAccess(preferredExamId);
   }
 
   Future<void> _loadExamAccess(String examId) async {
@@ -64,8 +96,9 @@ class _PyqScreenState extends State<PyqScreen> {
 
     setState(() {
       _activePlanIds = activePlanIds;
-      _examSubscriptionPlanIds =
-          SubscriptionAccessService.readPlanIds(examDoc.data());
+      _examSubscriptionPlanIds = SubscriptionAccessService.readPlanIds(
+        examDoc.data(),
+      );
     });
   }
 
@@ -83,7 +116,9 @@ class _PyqScreenState extends State<PyqScreen> {
       MaterialPageRoute(
         builder: (_) => SubscriptionScreen(
           initialExamId: selectedExamId,
-          initialPlanId: requiredPlanIds.isNotEmpty ? requiredPlanIds.first : null,
+          initialPlanId: requiredPlanIds.isNotEmpty
+              ? requiredPlanIds.first
+              : null,
           lockedItemLabel: itemLabel,
           lockedItemType: itemType,
         ),
@@ -93,13 +128,18 @@ class _PyqScreenState extends State<PyqScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final effectiveSelectedExamId =
+        selectedExamId != null && userExamIds.contains(selectedExamId)
+        ? selectedExamId
+        : (userExamIds.isNotEmpty ? userExamIds.first : null);
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
       body: SafeArea(
         child: Column(
           children: [
             TopHeader(
-              selectedExamId: selectedExamId,
+              selectedExamId: effectiveSelectedExamId,
               userExamIds: userExamIds,
               onExamChanged: (id) {
                 setState(() => selectedExamId = id);
@@ -109,10 +149,10 @@ class _PyqScreenState extends State<PyqScreen> {
             const SizedBox(height: 8),
 
             Expanded(
-              child: selectedExamId == null
+              child: effectiveSelectedExamId == null
                   ? const Center(child: Text("No exam selected"))
                   : StreamBuilder<QuerySnapshot>(
-                      stream: _getPyqs(selectedExamId!),
+                      stream: _getPyqs(effectiveSelectedExamId),
                       builder: (context, snapshot) {
                         if (!snapshot.hasData) {
                           return const Center(
@@ -120,11 +160,14 @@ class _PyqScreenState extends State<PyqScreen> {
                           );
                         }
 
-                        final docs = snapshot.data!.docs
-                            .cast<QueryDocumentSnapshot<Map<String, dynamic>>>()
-                            .where(_isPublishedPyq)
-                            .toList()
-                          ..sort(ContentAccessService.compareCreatedAtAsc);
+                        final docs =
+                            snapshot.data!.docs
+                                .cast<
+                                  QueryDocumentSnapshot<Map<String, dynamic>>
+                                >()
+                                .where(_isPublishedPyq)
+                                .toList()
+                              ..sort(ContentAccessService.compareCreatedAtAsc);
 
                         if (docs.isEmpty) {
                           return const Center(child: Text("No PYQs available"));
@@ -162,11 +205,12 @@ class _PyqScreenState extends State<PyqScreen> {
                                   final title = doc['name'] ?? doc.id;
                                   final data =
                                       doc.data() as Map<String, dynamic>? ?? {};
-                                  final access = ContentAccessService.resolveAccess(
-                                    itemData: data,
-                                    examPlanIds: _examSubscriptionPlanIds,
-                                    activePlanIds: _activePlanIds,
-                                  );
+                                  final access =
+                                      ContentAccessService.resolveAccess(
+                                        itemData: data,
+                                        examPlanIds: _examSubscriptionPlanIds,
+                                        activePlanIds: _activePlanIds,
+                                      );
                                   final requiredPlanIds =
                                       access.requiredPlanIds;
                                   final isLocked = access.isLocked;
@@ -174,18 +218,17 @@ class _PyqScreenState extends State<PyqScreen> {
                                   return FutureBuilder<
                                     QuerySnapshot<Map<String, dynamic>>
                                   >(
-                                    future: ContentAccessService
-                                        .publishedPyqChaptersQuery(
+                                    future:
+                                        ContentAccessService.publishedPyqChaptersQuery(
                                           examId: selectedExamId!,
                                           subjectId: doc.id,
-                                        )
-                                        .get(),
+                                        ).get(),
                                     builder: (context, chapterSnap) {
-                                       final paperCount = chapterSnap.hasData
-                                           ? chapterSnap.data!.docs
-                                                 .where(_isPublishedPyq)
-                                                 .length
-                                           : 0;
+                                      final paperCount = chapterSnap.hasData
+                                          ? chapterSnap.data!.docs
+                                                .where(_isPublishedPyq)
+                                                .length
+                                          : 0;
 
                                       return Container(
                                         margin: const EdgeInsets.only(
@@ -206,12 +249,12 @@ class _PyqScreenState extends State<PyqScreen> {
                                                 ).withValues(alpha: 0.1),
                                                 onTap: isLocked
                                                     ? () => _openSubscription(
-                                                          requiredPlanIds:
-                                                              requiredPlanIds,
-                                                          itemLabel:
-                                                              title.toString(),
-                                                          itemType: 'pyq',
-                                                        )
+                                                        requiredPlanIds:
+                                                            requiredPlanIds,
+                                                        itemLabel: title
+                                                            .toString(),
+                                                        itemType: 'pyq',
+                                                      )
                                                     : () {
                                                         Navigator.push(
                                                           context,
@@ -307,7 +350,9 @@ class _PyqScreenState extends State<PyqScreen> {
                                                     ),
                                                     child: Container(
                                                       color: Colors.white
-                                                          .withValues(alpha: 0.6),
+                                                          .withValues(
+                                                            alpha: 0.6,
+                                                          ),
                                                       alignment:
                                                           Alignment.center,
                                                       child: const Text(

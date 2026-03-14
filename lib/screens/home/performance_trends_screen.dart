@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/result_data_service.dart';
+import '../../services/user_exam_preference_service.dart';
 import '../../widgets/top_header.dart';
 import 'test_history_screen.dart';
 import 'tests_screen.dart';
@@ -27,7 +28,18 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
   @override
   void initState() {
     super.initState();
+    UserExamPreferenceService.preferredExamNotifier.addListener(
+      _handlePreferredExamChanged,
+    );
     _loadUserExams();
+  }
+
+  @override
+  void dispose() {
+    UserExamPreferenceService.preferredExamNotifier.removeListener(
+      _handlePreferredExamChanged,
+    );
+    super.dispose();
   }
 
   Future<void> _loadUserExams() async {
@@ -38,15 +50,31 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
         .doc(user.uid)
         .get();
     final exams = List<String>.from(doc.data()?['selectedExams'] ?? []);
+    final preferredExamId =
+        widget.initialExamId != null && exams.contains(widget.initialExamId)
+        ? widget.initialExamId
+        : await UserExamPreferenceService.loadPreferredExamId(
+            availableExamIds: exams,
+          );
     if (!mounted) return;
     setState(() {
       _examIds = exams;
-      if (widget.initialExamId != null &&
-          exams.contains(widget.initialExamId)) {
-        _examId = widget.initialExamId;
-      } else {
-        _examId = exams.isNotEmpty ? exams.first : null;
-      }
+      _examId = preferredExamId;
+    });
+  }
+
+  void _handlePreferredExamChanged() {
+    final preferredExamId =
+        UserExamPreferenceService.preferredExamNotifier.value;
+    if (!mounted ||
+        preferredExamId == null ||
+        preferredExamId == _examId ||
+        !_examIds.contains(preferredExamId)) {
+      return;
+    }
+
+    setState(() {
+      _examId = preferredExamId;
     });
   }
 

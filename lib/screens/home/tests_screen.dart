@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/content_access_service.dart';
 import '../../services/subscription_access_service.dart';
+import '../../services/user_exam_preference_service.dart';
 import '../../widgets/top_header.dart';
 import 'test_detail_screen.dart';
 import 'subscription_screen.dart';
@@ -26,7 +27,18 @@ class _TestsScreenState extends State<TestsScreen> {
   @override
   void initState() {
     super.initState();
+    UserExamPreferenceService.preferredExamNotifier.addListener(
+      _handlePreferredExamChanged,
+    );
     _loadUserExams();
+  }
+
+  @override
+  void dispose() {
+    UserExamPreferenceService.preferredExamNotifier.removeListener(
+      _handlePreferredExamChanged,
+    );
+    super.dispose();
   }
 
   Future<void> _loadUserExams() async {
@@ -39,20 +51,37 @@ class _TestsScreenState extends State<TestsScreen> {
     final exams = List<String>.from(doc['selectedExams'] ?? []);
 
     if (exams.isNotEmpty) {
+      final preferredExamId =
+          widget.selectedExam != null && exams.contains(widget.selectedExam)
+          ? widget.selectedExam
+          : await UserExamPreferenceService.loadPreferredExamId(
+              availableExamIds: exams,
+            );
+      if (!mounted) return;
       setState(() {
         userExamIds = exams;
-
-        if (widget.selectedExam != null &&
-            exams.contains(widget.selectedExam)) {
-          selectedExamId = widget.selectedExam;
-        } else {
-          selectedExamId = exams.first;
-        }
+        selectedExamId = preferredExamId;
       });
 
       _loadExamMetadata(selectedExamId!);
       _loadActivePlans();
     }
+  }
+
+  void _handlePreferredExamChanged() {
+    final preferredExamId =
+        UserExamPreferenceService.preferredExamNotifier.value;
+    if (!mounted ||
+        preferredExamId == null ||
+        preferredExamId == selectedExamId ||
+        !userExamIds.contains(preferredExamId)) {
+      return;
+    }
+
+    setState(() {
+      selectedExamId = preferredExamId;
+    });
+    _loadExamMetadata(preferredExamId);
   }
 
   Future<void> _loadActivePlans() async {

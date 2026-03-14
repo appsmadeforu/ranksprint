@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'subscription_screen.dart';
+import '../../services/user_exam_preference_service.dart';
 import '../../widgets/top_header.dart';
 import 'edit_profile_screen.dart';
 import '../auth/login_screen.dart';
@@ -49,7 +50,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    UserExamPreferenceService.preferredExamNotifier.addListener(
+      _handlePreferredExamChanged,
+    );
     _loadUserExams();
+  }
+
+  @override
+  void dispose() {
+    UserExamPreferenceService.preferredExamNotifier.removeListener(
+      _handlePreferredExamChanged,
+    );
+    super.dispose();
   }
 
   Future<void> _loadUserExams() async {
@@ -63,9 +75,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (data == null) return;
 
     final exams = List<String>.from(data['selectedExams'] ?? []);
+    final preferredExamId = await UserExamPreferenceService.loadPreferredExamId(
+      availableExamIds: exams,
+    );
+    if (!mounted) return;
     setState(() {
       userExamIds = exams;
-      selectedExamId = exams.isNotEmpty ? exams.first : null;
+      selectedExamId = preferredExamId;
+    });
+  }
+
+  void _handlePreferredExamChanged() {
+    final preferredExamId =
+        UserExamPreferenceService.preferredExamNotifier.value;
+    if (!mounted ||
+        preferredExamId == null ||
+        preferredExamId == selectedExamId ||
+        !userExamIds.contains(preferredExamId)) {
+      return;
+    }
+
+    setState(() {
+      selectedExamId = preferredExamId;
     });
   }
 
@@ -210,9 +241,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       final examsIncluded = plan['examsIncluded'];
       if (examsIncluded is Map) {
-        return examsIncluded.keys.map((value) => value.toString()).contains(
-          examId,
-        );
+        return examsIncluded.keys
+            .map((value) => value.toString())
+            .contains(examId);
       }
       if (examsIncluded is Iterable) {
         return examsIncluded.map((value) => value.toString()).contains(examId);
@@ -245,11 +276,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final planId = (data['planId'] ?? '').toString();
         final status = (data['status'] ?? '').toString().toLowerCase();
         if (status != 'active') continue;
-        if (!matchingActivePlans.any((plan) => plan['id'].toString() == planId)) {
+        if (!matchingActivePlans.any(
+          (plan) => plan['id'].toString() == planId,
+        )) {
           continue;
         }
         final rawExpiry = data['expiresAt'];
-        final expiry = rawExpiry is Timestamp ? rawExpiry.toDate().toLocal() : null;
+        final expiry = rawExpiry is Timestamp
+            ? rawExpiry.toDate().toLocal()
+            : null;
         if (expiry == null || expiry.isBefore(DateTime.now())) continue;
         activePlanId = planId;
         expiresAt = expiry;
@@ -273,7 +308,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return _ProfileSubscriptionVm(
       title: 'Free Plan',
-      subtitle: 'Upgrade to unlock ${examPlans.first['name'] ?? 'premium access'} for $examName',
+      subtitle:
+          'Upgrade to unlock ${examPlans.first['name'] ?? 'premium access'} for $examName',
       initialPlanId: recommendedPlanId,
     );
   }
@@ -320,7 +356,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final subscriptionIds = List<String>.from(
             data['subscriptionIds'] ?? [],
           );
-          final effectiveSelectedExamId = _effectiveSelectedExamId(selectedExams);
+          final effectiveSelectedExamId = _effectiveSelectedExamId(
+            selectedExams,
+          );
 
           return SafeArea(
             child: SingleChildScrollView(
@@ -457,9 +495,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: FutureBuilder<_ProfileSubscriptionVm>(
-                      key: ValueKey<String?>(
-                        effectiveSelectedExamId,
-                      ),
+                      key: ValueKey<String?>(effectiveSelectedExamId),
                       future: _loadSubscriptionVm(
                         examId: effectiveSelectedExamId,
                         activePlanIds: activePlanIds,
@@ -537,7 +573,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       context,
                                       MaterialPageRoute(
                                         builder: (_) => SubscriptionScreen(
-                                          initialExamId: effectiveSelectedExamId,
+                                          initialExamId:
+                                              effectiveSelectedExamId,
                                           initialPlanId: vm.initialPlanId,
                                         ),
                                       ),

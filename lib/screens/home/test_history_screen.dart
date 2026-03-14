@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/result_data_service.dart';
+import '../../services/user_exam_preference_service.dart';
 import '../../widgets/top_header.dart';
 import 'performance_trends_screen.dart';
 import 'test_solution_screen.dart';
@@ -33,6 +34,9 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
   @override
   void initState() {
     super.initState();
+    UserExamPreferenceService.preferredExamNotifier.addListener(
+      _handlePreferredExamChanged,
+    );
     _loadUserExams();
     _searchController.addListener(() {
       if (!mounted) return;
@@ -44,6 +48,9 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
 
   @override
   void dispose() {
+    UserExamPreferenceService.preferredExamNotifier.removeListener(
+      _handlePreferredExamChanged,
+    );
     _searchController.dispose();
     super.dispose();
   }
@@ -58,15 +65,32 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
         .get();
     final data = doc.data() ?? <String, dynamic>{};
     final exams = List<String>.from(data['selectedExams'] ?? []);
+    final preferredExamId =
+        widget.initialExamId != null && exams.contains(widget.initialExamId)
+        ? widget.initialExamId
+        : await UserExamPreferenceService.loadPreferredExamId(
+            availableExamIds: exams,
+          );
 
+    if (!mounted) return;
     setState(() {
       userExamIds = exams;
-      if (widget.initialExamId != null &&
-          exams.contains(widget.initialExamId)) {
-        selectedExamId = widget.initialExamId;
-      } else {
-        selectedExamId = exams.isNotEmpty ? exams.first : null;
-      }
+      selectedExamId = preferredExamId;
+    });
+  }
+
+  void _handlePreferredExamChanged() {
+    final preferredExamId =
+        UserExamPreferenceService.preferredExamNotifier.value;
+    if (!mounted ||
+        preferredExamId == null ||
+        preferredExamId == selectedExamId ||
+        !userExamIds.contains(preferredExamId)) {
+      return;
+    }
+
+    setState(() {
+      selectedExamId = preferredExamId;
     });
   }
 
