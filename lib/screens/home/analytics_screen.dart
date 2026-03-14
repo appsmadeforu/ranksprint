@@ -633,13 +633,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                 _heroPageIndex = index;
               });
             },
-            children: [
-              _readinessHeroCard(vm),
-              _rankProjectionHeroCard(vm),
-              _accuracySpeedHeroCard(vm),
-            ],
-          ),
-        ),
+             children: [
+               _readinessHeroCard(vm),
+               _accuracySpeedHeroCard(vm),
+               _rankProjectionHeroCard(vm),
+             ],
+           ),
+         ),
         const SizedBox(height: 10),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -877,24 +877,32 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             title: 'AI Predicted Range',
             subtitle: 'Based on ${vm.testsTaken} mock tests',
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
           const Text(
             'Predicted Rank',
             style: TextStyle(color: Color(0xFFD7CBFF), fontSize: 10),
           ),
           const SizedBox(height: 4),
-          Text(
-            _predictedRankRange(vm),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
+          SizedBox(
+            width: double.infinity,
+            child: FittedBox(
+              alignment: Alignment.centerLeft,
+              fit: BoxFit.scaleDown,
+              child: Text(
+                _predictedRankRange(vm),
+                maxLines: 1,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(18),
@@ -906,9 +914,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                   'Rank Trend (lower = better)',
                   style: TextStyle(color: Color(0xFFD7CBFF), fontSize: 10),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 SizedBox(
-                  height: 64,
+                  height: 52,
                   child: _SparkLine(points: _rankProjectionPoints(vm)),
                 ),
               ],
