@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
+import 'services/screenshot_protection_service.dart';
 // import 'dev/dummy_feeder.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await ScreenshotProtectionService.syncWithConfig();
 
   // Run feeder once in debug mode when you need dummy data.
   // Uncomment the import above, then uncomment this block:
