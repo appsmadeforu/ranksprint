@@ -58,14 +58,57 @@ class TopHeader extends StatelessWidget {
                         );
                       }
                     : null,
-                child: const Padding(
+                child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-                  child: Text(
-                    'RankSprintAI',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.black,
+                  child: RichText(
+                    text: TextSpan(
+                      children: [
+                        TextSpan(
+                          text: 'R',
+                          style: TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.1,
+                            color: Color(0xFF2F6FEB),
+                          ),
+                        ),
+                        TextSpan(
+                          text: 'ank',
+                          style: TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3,
+                            color: Color(0xFF5C667A),
+                          ),
+                        ),
+                        TextSpan(
+                          text: 'S',
+                          style: TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.1,
+                            color: Color(0xFF2F6FEB),
+                          ),
+                        ),
+                        TextSpan(
+                          text: 'print',
+                          style: TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3,
+                            color: Color(0xFF5C667A),
+                          ),
+                        ),
+                        TextSpan(
+                          text: 'AI',
+                          style: TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.1,
+                            color: Color(0xFF2F6FEB),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
