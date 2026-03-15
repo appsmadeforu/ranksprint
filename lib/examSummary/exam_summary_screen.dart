@@ -70,10 +70,42 @@ class ExamResultScreenState extends State<ExamResultScreen>
   }
 
   /// COLOR FOR ANSWER
-  Color getColor(selected, correct) {
+  Color getColor(dynamic selected, dynamic correct) {
     if (selected == null) return Colors.grey;
     if (selected.toString() == correct.toString()) return Colors.green;
     return Colors.red;
+  }
+
+  List<String> _questionImageUrls(Map<String, dynamic> question) {
+    return HtmlHelper.extractImageUrls(
+      question,
+      preferredKeys: const [
+        'questionImageUrl',
+        'questionImageUrls',
+        'questionImage',
+        'questionImages',
+        'imageUrl',
+        'imageUrls',
+        'image',
+        'images',
+      ],
+    );
+  }
+
+  List<String> _optionImageUrls(Map<String, dynamic> option) {
+    return HtmlHelper.extractImageUrls(
+      option,
+      preferredKeys: const [
+        'optionImageUrl',
+        'optionImageUrls',
+        'optionImage',
+        'optionImages',
+        'imageUrl',
+        'imageUrls',
+        'image',
+        'images',
+      ],
+    );
   }
 
   /// GROUP QUESTIONS BY SECTION
@@ -237,6 +269,8 @@ class ExamResultScreenState extends State<ExamResultScreen>
       ) {
 
     final options = q['options'];
+    final questionText = (q['questionText'] ?? '').toString();
+    final questionImages = _questionImageUrls(Map<String, dynamic>.from(q));
 
     return Card(
       margin:
@@ -247,16 +281,29 @@ class ExamResultScreenState extends State<ExamResultScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
-            HtmlHelper.renderHtml(
-              '<span style="font-weight:600;">Q$number. </span>${(q['questionText'] ?? '').toString()}',
+            if (questionText.trim().isEmpty && questionImages.isNotEmpty)
+              Text(
+                'Q$number.',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            HtmlHelper.renderContent(
+              html: questionText.trim().isEmpty
+                  ? null
+                  : '<span style="font-weight:600;">Q$number. </span>$questionText',
+              imageUrls: questionImages,
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 10),
 
             for (int i = 0; i < options.length; i++)
-              optionTile(i, options[i]['text'], selected, optionLetter(correct)),
+              optionTile(
+                i,
+                options[i]['text'],
+                selected,
+                optionLetter(correct),
+                Map<String, dynamic>.from(options[i] as Map),
+              ),
 
             const SizedBox(height: 10),
 
@@ -277,8 +324,9 @@ class ExamResultScreenState extends State<ExamResultScreen>
 
             const SizedBox(height: 6),
 
-            Text(
-              "Explanation: ${q['explanationText'] ?? ''}",
+            HtmlHelper.renderContent(
+              html:
+                  '<span style="font-weight:600;">Explanation: </span>${(q['explanationText'] ?? '').toString()}',
               style: const TextStyle(color: Colors.black87),
             ),
           ],
@@ -293,6 +341,7 @@ class ExamResultScreenState extends State<ExamResultScreen>
       String text,
       dynamic selected,
       dynamic correct,
+      [Map<String, dynamic>? optionData]
       ) {
 
     Color color = Colors.black;
@@ -320,8 +369,11 @@ class ExamResultScreenState extends State<ExamResultScreen>
           ),
 
           Expanded(
-            child: HtmlHelper.renderHtml(
-              text,
+            child: HtmlHelper.renderContent(
+              html: text,
+              imageUrls: optionData == null
+                  ? const []
+                  : _optionImageUrls(optionData),
               style: TextStyle(color: color),
             ),
           ),

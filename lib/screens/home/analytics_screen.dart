@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import '../../services/result_data_service.dart';
 import '../../services/user_exam_preference_service.dart';
 import '../../widgets/top_header.dart';
-import 'test_history_screen.dart';
+import 'subject_insights_screen.dart';
 import 'tests_screen.dart';
 
 class AnalyticsScreen extends StatefulWidget {
@@ -28,6 +28,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   final Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>
   _questionCache =
       <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+  final Map<String, Map<String, String>> _sectionNameCache =
+      <String, Map<String, String>>{};
   _DashboardTrendMode _trendMode = _DashboardTrendMode.avg;
   _SubjectViewMode _subjectViewMode = _SubjectViewMode.score;
   final PageController _heroPageController = PageController();
@@ -1277,7 +1279,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) =>
-                      TestHistoryScreen(initialExamId: selectedExamId),
+                      SubjectInsightsScreen(examId: selectedExamId ?? ''),
                 ),
               );
             },
@@ -1406,8 +1408,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                   onPressed: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) =>
-                            TestHistoryScreen(initialExamId: selectedExamId),
+                        builder: (_) => _SubjectExplorerScreen(vm: vm),
                       ),
                     );
                   },
@@ -1444,7 +1445,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => TestsScreen(selectedExam: selectedExamId),
+                  builder: (_) => _ChapterExplorerScreen(vm: vm),
                 ),
               );
             },
@@ -1458,7 +1459,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
               minimumSize: const Size.fromHeight(42),
             ),
             child: const Text(
-              'Practice Weak Topics',
+              'View Chapter Insights',
               style: TextStyle(fontWeight: FontWeight.w700),
             ),
           ),
@@ -1894,7 +1895,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                 minimumSize: const Size.fromHeight(48),
               ),
               child: const Text(
-                'Start New Map',
+                'Start New Mock Test',
                 style: TextStyle(fontWeight: FontWeight.w800),
               ),
             ),
@@ -2333,6 +2334,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       ..sort((a, b) => b.accuracy.compareTo(a.accuracy));
     final chapters = detail.chapters.values.toList()
       ..sort((a, b) => a.accuracy.compareTo(b.accuracy));
+    final chapterAttempts = detail.chapterAttempts;
 
     final avgLeaderboardScore = leaderboardRows.isEmpty
         ? 0.0
@@ -2467,6 +2469,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       trendPoints: trendPoints,
       subjects: subjects,
       chapters: chapters,
+      chapterAttempts: chapterAttempts,
       timeSlices: timeSlices,
       timeScoreTrend: timeScoreTrend,
       timeInsight: timeInsight,
@@ -2497,8 +2500,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     final subjects = <String, _SubjectMetric>{};
     final chapters = <String, _ChapterMetric>{};
     final totalsByAttempt = <String, int>{};
+    final chapterAttempts = <_ChapterAttemptMetric>[];
 
-    for (final attemptDoc in attempts) {
+    for (int attemptIndex = 0; attemptIndex < attempts.length; attemptIndex++) {
+      final attemptDoc = attempts[attemptIndex];
       final attempt = attemptDoc.data();
       final examId = (attempt['examId'] ?? '').toString();
       final testId = (attempt['testId'] ?? '').toString();
@@ -2521,6 +2526,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       }
 
       final questions = _questionCache[cacheKey] ?? const [];
+      final sectionNames = await _loadSectionNames(examId, testId);
       totalsByAttempt[attemptDoc.id] = questions.length;
       final answers = _answersMap(attempt['answers']);
       final perQuestionSeconds =
@@ -2530,11 +2536,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             questions.length,
           ) ??
           0.0;
+      final attemptChapterMetrics = <String, _ChapterMetric>{};
+      final attemptDate =
+          _toDate(attempt['submittedAt']) ??
+          _toDate(attempt['startedAt']) ??
+          DateTime.now();
+      final label = 'T${attemptIndex + 1}';
 
       for (final qDoc in questions) {
         final question = qDoc.data();
-        final subjectName = _subjectName(question);
-        final chapterName = _chapterName(question);
+        final subjectName = _subjectName(question, sectionNames);
+        final chapterName = _chapterName(question, subjectName);
         final selected = answers[qDoc.id] ?? '';
         final correct = (question['correctOption'] ?? '').toString();
         final isAttempted = selected.isNotEmpty;
@@ -2557,6 +2569,30 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         chapterMetric.total++;
         if (isAttempted) chapterMetric.attempted++;
         if (isCorrect) chapterMetric.correct++;
+
+        final attemptChapterMetric = attemptChapterMetrics.putIfAbsent(
+          chapterKey,
+          () => _ChapterMetric(name: chapterName, subject: subjectName),
+        );
+        attemptChapterMetric.total++;
+        if (isAttempted) attemptChapterMetric.attempted++;
+        if (isCorrect) attemptChapterMetric.correct++;
+      }
+
+      for (final metric in attemptChapterMetrics.values) {
+        chapterAttempts.add(
+          _ChapterAttemptMetric(
+            label: label,
+            date: attemptDate,
+            subject: metric.subject,
+            chapter: metric.name,
+            accuracy: metric.accuracy,
+            avgMinutesPerQuestion: perQuestionSeconds / 60.0,
+            attempted: metric.attempted,
+            correct: metric.correct,
+            skipped: math.max(0, metric.total - metric.attempted),
+          ),
+        );
       }
     }
 
@@ -2564,7 +2600,37 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       subjects: subjects,
       chapters: chapters,
       totalsByAttempt: totalsByAttempt,
+      chapterAttempts: chapterAttempts,
     );
+  }
+
+  Future<Map<String, String>> _loadSectionNames(String examId, String testId) async {
+    if (examId.isEmpty || testId.isEmpty) return const {};
+    final key = '$examId|$testId';
+    if (_sectionNameCache.containsKey(key)) {
+      return _sectionNameCache[key] ?? const {};
+    }
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('exams')
+          .doc(examId)
+          .collection('tests')
+          .doc(testId)
+          .collection('sections')
+          .get();
+      final names = <String, String>{};
+      for (final doc in snap.docs) {
+        final name = (doc.data()['name'] ?? '').toString().trim();
+        if (name.isNotEmpty) {
+          names[doc.id] = name;
+        }
+      }
+      _sectionNameCache[key] = names;
+      return names;
+    } catch (_) {
+      _sectionNameCache[key] = const {};
+      return const {};
+    }
   }
 
   Future<List<_LeaderboardRow>> _loadExamLeaderboardRows(String examId) async {
@@ -2591,20 +2657,36 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     return out;
   }
 
-  String _subjectName(Map<String, dynamic> question) {
-    return (question['subject'] ??
+  String _subjectName(
+    Map<String, dynamic> question,
+    Map<String, String> sectionNames,
+  ) {
+    final directName = (question['subject'] ??
             question['sectionName'] ??
-            question['section'] ??
-            'General')
-        .toString();
+            question['section'])
+        ?.toString()
+        .trim();
+    if (directName != null && directName.isNotEmpty) {
+      return directName;
+    }
+
+    final sectionId = question['sectionId']?.toString().trim();
+    if (sectionId != null && sectionId.isNotEmpty) {
+      final mappedName = sectionNames[sectionId]?.trim();
+      if (mappedName != null && mappedName.isNotEmpty) {
+        return mappedName;
+      }
+    }
+
+    return 'General';
   }
 
-  String _chapterName(Map<String, dynamic> question) {
+  String _chapterName(Map<String, dynamic> question, String fallbackSubject) {
     return (question['chapter'] ??
             question['chapterName'] ??
             question['topic'] ??
             question['topicName'] ??
-            _subjectName(question))
+            fallbackSubject)
         .toString();
   }
 
@@ -2785,11 +2867,13 @@ class _QuestionDetailBundle {
   final Map<String, _SubjectMetric> subjects;
   final Map<String, _ChapterMetric> chapters;
   final Map<String, int> totalsByAttempt;
+  final List<_ChapterAttemptMetric> chapterAttempts;
 
   const _QuestionDetailBundle({
     required this.subjects,
     required this.chapters,
     required this.totalsByAttempt,
+    required this.chapterAttempts,
   });
 
   int totalQuestionsForAttempt(String attemptId) =>
@@ -2841,6 +2925,7 @@ class _DashboardVm {
   final List<_TrendPoint> trendPoints;
   final List<_SubjectMetric> subjects;
   final List<_ChapterMetric> chapters;
+  final List<_ChapterAttemptMetric> chapterAttempts;
   final List<_TimeSlice> timeSlices;
   final List<double> timeScoreTrend;
   final String timeInsight;
@@ -2880,6 +2965,7 @@ class _DashboardVm {
     required this.trendPoints,
     required this.subjects,
     required this.chapters,
+    required this.chapterAttempts,
     required this.timeSlices,
     required this.timeScoreTrend,
     required this.timeInsight,
@@ -2951,6 +3037,52 @@ class _ChapterMetric {
       name.length <= 10 ? name : '${name.substring(0, 9)}...';
 }
 
+class _ChapterAttemptMetric {
+  final String label;
+  final DateTime date;
+  final String subject;
+  final String chapter;
+  final double accuracy;
+  final double avgMinutesPerQuestion;
+  final int attempted;
+  final int correct;
+  final int skipped;
+
+  const _ChapterAttemptMetric({
+    required this.label,
+    required this.date,
+    required this.subject,
+    required this.chapter,
+    required this.accuracy,
+    required this.avgMinutesPerQuestion,
+    required this.attempted,
+    required this.correct,
+    required this.skipped,
+  });
+}
+
+class _SubjectAttemptMetric {
+  final String label;
+  final DateTime date;
+  final String subject;
+  final double score;
+  final double accuracy;
+  final int attempted;
+  final int correct;
+  final int total;
+
+  const _SubjectAttemptMetric({
+    required this.label,
+    required this.date,
+    required this.subject,
+    required this.score,
+    required this.accuracy,
+    required this.attempted,
+    required this.correct,
+    required this.total,
+  });
+}
+
 class _TimeBucket {
   final String label;
   final Color color;
@@ -2997,6 +3129,1440 @@ class _Recommendation {
     required this.subtitle,
     required this.icon,
   });
+}
+
+class _ChapterExplorerScreen extends StatefulWidget {
+  final _DashboardVm vm;
+
+  const _ChapterExplorerScreen({required this.vm});
+
+  @override
+  State<_ChapterExplorerScreen> createState() => _ChapterExplorerScreenState();
+}
+
+class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
+  String? _selectedSubject;
+  String? _selectedChapter;
+  int _testRange = 5;
+
+  List<String> get _subjects {
+    final names = widget.vm.chapterAttempts
+        .map((item) => item.subject)
+        .where((name) => name.trim().isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    if (names.isEmpty) {
+      names.addAll(
+        widget.vm.chapters.map((chapter) => chapter.subject).toSet().toList()
+          ..sort(),
+      );
+    }
+    return names;
+  }
+
+  List<String> get _chaptersForSubject {
+    final subject = _selectedSubject;
+    if (subject == null) return const [];
+    final chapters = widget.vm.chapterAttempts
+        .where((item) => item.subject == subject)
+        .map((item) => item.chapter)
+        .toSet()
+        .toList()
+      ..sort();
+    if (chapters.isEmpty) {
+      chapters.addAll(
+        widget.vm.chapters
+            .where((chapter) => chapter.subject == subject)
+            .map((chapter) => chapter.name)
+            .toSet()
+            .toList()
+          ..sort(),
+      );
+    }
+    return chapters;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final weakest = widget.vm.chapters.isNotEmpty ? widget.vm.chapters.first : null;
+    _selectedSubject =
+        weakest?.subject ?? (_subjects.isNotEmpty ? _subjects.first : null);
+    final initialChapters = _chaptersForSubject;
+    _selectedChapter = weakest != null && weakest.subject == _selectedSubject
+        ? weakest.name
+        : (initialChapters.isNotEmpty ? initialChapters.first : null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filteredAttempts = _filteredAttempts();
+    final chapterAccuracy = filteredAttempts.isEmpty
+        ? 0.0
+        : filteredAttempts
+                  .map((item) => item.accuracy)
+                  .reduce((a, b) => a + b) /
+              filteredAttempts.length;
+    final avgTime = filteredAttempts.isEmpty
+        ? 0.0
+        : filteredAttempts
+                  .map((item) => item.avgMinutesPerQuestion)
+                  .reduce((a, b) => a + b) /
+              filteredAttempts.length;
+    final avgAttempted = filteredAttempts.isEmpty
+        ? 0.0
+        : filteredAttempts
+                  .map((item) => item.attempted.toDouble())
+                  .reduce((a, b) => a + b) /
+              filteredAttempts.length;
+    final avgCorrect = filteredAttempts.isEmpty
+        ? 0.0
+        : filteredAttempts
+                  .map((item) => item.correct.toDouble())
+                  .reduce((a, b) => a + b) /
+              filteredAttempts.length;
+    final avgSkipped = filteredAttempts.isEmpty
+        ? 0.0
+        : filteredAttempts
+                  .map((item) => item.skipped.toDouble())
+                  .reduce((a, b) => a + b) /
+              filteredAttempts.length;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF4F5FE),
+      body: SafeArea(
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        InkWell(
+                          onTap: () => Navigator.of(context).maybePop(),
+                          borderRadius: BorderRadius.circular(16),
+                          child: Container(
+                            height: 34,
+                            width: 34,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFFDCE3F4)),
+                            ),
+                            child: const Icon(
+                              Icons.chevron_left_rounded,
+                              color: Color(0xFF27408B),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Chapter Explorer',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF172B67),
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'Filter and explore chapter-level trends from recent tests',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF8C96AF),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _explorerCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Filter & Explore',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF67728A),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _filterDropdown(
+                                  label: 'Subject',
+                                  value: _selectedSubject,
+                                  items: _subjects,
+                                  onChanged: (value) {
+                                    if (value == null) return;
+                                    setState(() {
+                                      _selectedSubject = value;
+                                      final chapters = _chaptersForSubject;
+                                      _selectedChapter =
+                                          chapters.contains(_selectedChapter)
+                                          ? _selectedChapter
+                                          : (chapters.isNotEmpty
+                                                ? chapters.first
+                                                : null);
+                                    });
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _filterDropdown(
+                                  label: 'Chapter',
+                                  value: _selectedChapter,
+                                  items: _chaptersForSubject,
+                                  onChanged: (value) {
+                                    setState(() => _selectedChapter = value);
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _rangePill(
+                                  label: 'Last 5 Tests',
+                                  selected: _testRange == 5,
+                                  onTap: () => setState(() => _testRange = 5),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _rangePill(
+                                  label: 'Last 10 Tests',
+                                  selected: _testRange == 10,
+                                  onTap: () => setState(() => _testRange = 10),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF4F5FE),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '${_selectedSubject ?? 'General'} - ${_selectedChapter ?? 'Overview'}',
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF4D61DA),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        filteredAttempts.isEmpty
+                                            ? 'No matching chapter data yet'
+                                            : 'Showing last ${filteredAttempts.length} tests',
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Color(0xFF8C96AF),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      '${chapterAccuracy.toStringAsFixed(0)}%',
+                                      style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF4D61DA),
+                                      ),
+                                    ),
+                                    const Text(
+                                      'Avg Accuracy',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: Color(0xFF9AA3B8),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _explorerCard(
+                      title: 'Chapter Accuracy Trend',
+                      child: filteredAttempts.isEmpty
+                          ? const _ExplorerEmptyState(
+                              message: 'No chapter trend data available',
+                            )
+                          : _ExplorerLineChart(
+                              points: filteredAttempts
+                                  .map((item) => _ChartPoint(item.label, item.accuracy))
+                                  .toList(),
+                              minY: 0,
+                              maxY: 100,
+                              suffix: '%',
+                              lineColor: const Color(0xFF5A63F6),
+                            ),
+                    ),
+                    const SizedBox(height: 12),
+                    _explorerCard(
+                      title: 'Avg. Time per Question (min)',
+                      footer: const Text(
+                        'Target: < 2.5 min',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFF09E3E),
+                        ),
+                      ),
+                      child: filteredAttempts.isEmpty
+                          ? const _ExplorerEmptyState(
+                              message: 'No timing data available',
+                            )
+                          : _ExplorerBarChart(
+                              bars: filteredAttempts
+                                  .map(
+                                    (item) => _ChartPoint(
+                                      item.label,
+                                      item.avgMinutesPerQuestion,
+                                    ),
+                                  )
+                                  .toList(),
+                              maxY: math.max(
+                                4.0,
+                                filteredAttempts
+                                        .map((item) => item.avgMinutesPerQuestion)
+                                        .fold<double>(0.0, math.max) +
+                                    0.5,
+                              ),
+                              barColor: const Color(0xFF7C7AF4),
+                            ),
+                    ),
+                    const SizedBox(height: 12),
+                    _explorerCard(
+                      title: 'Attempt vs Correct vs Skipped',
+                      child: filteredAttempts.isEmpty
+                          ? const _ExplorerEmptyState(
+                              message: 'No attempt breakdown available',
+                            )
+                          : _ExplorerGroupedBarChart(
+                              series: [
+                                _ChartSeries(
+                                  label: 'Attempted',
+                                  color: const Color(0xFF5B63F7),
+                                  points: filteredAttempts
+                                      .map(
+                                        (item) => _ChartPoint(
+                                          item.label,
+                                          item.attempted.toDouble(),
+                                        ),
+                                      )
+                                      .toList(),
+                                ),
+                                _ChartSeries(
+                                  label: 'Correct',
+                                  color: const Color(0xFF1FBF8F),
+                                  points: filteredAttempts
+                                      .map(
+                                        (item) => _ChartPoint(
+                                          item.label,
+                                          item.correct.toDouble(),
+                                        ),
+                                      )
+                                      .toList(),
+                                ),
+                                _ChartSeries(
+                                  label: 'Skipped',
+                                  color: const Color(0xFFD1D5E3),
+                                  points: filteredAttempts
+                                      .map(
+                                        (item) => _ChartPoint(
+                                          item.label,
+                                          item.skipped.toDouble(),
+                                        ),
+                                      )
+                                      .toList(),
+                                ),
+                              ],
+                            ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _miniInsightCard(
+                            label: 'Avg Attempted',
+                            value: avgAttempted.toStringAsFixed(1),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _miniInsightCard(
+                            label: 'Avg Correct',
+                            value: avgCorrect.toStringAsFixed(1),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _miniInsightCard(
+                            label: 'Avg Time',
+                            value: '${avgTime.toStringAsFixed(1)}m',
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        'Avg skipped ${avgSkipped.toStringAsFixed(1)} questions',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF8C96AF),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<_ChapterAttemptMetric> _filteredAttempts() {
+    final subject = _selectedSubject;
+    final chapter = _selectedChapter;
+    if (subject == null || chapter == null) return const [];
+    final items = widget.vm.chapterAttempts
+        .where((item) => item.subject == subject && item.chapter == chapter)
+        .toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    if (items.length <= _testRange) return items;
+    return items.sublist(items.length - _testRange);
+  }
+
+  Widget _explorerCard({
+    String? title,
+    Widget? footer,
+    required Widget child,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE3E8F5)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x120E1A33),
+            blurRadius: 14,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (title != null) ...[
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF21356C),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          child,
+          if (footer != null) ...[
+            const SizedBox(height: 10),
+            Center(child: footer),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _filterDropdown({
+    required String label,
+    required String? value,
+    required List<String> items,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: const TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF9AA3B8),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFF6A72FF), width: 1.2),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: items.contains(value)
+                  ? value
+                  : (items.isNotEmpty ? items.first : null),
+              isExpanded: true,
+              hint: const Text('Select'),
+              items: items
+                  .map(
+                    (item) => DropdownMenuItem<String>(
+                      value: item,
+                      child: Text(
+                        item,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF23356F),
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: items.isEmpty ? null : onChanged,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _rangePill({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        height: 34,
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF625CF1) : Colors.white,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected ? const Color(0xFF625CF1) : const Color(0xFFE2E6F3),
+          ),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: selected ? Colors.white : const Color(0xFF6B7894),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _miniInsightCard({required String label, required String value}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE3E8F5)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF24386F),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 10, color: Color(0xFF8C96AF)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SubjectExplorerScreen extends StatefulWidget {
+  final _DashboardVm vm;
+
+  const _SubjectExplorerScreen({required this.vm});
+
+  @override
+  State<_SubjectExplorerScreen> createState() => _SubjectExplorerScreenState();
+}
+
+class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
+  String? _selectedSubject;
+  int _testRange = 5;
+
+  List<String> get _subjects {
+    final subjects = widget.vm.subjects.map((subject) => subject.name).toList();
+    if (subjects.isNotEmpty) return subjects;
+    return widget.vm.chapterAttempts
+        .map((item) => item.subject)
+        .where((item) => item.trim().isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedSubject = _subjects.isNotEmpty ? _subjects.first : null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final subject = _selectedSubject;
+    final subjectAttempts = _subjectSeries();
+    final chapterHeatmap = widget.vm.chapters
+        .where((chapter) => chapter.subject == subject)
+        .toList()
+      ..sort((a, b) => b.accuracy.compareTo(a.accuracy));
+    final chapterTimeBars = _chapterTimeSeries();
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF4F5FE),
+      body: SafeArea(
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        InkWell(
+                          onTap: () => Navigator.of(context).maybePop(),
+                          borderRadius: BorderRadius.circular(16),
+                          child: Container(
+                            height: 34,
+                            width: 34,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFFDCE3F4)),
+                            ),
+                            child: const Icon(
+                              Icons.chevron_left_rounded,
+                              color: Color(0xFF27408B),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Subject Explorer',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF172B67),
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'Subject-wise analytics from your actual exam subjects',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF8C96AF),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: _subjects.map((item) {
+                          final selected = item == _selectedSubject;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: InkWell(
+                              onTap: () => setState(() => _selectedSubject = item),
+                              borderRadius: BorderRadius.circular(999),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 180),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 18,
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: selected
+                                      ? const Color(0xFF625CF1)
+                                      : Colors.white,
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(
+                                    color: selected
+                                        ? const Color(0xFF625CF1)
+                                        : const Color(0xFFE2E6F3),
+                                  ),
+                                ),
+                                child: Text(
+                                  item,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: selected
+                                        ? Colors.white
+                                        : const Color(0xFF5B6783),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _rangeTogglePill(
+                            label: 'Last 5 Tests',
+                            selected: _testRange == 5,
+                            onTap: () => setState(() => _testRange = 5),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _rangeTogglePill(
+                            label: 'Last 10 Tests',
+                            selected: _testRange == 10,
+                            onTap: () => setState(() => _testRange = 10),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    _subjectCard(
+                      title: 'Score Trend${subject == null ? '' : ' - $subject'}',
+                      child: subjectAttempts.isEmpty
+                          ? const _ExplorerEmptyState(
+                              message: 'No subject trend data available',
+                            )
+                          : _ExplorerLineChart(
+                              points: subjectAttempts
+                                  .map((item) => _ChartPoint(item.label, item.score))
+                                  .toList(),
+                              minY: 0,
+                              maxY: 100,
+                              suffix: '',
+                              lineColor: const Color(0xFF5A63F6),
+                            ),
+                    ),
+                    const SizedBox(height: 12),
+                    _subjectCard(
+                      title:
+                          'Accuracy Trend${subject == null ? '' : ' - $subject'}',
+                      child: subjectAttempts.isEmpty
+                          ? const _ExplorerEmptyState(
+                              message: 'No subject accuracy data available',
+                            )
+                          : _ExplorerLineChart(
+                              points: subjectAttempts
+                                  .map((item) => _ChartPoint(item.label, item.accuracy))
+                                  .toList(),
+                              minY: 0,
+                              maxY: 100,
+                              suffix: '',
+                              lineColor: const Color(0xFF7D8CFF),
+                            ),
+                    ),
+                    const SizedBox(height: 12),
+                    _subjectCard(
+                      title: 'Chapter Performance Heatmap',
+                      child: chapterHeatmap.isEmpty
+                          ? const _ExplorerEmptyState(
+                              message: 'No chapter data available for this subject',
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Wrap(
+                                  spacing: 10,
+                                  runSpacing: 6,
+                                  children: [
+                                    _HeatmapLegend(
+                                      label: 'High (>= 75%)',
+                                      color: Color(0xFF16C784),
+                                    ),
+                                    _HeatmapLegend(
+                                      label: 'Med (50-74%)',
+                                      color: Color(0xFFF2A126),
+                                    ),
+                                    _HeatmapLegend(
+                                      label: 'Low (< 50%)',
+                                      color: Color(0xFFFF5B6B),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Wrap(
+                                  spacing: 10,
+                                  runSpacing: 10,
+                                  children: chapterHeatmap.take(8).map((chapter) {
+                                    return _HeatmapChip(chapter: chapter);
+                                  }).toList(),
+                                ),
+                              ],
+                            ),
+                    ),
+                    const SizedBox(height: 12),
+                    _subjectCard(
+                      title: 'Avg. Time per Chapter (min/q)',
+                      footer: const Text(
+                        'Shorter bars = faster solving. Ideal: <2.5 min/question',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Color(0xFF8C96AF),
+                        ),
+                      ),
+                      child: chapterTimeBars.isEmpty
+                          ? const _ExplorerEmptyState(
+                              message: 'No chapter timing data available',
+                            )
+                          : _ExplorerBarChart(
+                              bars: chapterTimeBars,
+                              maxY: math.max(
+                                5.0,
+                                chapterTimeBars
+                                        .map((item) => item.value)
+                                        .fold<double>(0.0, math.max) +
+                                    0.5,
+                              ),
+                              barColor: const Color(0xFF6F74F7),
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<_SubjectAttemptMetric> _subjectSeries() {
+    final subject = _selectedSubject;
+    if (subject == null) return const [];
+    final grouped = <String, _SubjectAttemptAccumulator>{};
+    for (final item in widget.vm.chapterAttempts
+        .where((entry) => entry.subject == subject)
+        .toList()
+      ..sort((a, b) => a.date.compareTo(b.date))) {
+      final group = grouped.putIfAbsent(
+        item.label,
+        () => _SubjectAttemptAccumulator(label: item.label, date: item.date),
+      );
+      group.correct += item.correct;
+      group.attempted += item.attempted;
+      group.total += item.attempted + item.skipped;
+    }
+    final items = grouped.values
+        .map(
+          (entry) => _SubjectAttemptMetric(
+            label: entry.label,
+            date: entry.date,
+            subject: subject,
+            score: entry.attempted == 0
+                ? 0.0
+                : (entry.correct * 100.0 / entry.attempted),
+            accuracy: entry.total == 0
+                ? 0.0
+                : (entry.correct * 100.0 / entry.total),
+            attempted: entry.attempted,
+            correct: entry.correct,
+            total: entry.total,
+          ),
+        )
+        .toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    if (items.length <= _testRange) return items;
+    return items.sublist(items.length - _testRange);
+  }
+
+  List<_ChartPoint> _chapterTimeSeries() {
+    final subject = _selectedSubject;
+    if (subject == null) return const [];
+    final allowedLabels = _subjectSeries().map((item) => item.label).toSet();
+    final timeByChapter = <String, List<double>>{};
+    for (final item in widget.vm.chapterAttempts.where(
+      (entry) => entry.subject == subject && allowedLabels.contains(entry.label),
+    )) {
+      timeByChapter.putIfAbsent(item.chapter, () => <double>[]).add(
+        item.avgMinutesPerQuestion,
+      );
+    }
+    final points = timeByChapter.entries.map((entry) {
+      final avg = entry.value.isEmpty
+          ? 0.0
+          : entry.value.reduce((a, b) => a + b) / entry.value.length;
+      final label = entry.key.length <= 8 ? entry.key : entry.key.substring(0, 8);
+      return _ChartPoint(label, avg);
+    }).toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return points.take(6).toList();
+  }
+
+  Widget _subjectCard({
+    required String title,
+    Widget? footer,
+    required Widget child,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE3E8F5)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x120E1A33),
+            blurRadius: 14,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF21356C),
+            ),
+          ),
+          const SizedBox(height: 12),
+          child,
+          if (footer != null) ...[
+            const SizedBox(height: 10),
+            Center(child: footer),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _rangeTogglePill({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        height: 34,
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF625CF1) : Colors.white,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected ? const Color(0xFF625CF1) : const Color(0xFFE2E6F3),
+          ),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: selected ? Colors.white : const Color(0xFF6B7894),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SubjectAttemptAccumulator {
+  final String label;
+  final DateTime date;
+  int attempted = 0;
+  int correct = 0;
+  int total = 0;
+
+  _SubjectAttemptAccumulator({required this.label, required this.date});
+}
+
+class _HeatmapLegend extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _HeatmapLegend({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 10, color: Color(0xFF8C96AF)),
+        ),
+      ],
+    );
+  }
+}
+
+class _HeatmapChip extends StatelessWidget {
+  final _ChapterMetric chapter;
+
+  const _HeatmapChip({required this.chapter});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 112,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: chapter.badgeColor,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              chapter.shortName,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '${chapter.accuracy.toStringAsFixed(0)}%',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChartPoint {
+  final String label;
+  final double value;
+
+  const _ChartPoint(this.label, this.value);
+}
+
+class _ChartSeries {
+  final String label;
+  final Color color;
+  final List<_ChartPoint> points;
+
+  const _ChartSeries({
+    required this.label,
+    required this.color,
+    required this.points,
+  });
+}
+
+class _ExplorerEmptyState extends StatelessWidget {
+  final String message;
+
+  const _ExplorerEmptyState({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 180,
+      child: Center(
+        child: Text(
+          message,
+          style: const TextStyle(fontSize: 12, color: Color(0xFF8C96AF)),
+        ),
+      ),
+    );
+  }
+}
+
+class _ExplorerLineChart extends StatelessWidget {
+  final List<_ChartPoint> points;
+  final double minY;
+  final double maxY;
+  final String suffix;
+  final Color lineColor;
+
+  const _ExplorerLineChart({
+    required this.points,
+    required this.minY,
+    required this.maxY,
+    required this.suffix,
+    required this.lineColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 180,
+      child: CustomPaint(
+        painter: _ExplorerLinePainter(
+          points: points,
+          minY: minY,
+          maxY: maxY,
+          suffix: suffix,
+          lineColor: lineColor,
+        ),
+        child: Container(),
+      ),
+    );
+  }
+}
+
+class _ExplorerBarChart extends StatelessWidget {
+  final List<_ChartPoint> bars;
+  final double maxY;
+  final Color barColor;
+
+  const _ExplorerBarChart({
+    required this.bars,
+    required this.maxY,
+    required this.barColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scaleMax = maxY <= 0 ? 1.0 : maxY;
+    return SizedBox(
+      height: 180,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          const SizedBox(
+            width: 28,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('4m', style: TextStyle(fontSize: 9, color: Color(0xFF9AA3B8))),
+                Text('3m', style: TextStyle(fontSize: 9, color: Color(0xFF9AA3B8))),
+                Text('2m', style: TextStyle(fontSize: 9, color: Color(0xFF9AA3B8))),
+                Text('1m', style: TextStyle(fontSize: 9, color: Color(0xFF9AA3B8))),
+                Text('0m', style: TextStyle(fontSize: 9, color: Color(0xFF9AA3B8))),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: bars.map((bar) {
+                final heightFactor =
+                    (bar.value / scaleMax).clamp(0.0, 1.0).toDouble();
+                return Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Container(
+                      width: 22,
+                      height: 120 * heightFactor,
+                      decoration: BoxDecoration(
+                        color: barColor,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      bar.label,
+                      style: const TextStyle(fontSize: 9, color: Color(0xFF8C96AF)),
+                    ),
+                  ],
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExplorerGroupedBarChart extends StatelessWidget {
+  final List<_ChartSeries> series;
+
+  const _ExplorerGroupedBarChart({required this.series});
+
+  @override
+  Widget build(BuildContext context) {
+    if (series.isEmpty || series.first.points.isEmpty) {
+      return const _ExplorerEmptyState(message: 'No grouped chart data');
+    }
+    final labels = series.first.points.map((point) => point.label).toList();
+    final maxY = series
+            .expand((item) => item.points.map((point) => point.value))
+            .fold<double>(0.0, math.max) +
+        1;
+    return SizedBox(
+      height: 220,
+      child: Column(
+        children: [
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                const SizedBox(
+                  width: 22,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('8', style: TextStyle(fontSize: 9, color: Color(0xFF9AA3B8))),
+                      Text('6', style: TextStyle(fontSize: 9, color: Color(0xFF9AA3B8))),
+                      Text('4', style: TextStyle(fontSize: 9, color: Color(0xFF9AA3B8))),
+                      Text('2', style: TextStyle(fontSize: 9, color: Color(0xFF9AA3B8))),
+                      Text('0', style: TextStyle(fontSize: 9, color: Color(0xFF9AA3B8))),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: List.generate(labels.length, (index) {
+                      return Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: series.map((item) {
+                              final point = item.points[index];
+                              final heightFactor =
+                                  (point.value / maxY).clamp(0.0, 1.0).toDouble();
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 2),
+                                child: Container(
+                                  width: 10,
+                                  height: 130 * heightFactor,
+                                  decoration: BoxDecoration(
+                                    color: item.color,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            labels[index],
+                            style: const TextStyle(
+                              fontSize: 9,
+                              color: Color(0xFF8C96AF),
+                            ),
+                          ),
+                        ],
+                      );
+                    }),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 14,
+            runSpacing: 8,
+            children: series.map((item) {
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: item.color,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    item.label,
+                    style: const TextStyle(fontSize: 10, color: Color(0xFF8C96AF)),
+                  ),
+                ],
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExplorerLinePainter extends CustomPainter {
+  final List<_ChartPoint> points;
+  final double minY;
+  final double maxY;
+  final String suffix;
+  final Color lineColor;
+
+  _ExplorerLinePainter({
+    required this.points,
+    required this.minY,
+    required this.maxY,
+    required this.suffix,
+    required this.lineColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const leftPad = 30.0;
+    const rightPad = 10.0;
+    const topPad = 10.0;
+    const bottomPad = 24.0;
+    final chartRect = Rect.fromLTWH(
+      leftPad,
+      topPad,
+      size.width - leftPad - rightPad,
+      size.height - topPad - bottomPad,
+    );
+
+    final gridPaint = Paint()
+      ..color = const Color(0xFFE7EBF6)
+      ..strokeWidth = 1;
+    for (int i = 0; i < 5; i++) {
+      final y = chartRect.top + (chartRect.height * i / 4);
+      canvas.drawLine(
+        Offset(chartRect.left, y),
+        Offset(chartRect.right, y),
+        gridPaint,
+      );
+    }
+
+    final axisStyle = const TextStyle(fontSize: 9, color: Color(0xFF9AA3B8));
+    final steps = <double>[maxY, (maxY * 0.75), (maxY * 0.5), (maxY * 0.25), minY];
+    for (int i = 0; i < steps.length; i++) {
+      final text = suffix == '%'
+          ? '${steps[i].round()}%'
+          : '${steps[i].toStringAsFixed(0)}$suffix';
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: axisStyle),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      final y = chartRect.top + (chartRect.height * i / 4) - (painter.height / 2);
+      painter.paint(canvas, Offset(0, y));
+    }
+
+    if (points.isEmpty) return;
+
+    final linePaint = Paint()
+      ..color = lineColor
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+    final pointPaint = Paint()..color = lineColor;
+    final path = Path();
+
+    for (int i = 0; i < points.length; i++) {
+      final dx =
+          chartRect.left +
+          (chartRect.width * i / math.max(1.0, (points.length - 1).toDouble()));
+      final normalized = ((points[i].value - minY) /
+              math.max(1.0, maxY - minY))
+          .clamp(0.0, 1.0)
+          .toDouble();
+      final dy = chartRect.bottom - (chartRect.height * normalized);
+      if (i == 0) {
+        path.moveTo(dx, dy);
+      } else {
+        path.lineTo(dx, dy);
+      }
+      canvas.drawCircle(Offset(dx, dy), 3.5, pointPaint);
+
+      final labelPainter = TextPainter(
+        text: TextSpan(text: points[i].label, style: axisStyle),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      labelPainter.paint(
+        canvas,
+        Offset(dx - labelPainter.width / 2, chartRect.bottom + 6),
+      );
+    }
+
+    canvas.drawPath(path, linePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ExplorerLinePainter oldDelegate) {
+    return oldDelegate.points != points ||
+        oldDelegate.minY != minY ||
+        oldDelegate.maxY != maxY ||
+        oldDelegate.suffix != suffix ||
+        oldDelegate.lineColor != lineColor;
+  }
 }
 
 class _MiniMetric extends StatelessWidget {
@@ -3537,3 +5103,6 @@ Color _subjectColor(String subject) {
   }
   return palette[hash % palette.length];
 }
+
+
+

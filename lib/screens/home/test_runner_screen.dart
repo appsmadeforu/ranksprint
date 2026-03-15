@@ -796,6 +796,38 @@ class TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBindingO
     return '$prefix$content';
   }
 
+  List<String> _questionImageUrls(Map<String, dynamic> question) {
+    return HtmlHelper.extractImageUrls(
+      question,
+      preferredKeys: const [
+        'questionImageUrl',
+        'questionImageUrls',
+        'questionImage',
+        'questionImages',
+        'imageUrl',
+        'imageUrls',
+        'image',
+        'images',
+      ],
+    );
+  }
+
+  List<String> _optionImageUrls(Map<String, dynamic> option) {
+    return HtmlHelper.extractImageUrls(
+      option,
+      preferredKeys: const [
+        'optionImageUrl',
+        'optionImageUrls',
+        'optionImage',
+        'optionImages',
+        'imageUrl',
+        'imageUrls',
+        'image',
+        'images',
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final hasAttempt = attemptId != null;
@@ -908,71 +940,101 @@ class TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBindingO
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Card(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
+                      Builder(
+                        builder: (context) {
+                          final currentQuestion = questions[currentIndex];
+                          final questionText =
+                              (currentQuestion['questionText'] ?? '').toString();
+                          final questionImages =
+                              _questionImageUrls(currentQuestion);
+
+                          return Card(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFEFF8FF),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: const Text(
-                                      'Clear Answer',
-                                      style: TextStyle(
-                                        color: Color(0xFF2F6FEB),
-                                      ),
-                                    ),
-                                  ),
                                   Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
                                     children: [
-                                      IconButton(
-                                        onPressed: () {
-                                          final qid =
-                                          questions[currentIndex]['__id'] as String;
-                                          _showAddForReviewQuestionDialog(qid);
-                                          if (_canOpenQuestion(currentIndex + 1)) {
-                                            setState(() {
-                                              currentIndex += 1;
-                                            });
-                                          }
-                                        },
-                                        icon: const Icon(
-                                          Icons.report_problem_outlined,
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 6,
                                         ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFEFF8FF),
+                                          borderRadius:
+                                              BorderRadius.circular(20),
+                                        ),
+                                        child: const Text(
+                                          'Clear Answer',
+                                          style: TextStyle(
+                                            color: Color(0xFF2F6FEB),
+                                          ),
+                                        ),
+                                      ),
+                                      Row(
+                                        children: [
+                                          IconButton(
+                                            onPressed: () {
+                                              final qid = currentQuestion['__id']
+                                                  as String;
+                                              _showAddForReviewQuestionDialog(
+                                                qid,
+                                              );
+                                              if (_canOpenQuestion(
+                                                currentIndex + 1,
+                                              )) {
+                                                setState(() {
+                                                  currentIndex += 1;
+                                                });
+                                              }
+                                            },
+                                            icon: const Icon(
+                                              Icons.report_problem_outlined,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
+                                  const SizedBox(height: 8),
+                                  if (questionText.trim().isEmpty &&
+                                      questionImages.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: Text(
+                                        'Q${currentIndex + 1}.',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w600,
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ),
+                                  HtmlHelper.renderContent(
+                                    html: questionText.trim().isEmpty
+                                        ? null
+                                        : _questionHtmlWithInlineNumber(
+                                            currentIndex + 1,
+                                            questionText,
+                                          ),
+                                    imageUrls: questionImages,
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      height: 1.4,
+                                    ),
+                                  ),
                                 ],
                               ),
-                              const SizedBox(height: 8),
-                              HtmlHelper.renderHtml(
-                                _questionHtmlWithInlineNumber(
-                                  currentIndex + 1,
-                                  (questions[currentIndex]['questionText'] ?? '')
-                                      .toString(),
-                                ),
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  height: 1.4,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                            ),
+                          );
+                        },
                       ),
                       const SizedBox(height: 12),
                       // Options
@@ -1008,8 +1070,9 @@ class TestRunnerScreenState extends State<TestRunnerScreen> with WidgetsBindingO
                                   backgroundColor: const Color(0xFFEAEFF6),
                                   child: Text(optId),
                                 ),
-                                title: HtmlHelper.renderHtml(
-                                  optText.toString(),
+                                title: HtmlHelper.renderContent(
+                                  html: optText.toString(),
+                                  imageUrls: _optionImageUrls(opt),
                                   style: const TextStyle(fontSize: 16),
                                 ),
                                 onTap: () => _selectOption(qid, optId),
