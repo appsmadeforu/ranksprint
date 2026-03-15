@@ -65,48 +65,45 @@ class _NotificationBellState extends State<NotificationBell>
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8.0),
-      child: GestureDetector(
-        onTap: _handleTap,
-        child: AnimatedBuilder(
-          animation: _controller,
-          builder: (context, child) {
-            return Transform.scale(scale: _scaleAnim.value, child: child);
-          },
-          child: Stack(
-            children: [
-              const Icon(Icons.notifications_none, size: 28),
-              if (widget.unread > 0)
-                Positioned(
-                  right: -2,
-                  top: -2,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 5,
-                      vertical: 1,
+    return GestureDetector(
+      onTap: _handleTap,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return Transform.scale(scale: _scaleAnim.value, child: child);
+        },
+        child: Stack(
+          children: [
+            const Icon(Icons.notifications_none, size: 28),
+            if (widget.unread > 0)
+              Positioned(
+                right: -2,
+                top: -2,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 1,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  constraints: const BoxConstraints(
+                    minWidth: 16,
+                    minHeight: 16,
+                  ),
+                  child: Text(
+                    widget.unread.toString(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
                     ),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    constraints: const BoxConstraints(
-                      minWidth: 16,
-                      minHeight: 16,
-                    ),
-                    child: Text(
-                      widget.unread.toString(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
+                    textAlign: TextAlign.center,
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );

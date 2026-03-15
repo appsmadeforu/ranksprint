@@ -200,41 +200,10 @@ class HtmlHelper {
           ),
         for (int i = 0; i < dedupedImageUrls.length; i++) ...[
           if (content.isNotEmpty || i > 0) SizedBox(height: imageSpacing),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(borderRadius),
-            child: Image.network(
-              dedupedImageUrls[i],
-              fit: BoxFit.contain,
-              width: double.infinity,
-              loadingBuilder: (context, child, loadingProgress) {
-                if (loadingProgress == null) {
-                  return child;
-                }
-
-                return Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  color: const Color(0xFFF8FAFC),
-                  child: const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                );
-              },
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  color: const Color(0xFFF8FAFC),
-                  child: Text(
-                    'Unable to load image',
-                    style: TextStyle(
-                      color: style?.color ?? Colors.black54,
-                      fontSize: style?.fontSize ?? 14,
-                    ),
-                  ),
-                );
-              },
-            ),
+          _HtmlNetworkImage(
+            imageUrl: dedupedImageUrls[i],
+            borderRadius: borderRadius,
+            textStyle: style,
           ),
         ],
       ],
@@ -283,5 +252,62 @@ class HtmlHelper {
     }
 
     return true;
+  }
+}
+
+class _HtmlNetworkImage extends StatelessWidget {
+  const _HtmlNetworkImage({
+    required this.imageUrl,
+    required this.borderRadius,
+    required this.textStyle,
+  });
+
+  final String imageUrl;
+  final double borderRadius;
+  final TextStyle? textStyle;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(borderRadius),
+      child: Image.network(
+        imageUrl,
+        fit: BoxFit.contain,
+        width: double.infinity,
+        gaplessPlayback: true,
+        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+          if (wasSynchronouslyLoaded || frame != null) {
+            return child;
+          }
+
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            color: const Color(0xFFF8FAFC),
+            child: const Center(
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            color: const Color(0xFFF8FAFC),
+            child: Text(
+              'Unable to load image',
+              style: TextStyle(
+                color: textStyle?.color ?? Colors.black54,
+                fontSize: textStyle?.fontSize ?? 14,
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 }

@@ -173,11 +173,17 @@ class _PyqScreenState extends State<PyqScreen> {
                           return const Center(child: Text("No PYQs available"));
                         }
 
-                        return SingleChildScrollView(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
+                        return LayoutBuilder(
+                          builder: (context, constraints) {
+                            return SingleChildScrollView(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  minHeight: constraints.maxHeight,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                               const SizedBox(height: 12),
                               const Text(
                                 "Previous Year Questions",
@@ -196,7 +202,7 @@ class _PyqScreenState extends State<PyqScreen> {
                               ),
                               const SizedBox(height: 20),
 
-                              ListView.builder(
+                                    ListView.builder(
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
                                 itemCount: docs.length,
@@ -375,9 +381,12 @@ class _PyqScreenState extends State<PyqScreen> {
                                     },
                                   );
                                 },
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ],
-                          ),
+                            );
+                          },
                         );
                       },
                     ),

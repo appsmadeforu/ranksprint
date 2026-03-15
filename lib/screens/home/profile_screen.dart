@@ -362,133 +362,125 @@ class _ProfileScreenState extends State<ProfileScreen> {
           );
 
           return SafeArea(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  // Top header with functional dropdown
-                  TopHeader(
-                    selectedExamId: effectiveSelectedExamId,
-                    userExamIds: selectedExams,
-                    onExamChanged: (examId) {
-                      setState(() {
-                        selectedExamId = examId;
-                      });
-                    },
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  // User card
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+            child: Column(
+              children: [
+                TopHeader(
+                  selectedExamId: effectiveSelectedExamId,
+                  userExamIds: selectedExams,
+                  onExamChanged: (examId) {
+                    setState(() {
+                      selectedExamId = examId;
+                    });
+                  },
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
                       children: [
-                        // Avatar
-                        Container(
-                          width: 72,
-                          height: 72,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Color(0xFF2F3E8F),
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
                           ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            name.isNotEmpty
-                                ? (name.length >= 2
-                                      ? name.substring(0, 2).toUpperCase()
-                                      : name.toUpperCase())
-                                : 'RS',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(width: 16),
-
-                        // Name + Email + Phone
-                        Expanded(
-                          child: Column(
+                          child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      name.isNotEmpty
-                                          ? name
-                                          : 'Rank Sprint User',
-                                      style: const TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
+                              Container(
+                                width: 72,
+                                height: 72,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Color(0xFF2F3E8F),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  name.isNotEmpty
+                                      ? (name.length >= 2
+                                            ? name.substring(0, 2).toUpperCase()
+                                            : name.toUpperCase())
+                                      : 'RS',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 20,
                                   ),
-                                  if (!isDeletingAccount)
-                                    InkWell(
-                                      onTap: () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) =>
-                                                const EditProfileScreen(),
-                                          ),
-                                        );
-                                      },
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(6),
-                                        decoration: BoxDecoration(
-                                          border: Border.all(
-                                            color: Colors.grey.shade300,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                        ),
-                                        child: const Icon(
-                                          Icons.edit_outlined,
-                                          size: 18,
-                                          color: Colors.black87,
-                                        ),
-                                      ),
-                                    ),
-                                ],
+                                ),
                               ),
-
-                              const SizedBox(height: 6),
-
-                              if (email.isNotEmpty)
-                                Text(
-                                  email,
-                                  style: const TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 14,
-                                  ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            name.isNotEmpty
+                                                ? name
+                                                : 'Rank Sprint User',
+                                            style: const TextStyle(
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
+                                        if (!isDeletingAccount)
+                                          InkWell(
+                                            onTap: () {
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      const EditProfileScreen(),
+                                                ),
+                                              );
+                                            },
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            child: Container(
+                                              padding: const EdgeInsets.all(6),
+                                              decoration: BoxDecoration(
+                                                border: Border.all(
+                                                  color: Colors.grey.shade300,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: const Icon(
+                                                Icons.edit_outlined,
+                                                size: 18,
+                                                color: Colors.black87,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    if (email.isNotEmpty)
+                                      Text(
+                                        email,
+                                        style: const TextStyle(
+                                          color: Colors.grey,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    if (phone.isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        phone,
+                                        style: const TextStyle(
+                                          color: Colors.grey,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
-
-                              if (phone.isNotEmpty) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  phone,
-                                  style: const TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
+                              ),
                             ],
                           ),
                         ),
-                      ],
-                    ),
-                  ),
 
                   const SizedBox(height: 20),
 
@@ -867,8 +859,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   const SizedBox(height: 40),
-                ],
-              ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           );
         },

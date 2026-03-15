@@ -92,6 +92,7 @@ class ExamNavigationDrawer extends StatelessWidget {
                 section,
                 grouped,
                 !SectionService.isLock,
+                sections.length > 1,
               )),
 
           /// ===============================
@@ -103,6 +104,7 @@ class ExamNavigationDrawer extends StatelessWidget {
                 section,
                 grouped,
                 SectionService.isLock,
+                sections.length > 1,
               )),
         ],
       ),
@@ -114,6 +116,7 @@ class ExamNavigationDrawer extends StatelessWidget {
       SectionBean section,
       Map<String, List<Map<String, dynamic>>> grouped,
       bool isLocked,
+      bool showDivider,
       ) {
     final sectionId = section.id?.toString() ?? "";
     final sectionQuestions =
@@ -262,11 +265,11 @@ class ExamNavigationDrawer extends StatelessWidget {
                 ),
               ),
 
-              const Divider(),
-            ],
-          ),
-        ),
-      ),
+               if (showDivider) const Divider(),
+             ],
+           ),
+         ),
+       ),
     );
   }
 }

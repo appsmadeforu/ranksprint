@@ -16,19 +16,14 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   late int _index;
-
-  final List<Widget> screens = const [
-    SelectExamHome(),
-    TestsScreen(),
-    PyqScreen(),
-    AnalyticsScreen(),
-    ProfileScreen(),
-  ];
+  late final List<bool> _visited;
 
   @override
   void initState() {
     super.initState();
     _index = widget.initialIndex;
+    _visited = List<bool>.filled(5, false);
+    _visited[_index] = true;
   }
 
   void navigateToSubscription() {
@@ -41,10 +36,21 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: _index, children: screens),
+      body: IndexedStack(
+        index: _index,
+        children: List<Widget>.generate(5, (index) {
+          if (!_visited[index]) {
+            return const SizedBox.shrink();
+          }
+          return _buildScreen(index);
+        }),
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _index,
-        onTap: (value) => setState(() => _index = value),
+        onTap: (value) => setState(() {
+          _index = value;
+          _visited[value] = true;
+        }),
         selectedItemColor: const Color(0xFF2F3E8F),
         unselectedItemColor: Colors.grey,
         type: BottomNavigationBarType.fixed,
@@ -72,5 +78,22 @@ class _MainNavigationState extends State<MainNavigation> {
         ],
       ),
     );
+  }
+
+  Widget _buildScreen(int index) {
+    switch (index) {
+      case 0:
+        return const SelectExamHome();
+      case 1:
+        return const TestsScreen();
+      case 2:
+        return const PyqScreen();
+      case 3:
+        return const AnalyticsScreen();
+      case 4:
+        return const ProfileScreen();
+      default:
+        return const SizedBox.shrink();
+    }
   }
 }
