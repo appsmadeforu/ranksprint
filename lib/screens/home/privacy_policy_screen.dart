@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../widgets/static_top_header.dart';
 
 class PrivacyPolicyScreen extends StatelessWidget {
   const PrivacyPolicyScreen({super.key});
@@ -17,16 +18,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: const Color(0xFF2F6FEB),
-        centerTitle: true,
-        title: const Text(
-          "Privacy Policy",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-        ),
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
+      appBar: const StaticTopHeader(title: 'Privacy Policy'),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('policies')

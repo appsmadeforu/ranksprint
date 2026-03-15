@@ -48,6 +48,8 @@ dependencies:
   url_launcher: any
   flutter_html: ^3.0.0
   rxdart: ^0.28.0
+  http: ^1.2.2
+  sms_autofill: ^2.4.1
   # url_launcher: ^6.2.2
   video_player: ^2.9.2
 
@@ -76,6 +78,7 @@ dev_dependencies:
 flutter:
   assets:
     - assets/images/google.png
+    - assets/images/ranksprintai_logo.png
     - assets/icons/app_icon.png
     - assets/splash_screen.mp4
   # The following line ensures that the Material Icons font is

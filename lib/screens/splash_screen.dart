@@ -68,7 +68,7 @@ class _SplashScreenState extends State<SplashScreen> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.white,
       body: FutureBuilder<void>(
         future: _initializeVideoFuture,
         builder: (context, snapshot) {
@@ -79,11 +79,7 @@ class _SplashScreenState extends State<SplashScreen> {
           if (snapshot.hasError ||
               _videoController == null ||
               !_videoController!.value.isInitialized) {
-            return const Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
-            );
+            return const SizedBox.expand();
           }
 
           final controller = _videoController!;

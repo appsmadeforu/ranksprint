@@ -51,9 +51,8 @@ class TopHeader extends StatelessWidget {
                     ? () {
                         Navigator.of(context).pushAndRemoveUntil(
                           MaterialPageRoute(
-                            builder: (_) => const MainNavigation(
-                              initialIndex: 1,
-                            ),
+                            builder: (_) =>
+                                const MainNavigation(initialIndex: 1),
                           ),
                           (route) => false,
                         );

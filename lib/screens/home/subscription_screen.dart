@@ -426,10 +426,74 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           foregroundColor: Colors.white,
         ),
         body: Center(
-          child: Text(
-            (selectedExamId ?? '').isNotEmpty
-                ? 'No active subscription plans available for ${_selectedExamName ?? selectedExamId}.'
-                : 'No active subscription plans available right now.',
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(maxWidth: 520),
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEAF1FF),
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: const Icon(
+                      Icons.workspace_premium_outlined,
+                      size: 36,
+                      color: Color(0xFF2F3E8F),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'No Plans Available',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF111827),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    (selectedExamId ?? '').isNotEmpty
+                        ? 'There are no active subscription plans available for ${_selectedExamName ?? selectedExamId} right now.'
+                        : 'There are no active subscription plans available right now.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      height: 1.6,
+                      color: Color(0xFF6B7280),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Please check back later or contact support if you expected to see a plan here.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.5,
+                      color: Color(0xFF94A3B8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       );
@@ -437,12 +501,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
-      body: Column(
-        children: [
+      body: SafeArea(
+        child: Column(
+          children: [
           /// HEADER
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(16, 48, 16, 24),
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
             color: const Color(0xFF2F3E8F),
             child: Column(
               children: const [
@@ -468,6 +533,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           /// CONTENT
           Expanded(
             child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
@@ -704,6 +770,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             ),
           ),
         ],
+        ),
       ),
 
       /// BOTTOM BAR

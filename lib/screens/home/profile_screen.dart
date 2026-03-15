@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'subscription_screen.dart';
+import 'payment_history_screen.dart';
 import '../../services/user_exam_preference_service.dart';
 import '../../widgets/top_header.dart';
 import 'edit_profile_screen.dart';
@@ -564,39 +565,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 14),
-                              SizedBox(
-                                width: double.infinity,
-                                child: OutlinedButton(
-                                  onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => SubscriptionScreen(
-                                          initialExamId:
-                                              effectiveSelectedExamId,
-                                          initialPlanId: vm.initialPlanId,
+                              if (vm.initialPlanId != null) ...[
+                                const SizedBox(height: 14),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton(
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => SubscriptionScreen(
+                                            initialExamId:
+                                                effectiveSelectedExamId,
+                                            initialPlanId: vm.initialPlanId,
+                                          ),
                                         ),
+                                      );
+                                    },
+                                    style: OutlinedButton.styleFrom(
+                                      side: const BorderSide(
+                                        color: Colors.white24,
                                       ),
-                                    );
-                                  },
-                                  style: OutlinedButton.styleFrom(
-                                    side: const BorderSide(
-                                      color: Colors.white24,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
                                     ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                  ),
-                                  child: const Padding(
-                                    padding: EdgeInsets.symmetric(vertical: 12),
-                                    child: Text(
-                                      'Manage Subscription',
-                                      style: TextStyle(color: Colors.white),
+                                    child: const Padding(
+                                      padding: EdgeInsets.symmetric(vertical: 12),
+                                      child: Text(
+                                        'Manage Subscription',
+                                        style: TextStyle(color: Colors.white),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
+                              ],
                             ],
                           ),
                         );
@@ -690,6 +693,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ListTile(
                                   leading: Icon(Icons.settings),
                                   title: Text('Account Settings'),
+                                  trailing: const Icon(Icons.chevron_right),
                                   onTap: () {
                                     Navigator.of(context).push(
                                       MaterialPageRoute(
@@ -704,7 +708,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 leading: const Icon(Icons.credit_card_outlined),
                                 title: const Text('Payment History'),
                                 trailing: const Icon(Icons.chevron_right),
-                                onTap: () {},
+                                onTap: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const PaymentHistoryScreen(),
+                                    ),
+                                  );
+                                },
                               ),
                               // Notifications option removed as requested
                             ],
@@ -772,7 +783,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ListTile(
                                 leading: const Icon(Icons.lock_outline),
                                 title: const Text("Privacy Policy"),
-                                trailing: const Icon(Icons.chevron_right),
+                                // trailing: const Icon(Icons.chevron_right),
                                 onTap: () {
                                   Navigator.push(
                                     context,
@@ -822,7 +833,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   'Logout',
                                   style: TextStyle(color: Colors.orange),
                                 ),
-                                trailing: const Icon(Icons.chevron_right),
+                                // trailing: const Icon(Icons.chevron_right),
                                 onTap: () => _logout(context),
                               ),
                               const Divider(height: 1),
@@ -837,7 +848,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   'Delete Account',
                                   style: TextStyle(color: Colors.red),
                                 ),
-                                trailing: const Icon(Icons.chevron_right),
+                                // trailing: const Icon(Icons.chevron_right),
                                 onTap: () => _confirmDeleteAccount(context),
                               ),
                             ],

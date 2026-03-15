@@ -7,8 +7,8 @@ import 'package:flutter/material.dart';
 import '../../services/result_data_service.dart';
 import '../../services/user_exam_preference_service.dart';
 import '../../widgets/top_header.dart';
+import 'main_navigation.dart';
 import 'subject_insights_screen.dart';
-import 'tests_screen.dart';
 
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({super.key});
@@ -1580,35 +1580,47 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         children: [
           SizedBox(height: 150, child: _BarSparkChart(values: vm.riskBars)),
           const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _riskStatCard(
-                  label: 'Neg. Marks Lost',
-                  value: '-${vm.negativeMarksLost}',
-                  subtitle: 'from wrong answers',
-                  tone: _RiskTone.red,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _riskStatCard(
-                  label: 'Risk Accuracy',
-                  value: '${vm.riskAccuracy.toStringAsFixed(0)}%',
-                  subtitle: 'on attempted questions',
-                  tone: _RiskTone.orange,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _riskStatCard(
-                  label: 'Safe Attempts',
-                  value: '${vm.safeAttempts.toStringAsFixed(0)}%',
-                  subtitle: 'precision zone',
-                  tone: _RiskTone.green,
-                ),
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 380;
+              final cardWidth = compact
+                  ? (constraints.maxWidth - 8) / 2
+                  : (constraints.maxWidth - 16) / 3;
+
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  SizedBox(
+                    width: cardWidth,
+                    child: _riskStatCard(
+                      label: 'Neg. Marks Lost',
+                      value: '-${vm.negativeMarksLost}',
+                      subtitle: 'from wrong answers',
+                      tone: _RiskTone.red,
+                    ),
+                  ),
+                  SizedBox(
+                    width: cardWidth,
+                    child: _riskStatCard(
+                      label: 'Risk Accuracy',
+                      value: '${vm.riskAccuracy.toStringAsFixed(0)}%',
+                      subtitle: 'on attempted questions',
+                      tone: _RiskTone.orange,
+                    ),
+                  ),
+                  SizedBox(
+                    width: cardWidth,
+                    child: _riskStatCard(
+                      label: 'Safe Attempts',
+                      value: '${vm.safeAttempts.toStringAsFixed(0)}%',
+                      subtitle: 'precision zone',
+                      tone: _RiskTone.green,
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -1879,10 +1891,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
+                if ((selectedExamId ?? '').isNotEmpty) {
+                  await UserExamPreferenceService.savePreferredExamId(
+                    selectedExamId!,
+                  );
+                }
+                if (!mounted) return;
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => TestsScreen(selectedExam: selectedExamId),
+                    builder: (_) => const MainNavigation(initialIndex: 1),
                   ),
                 );
               },
@@ -2057,6 +2075,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     };
 
     return Container(
+      constraints: const BoxConstraints(minHeight: 138),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: style.bg,
@@ -4918,45 +4937,59 @@ class _BarSparkChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: values.asMap().entries.map((entry) {
-        final maxValue = values.isEmpty ? 1.0 : values.reduce(math.max);
-        final normalized = maxValue <= 0 ? 0.0 : entry.value / maxValue;
-        return Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Text(
-                  entry.value.toStringAsFixed(0),
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: Color(0xFF6C748A),
-                  ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const topLabelHeight = 16.0;
+        const bottomLabelHeight = 16.0;
+        const verticalSpacing = 16.0;
+        final maxBarHeight =
+            constraints.maxHeight -
+            topLabelHeight -
+            bottomLabelHeight -
+            verticalSpacing;
+        final safeBarHeight = math.max(56.0, maxBarHeight);
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: values.asMap().entries.map((entry) {
+            final maxValue = values.isEmpty ? 1.0 : values.reduce(math.max);
+            final normalized = maxValue <= 0 ? 0.0 : entry.value / maxValue;
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      entry.value.toStringAsFixed(0),
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF6C748A),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      height: safeBarHeight * normalized.clamp(0.12, 1.0),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF98A1B2),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'T${entry.key + 1}',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF6C748A),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                Container(
-                  height: 110 * normalized.clamp(0.12, 1.0),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF98A1B2),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'T${entry.key + 1}',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: Color(0xFF6C748A),
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          }).toList(),
         );
-      }).toList(),
+      },
     );
   }
 }

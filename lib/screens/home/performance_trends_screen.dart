@@ -7,8 +7,8 @@ import 'package:flutter/material.dart';
 import '../../services/result_data_service.dart';
 import '../../services/user_exam_preference_service.dart';
 import '../../widgets/top_header.dart';
+import 'main_navigation.dart';
 import 'test_history_screen.dart';
-import 'tests_screen.dart';
 
 class PerformanceTrendsScreen extends StatefulWidget {
   final String? initialExamId;
@@ -688,10 +688,14 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
         const SizedBox(width: 10),
         Expanded(
           child: ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
+              if (_examId != null && _examId!.isNotEmpty) {
+                await UserExamPreferenceService.savePreferredExamId(_examId!);
+              }
+              if (!mounted) return;
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => TestsScreen(selectedExam: _examId),
+                  builder: (_) => const MainNavigation(initialIndex: 1),
                 ),
               );
             },

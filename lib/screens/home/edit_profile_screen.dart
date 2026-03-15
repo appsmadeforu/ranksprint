@@ -1,6 +1,10 @@
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -12,7 +16,9 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  final nameController = TextEditingController();
+  final firstNameController = TextEditingController();
+  final middleNameController = TextEditingController();
+  final lastNameController = TextEditingController();
   final emailController = TextEditingController();
   final phoneController = TextEditingController();
   final pincodeController = TextEditingController();
@@ -22,10 +28,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String? gender;
   DateTime? dob;
   bool loading = false;
+  bool _initialLoadComplete = false;
   bool _emailLocked = false;
   bool _phoneLocked = false;
+  bool _isResolvingPincode = false;
+  String? _pincodeLookupMessage;
   String _authEmail = '';
   String _authPhone = '';
+  Timer? _pincodeDebounce;
+
+  static const List<String> _genderOptions = ['Male', 'Female', 'Other'];
 
   @override
   void initState() {
@@ -51,10 +63,32 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         .doc(user.uid)
         .get();
 
+    if (!mounted) return;
+
     final data = doc.data() ?? <String, dynamic>{};
+    final legacyFullName = (data['name'] is String)
+        ? (data['name'] as String).trim()
+        : '';
+    final firstName = (data['firstName'] is String)
+        ? (data['firstName'] as String).trim()
+        : '';
+    final middleName = (data['middleName'] is String)
+        ? (data['middleName'] as String).trim()
+        : '';
+    final lastName = (data['lastName'] is String)
+        ? (data['lastName'] as String).trim()
+        : '';
+    final resolvedNames = _resolveNameParts(
+      firstName: firstName,
+      middleName: middleName,
+      lastName: lastName,
+      legacyFullName: legacyFullName,
+    );
 
     setState(() {
-      nameController.text = (data['name'] is String) ? data['name'] : '';
+      firstNameController.text = resolvedNames.firstName;
+      middleNameController.text = resolvedNames.middleName;
+      lastNameController.text = resolvedNames.lastName;
       emailController.text = authEmail.isNotEmpty
           ? authEmail
           : ((data['email'] is String) ? data['email'] : '');
@@ -84,19 +118,39 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       } else {
         dob = null;
       }
+      _initialLoadComplete = true;
     });
   }
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
+    if (dob != null && !_isAtLeast13YearsOld(dob!)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('User must be at least 16 years old.')),
+      );
+      return;
+    }
+
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
     setState(() => loading = true);
 
+    final firstName = firstNameController.text.trim();
+    final middleName = middleNameController.text.trim();
+    final lastName = lastNameController.text.trim();
+    final fullName = [
+      firstName,
+      middleName,
+      lastName,
+    ].where((part) => part.isNotEmpty).join(' ');
+
     final Map<String, dynamic> updateData = {
-      'name': nameController.text.trim(),
+      'firstName': firstName,
+      'middleName': middleName,
+      'lastName': lastName,
+      'name': fullName,
       'email': _emailLocked ? _authEmail : emailController.text.trim(),
       'phone': _phoneLocked ? _authPhone : phoneController.text.trim(),
       'pincode': pincodeController.text.trim(),
@@ -106,11 +160,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       'updatedAt': Timestamp.now(),
     };
 
-    // Only add dob if selected
     if (dob != null) {
       updateData['dob'] = Timestamp.fromDate(dob!);
     } else {
-      updateData['dob'] = ""; // Clear dob if not selected
+      updateData['dob'] = '';
     }
 
     try {
@@ -136,11 +189,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _pickDob() async {
+    final latestAllowedDob = _latestAllowedDob;
+    final initialDate = dob != null && !dob!.isAfter(latestAllowedDob)
+        ? dob!
+        : latestAllowedDob;
+
     final picked = await showDatePicker(
       context: context,
-      initialDate: dob ?? DateTime(2000),
+      initialDate: initialDate,
       firstDate: DateTime(1950),
-      lastDate: DateTime.now(),
+      lastDate: latestAllowedDob,
     );
 
     if (picked != null) {
@@ -148,9 +206,100 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+  void _onPincodeChanged(String value) {
+    _pincodeDebounce?.cancel();
+
+    if (value.trim().length != 6) {
+      if (_pincodeLookupMessage != null || _isResolvingPincode) {
+        setState(() {
+          _isResolvingPincode = false;
+          _pincodeLookupMessage = null;
+        });
+      }
+      return;
+    }
+
+    _pincodeDebounce = Timer(
+      const Duration(milliseconds: 350),
+      _resolvePincode,
+    );
+  }
+
+  Future<void> _resolvePincode() async {
+    final pincode = pincodeController.text.trim();
+    if (pincode.length != 6) return;
+    setState(() {
+      _isResolvingPincode = true;
+      _pincodeLookupMessage = null;
+    });
+
+    try {
+      final response = await http.get(
+        Uri.parse('https://api.postalpincode.in/pincode/$pincode'),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Lookup failed');
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! List || decoded.isEmpty) {
+        throw const FormatException('Unexpected response');
+      }
+
+      final result = decoded.first as Map<String, dynamic>;
+      final postOfficeList = result['PostOffice'];
+      if (result['Status'] != 'Success' ||
+          postOfficeList is! List ||
+          postOfficeList.isEmpty) {
+        setState(() {
+          cityController.clear();
+          stateController.clear();
+          _pincodeLookupMessage = 'Could not find city and state for this PIN.';
+        });
+        return;
+      }
+
+      final firstOffice = postOfficeList.first as Map<String, dynamic>;
+      final city = (firstOffice['District'] ?? '').toString().trim();
+      final state = (firstOffice['State'] ?? '').toString().trim();
+
+      if (!mounted) return;
+
+      setState(() {
+        if (city.isNotEmpty) {
+          cityController.text = city;
+        }
+        if (state.isNotEmpty) {
+          stateController.text = state;
+        }
+        _pincodeLookupMessage = city.isNotEmpty && state.isNotEmpty
+            ? 'City and state autofilled from PIN code.'
+            : 'PIN found, but address details were incomplete.';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        cityController.clear();
+        stateController.clear();
+        _pincodeLookupMessage =
+            'Unable to fetch location now. You can enter city and state manually.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isResolvingPincode = false;
+        });
+      }
+    }
+  }
+
   @override
   void dispose() {
-    nameController.dispose();
+    _pincodeDebounce?.cancel();
+    firstNameController.dispose();
+    middleNameController.dispose();
+    lastNameController.dispose();
     emailController.dispose();
     phoneController.dispose();
     pincodeController.dispose();
@@ -164,112 +313,326 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
-        title: const Text("Edit Profile"),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        title: const Text('Edit Profile'),
+        backgroundColor: const Color(0xFFF5F6FA),
+        foregroundColor: const Color(0xFF111827),
         elevation: 0,
       ),
-      body: loading
+      body: loading && !_initialLoadComplete
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  children: [
-                    _buildTextField(nameController, "Full Name"),
-                    _buildTextField(
-                      emailController,
-                      "Email ID",
-                      enabled: !_emailLocked,
-                      keyboardType: TextInputType.emailAddress,
-                      validator: (value) {
-                        final v = (value ?? '').trim();
-                        if (v.isEmpty) return "Email is required";
-                        final emailRegex = RegExp(
-                          r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-                        );
-                        if (!emailRegex.hasMatch(v)) {
-                          return "Enter a valid email";
-                        }
-                        return null;
-                      },
-                    ),
-                    _buildTextField(
-                      phoneController,
-                      "Phone Number",
-                      enabled: !_phoneLocked,
-                      keyboardType: TextInputType.phone,
-                      validator: (value) {
-                        final v = (value ?? '').trim();
-                        if (v.isEmpty) return "Phone number is required";
-                        if (v.length < 10) return "Enter a valid phone number";
-                        return null;
-                      },
-                    ),
-                    _buildTextField(pincodeController, "Pincode"),
-                    _buildTextField(cityController, "City"),
-                    _buildTextField(stateController, "State"),
-
-                    const SizedBox(height: 12),
-
-                    DropdownButtonFormField<String>(
-                      value: gender,
-                      decoration: _inputDecoration("Gender"),
-                      items: const [
-                        DropdownMenuItem(value: "Male", child: Text("Male")),
-                        DropdownMenuItem(
-                          value: "Female",
-                          child: Text("Female"),
+          : SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Keep your details accurate so RankSprint can personalize your exam journey.',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF6B7280),
+                          height: 1.5,
                         ),
-                        DropdownMenuItem(value: "Other", child: Text("Other")),
-                      ],
-                      onChanged: (val) => setState(() => gender = val),
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    GestureDetector(
-                      onTap: _pickDob,
-                      child: Container(
+                      ),
+                      const SizedBox(height: 18),
+                      _buildSectionCard(
+                        title: 'Basic Details',
+                        subtitle: 'Your identity and personal information',
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildTextField(
+                                  firstNameController,
+                                  'First Name',
+                                  validator: (value) {
+                                    if ((value ?? '').trim().isEmpty) {
+                                      return 'First name is required';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _buildTextField(
+                                  middleNameController,
+                                  'Middle Name',
+                                ),
+                              ),
+                            ],
+                          ),
+                          _buildTextField(
+                            lastNameController,
+                            'Last Name',
+                            validator: (value) {
+                              if ((value ?? '').trim().isEmpty) {
+                                return 'Last name is required';
+                              }
+                              return null;
+                            },
+                          ),
+                          _buildTextField(
+                            emailController,
+                            'Email ID',
+                            enabled: !_emailLocked,
+                            keyboardType: TextInputType.emailAddress,
+                            helperText: _emailLocked
+                                ? 'Managed by your sign-in method'
+                                : null,
+                            validator: (value) {
+                              final v = (value ?? '').trim();
+                              if (v.isEmpty) return 'Email is required';
+                              final emailRegex = RegExp(
+                                r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                              );
+                              if (!emailRegex.hasMatch(v)) {
+                                return 'Enter a valid email';
+                              }
+                              return null;
+                            },
+                          ),
+                          _buildTextField(
+                            phoneController,
+                            'Phone Number',
+                            enabled: !_phoneLocked,
+                            keyboardType: TextInputType.phone,
+                            helperText: _phoneLocked
+                                ? 'Managed by your sign-in method'
+                                : null,
+                            validator: (value) {
+                              final v = (value ?? '').trim();
+                              if (v.isEmpty) return 'Phone number is required';
+                              if (v.length < 10) {
+                                return 'Enter a valid phone number';
+                              }
+                              return null;
+                            },
+                          ),
+                          _buildGenderField(),
+                          _buildDobField(),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _buildSectionCard(
+                        title: 'Location',
+                        subtitle:
+                            'PIN code can help autofill your city and state',
+                        children: [
+                          _buildTextField(
+                            pincodeController,
+                            'Pincode',
+                            keyboardType: TextInputType.number,
+                            helperText: 'Enter a 6-digit PIN code',
+                            validator: (value) {
+                              final v = (value ?? '').trim();
+                              if (v.isEmpty) return 'Pincode is required';
+                              if (v.length != 6) return 'Enter a valid pincode';
+                              return null;
+                            },
+                            onChanged: _onPincodeChanged,
+                            suffixIcon: _isResolvingPincode
+                                ? const Padding(
+                                    padding: EdgeInsets.all(12),
+                                    child: SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.location_searching_rounded,
+                                    color: Color(0xFF6B7280),
+                                  ),
+                          ),
+                          if (_pincodeLookupMessage != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              _pincodeLookupMessage!,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color:
+                                    _pincodeLookupMessage!
+                                        .toLowerCase()
+                                        .contains('autofilled')
+                                    ? const Color(0xFF0F766E)
+                                    : const Color(0xFF92400E),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildTextField(
+                                  cityController,
+                                  'City',
+                                  validator: (value) {
+                                    if ((value ?? '').trim().isEmpty) {
+                                      return 'City is required';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _buildTextField(
+                                  stateController,
+                                  'State',
+                                  validator: (value) {
+                                    if ((value ?? '').trim().isEmpty) {
+                                      return 'State is required';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 16,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          dob != null
-                              ? "${dob!.day}/${dob!.month}/${dob!.year}"
-                              : "Select Date of Birth",
-                          style: const TextStyle(fontSize: 16),
+                        child: ElevatedButton(
+                          onPressed: loading ? null : _saveProfile,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2F3E8F),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: loading
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : const Text(
+                                  'Save Changes',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
                         ),
                       ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _saveProfile,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2F3E8F),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: const Text(
-                          "Save Changes",
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
+    );
+  }
+
+  Widget _buildSectionCard({
+    required String title,
+    required String subtitle,
+    required List<Widget> children,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF111827),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              fontSize: 13,
+              color: Color(0xFF6B7280),
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 18),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGenderField() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        value: _genderOptions.contains(gender) ? gender : null,
+        isExpanded: true,
+        menuMaxHeight: 220,
+        decoration: _inputDecoration('Gender'),
+        items: _genderOptions
+            .map(
+              (option) => DropdownMenuItem<String>(
+                value: option,
+                child: SizedBox(
+                  width: double.infinity,
+                  child: Text(option, overflow: TextOverflow.ellipsis),
+                ),
+              ),
+            )
+            .toList(),
+        onChanged: (val) => setState(() => gender = val),
+      ),
+    );
+  }
+
+  Widget _buildDobField() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: InkWell(
+        onTap: _pickDob,
+        borderRadius: BorderRadius.circular(16),
+        child: InputDecorator(
+          decoration: _inputDecoration('Date of Birth').copyWith(
+            suffixIcon: const Icon(
+              Icons.calendar_today_rounded,
+              size: 18,
+              color: Color(0xFF6B7280),
+            ),
+          ),
+          child: Text(
+            dob != null ? _formatDate(dob!) : 'Select Date of Birth',
+            style: TextStyle(
+              fontSize: 15,
+              color: dob != null
+                  ? const Color(0xFF111827)
+                  : const Color(0xFF9CA3AF),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -280,6 +643,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     TextInputType keyboardType = TextInputType.text,
     String? helperText,
     String? Function(String?)? validator,
+    ValueChanged<String>? onChanged,
+    Widget? suffixIcon,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -288,21 +653,138 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         enabled: enabled,
         keyboardType: keyboardType,
         validator: validator,
-        decoration: _inputDecoration(label, helperText: helperText),
+        onChanged: onChanged,
+        decoration: _inputDecoration(
+          label,
+          helperText: helperText,
+          suffixIcon: suffixIcon,
+        ),
       ),
     );
   }
 
-  InputDecoration _inputDecoration(String label, {String? helperText}) {
+  InputDecoration _inputDecoration(
+    String label, {
+    String? helperText,
+    Widget? suffixIcon,
+  }) {
     return InputDecoration(
       labelText: label,
       helperText: helperText,
+      suffixIcon: suffixIcon,
       filled: true,
-      fillColor: Colors.white,
+      fillColor: const Color(0xFFF8FAFC),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: Color(0xFF2F3E8F), width: 1.3),
+      ),
+      disabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: Color(0xFFDC2626)),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: Color(0xFFDC2626), width: 1.2),
       ),
     );
   }
+
+  String _formatDate(DateTime value) {
+    final day = value.day.toString().padLeft(2, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final year = value.year.toString();
+    return '$day/$month/$year';
+  }
+
+  DateTime get _latestAllowedDob {
+    final now = DateTime.now();
+    return DateTime(now.year - 13, now.month, now.day);
+  }
+
+  bool _isAtLeast13YearsOld(DateTime value) {
+    return !value.isAfter(_latestAllowedDob);
+  }
+
+  _ResolvedNameParts _resolveNameParts({
+    required String firstName,
+    required String middleName,
+    required String lastName,
+    required String legacyFullName,
+  }) {
+    if (firstName.isNotEmpty || middleName.isNotEmpty || lastName.isNotEmpty) {
+      return _ResolvedNameParts(
+        firstName: firstName,
+        middleName: middleName,
+        lastName: lastName,
+      );
+    }
+
+    if (legacyFullName.isEmpty) {
+      return const _ResolvedNameParts(
+        firstName: '',
+        middleName: '',
+        lastName: '',
+      );
+    }
+
+    final parts = legacyFullName
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+
+    if (parts.isEmpty) {
+      return const _ResolvedNameParts(
+        firstName: '',
+        middleName: '',
+        lastName: '',
+      );
+    }
+
+    if (parts.length == 1) {
+      return _ResolvedNameParts(
+        firstName: parts.first,
+        middleName: '',
+        lastName: '',
+      );
+    }
+
+    if (parts.length == 2) {
+      return _ResolvedNameParts(
+        firstName: parts.first,
+        middleName: '',
+        lastName: parts.last,
+      );
+    }
+
+    return _ResolvedNameParts(
+      firstName: parts.first,
+      middleName: parts.sublist(1, parts.length - 1).join(' '),
+      lastName: parts.last,
+    );
+  }
+}
+
+class _ResolvedNameParts {
+  const _ResolvedNameParts({
+    required this.firstName,
+    required this.middleName,
+    required this.lastName,
+  });
+
+  final String firstName;
+  final String middleName;
+  final String lastName;
 }

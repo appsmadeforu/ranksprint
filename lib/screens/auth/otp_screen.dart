@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:sms_autofill/sms_autofill.dart';
 import 'dart:async';
 
 class OtpScreen extends StatefulWidget {
@@ -18,7 +19,7 @@ class OtpScreen extends StatefulWidget {
   State<OtpScreen> createState() => _OtpScreenState();
 }
 
-class _OtpScreenState extends State<OtpScreen> {
+class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   final List<TextEditingController> _controllers = List.generate(
@@ -41,6 +42,7 @@ class _OtpScreenState extends State<OtpScreen> {
     _verificationId = widget.verificationId;
     _resendToken = widget.resendToken;
     _startResendTimer();
+    listenForCode();
   }
 
   void _startResendTimer() {
@@ -93,6 +95,17 @@ class _OtpScreenState extends State<OtpScreen> {
         ).showSnackBar(const SnackBar(content: Text("Invalid OTP")));
       }
     }
+  }
+
+  @override
+  void codeUpdated() {
+    final incomingCode = code?.trim() ?? '';
+    if (incomingCode.isEmpty) return;
+
+    final digits = incomingCode.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length < 6) return;
+
+    _applyOtpCode(digits.substring(0, 6));
   }
 
   Future<void> _resendOtp() async {
@@ -155,6 +168,7 @@ class _OtpScreenState extends State<OtpScreen> {
       child: TextField(
         controller: _controllers[index],
         keyboardType: TextInputType.number,
+        autofillHints: const [AutofillHints.oneTimeCode],
         textAlign: TextAlign.center,
         maxLength: 1,
         decoration: InputDecoration(
@@ -167,16 +181,42 @@ class _OtpScreenState extends State<OtpScreen> {
           ),
         ),
         onChanged: (value) {
+          if (value.length > 1) {
+            _applyOtpCode(value);
+            return;
+          }
+
           if (value.isNotEmpty && index < 5) {
             FocusScope.of(context).nextFocus();
+          } else if (value.isEmpty && index > 0) {
+            FocusScope.of(context).previousFocus();
           }
         },
       ),
     );
   }
 
+  void _applyOtpCode(String rawCode) {
+    final digits = rawCode.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return;
+
+    final otp = digits.substring(0, digits.length > 6 ? 6 : digits.length);
+    for (var i = 0; i < _controllers.length; i++) {
+      _controllers[i].text = i < otp.length ? otp[i] : '';
+    }
+
+    if (!mounted) return;
+
+    FocusScope.of(context).unfocus();
+
+    if (otp.length == 6 && !_loading) {
+      _verifyOtp();
+    }
+  }
+
   @override
   void dispose() {
+    cancel();
     _timer?.cancel();
     for (final controller in _controllers) {
       controller.dispose();
@@ -187,13 +227,28 @@ class _OtpScreenState extends State<OtpScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: Container(
-          width: 400,
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
+      resizeToAvoidBottomInset: true,
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.only(
+                left: 24,
+                right: 24,
+                top: 24,
+                bottom: 24 + MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: 400,
+                    minHeight: constraints.maxHeight - 48,
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
               // Logo
               SizedBox(
                 width: 250,
@@ -312,9 +367,13 @@ class _OtpScreenState extends State<OtpScreen> {
                 ),
               ),
 
-              const SizedBox(height: 30),
-            ],
-          ),
+                        const SizedBox(height: 30),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );

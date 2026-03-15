@@ -30,6 +30,10 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
   final Set<String> _expandedAttemptIds = <String>{};
   final Map<String, String> _examNameCache = <String, String>{};
   final Map<String, String> _testNameCache = <String, String>{};
+  String _resultsFutureKey = '';
+  Future<Map<String, Map<String, dynamic>>>? _resultsFuture;
+  String _attemptsStreamKey = '';
+  Stream<QuerySnapshot<Map<String, dynamic>>>? _attemptsStream;
 
   @override
   void initState() {
@@ -91,6 +95,8 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
 
     setState(() {
       selectedExamId = preferredExamId;
+      _attemptsStream = null;
+      _resultsFuture = null;
     });
   }
 
@@ -104,6 +110,26 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
     }
 
     return query;
+  }
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> _attemptsStreamFor(String userId) {
+    final key = '$userId|${selectedExamId ?? ''}';
+    if (_attemptsStream == null || _attemptsStreamKey != key) {
+      _attemptsStreamKey = key;
+      _attemptsStream = _attemptsQuery(userId).snapshots();
+    }
+    return _attemptsStream!;
+  }
+
+  Future<Map<String, Map<String, dynamic>>> _resultsFutureFor(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
+  ) {
+    final key = attempts.map((doc) => doc.id).join('|');
+    if (_resultsFuture == null || _resultsFutureKey != key) {
+      _resultsFutureKey = key;
+      _resultsFuture = _loadResultsMap(attempts);
+    }
+    return _resultsFuture!;
   }
 
   bool _matchesSearch(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
@@ -208,13 +234,15 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
               onExamChanged: (id) {
                 setState(() {
                   selectedExamId = id;
+                  _attemptsStream = null;
+                  _resultsFuture = null;
                 });
               },
             ),
             const SizedBox(height: 10),
             Expanded(
               child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: _attemptsQuery(userId).snapshots(),
+                stream: _attemptsStreamFor(userId),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -244,7 +272,7 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
                   final filtered = attempts.where(_matchesSearch).toList();
 
                   return FutureBuilder<Map<String, Map<String, dynamic>>>(
-                    future: _loadResultsMap(filtered),
+                    future: _resultsFutureFor(filtered),
                     builder: (context, resultSnap) {
                       if (resultSnap.connectionState ==
                               ConnectionState.waiting &&
