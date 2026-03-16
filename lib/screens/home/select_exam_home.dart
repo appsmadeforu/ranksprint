@@ -1,37 +1,232 @@
-import 'package:flutter/material.dart';
+import 'dart:math' as math;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../onboarding/select_exam_screen.dart';
+import 'package:flutter/material.dart';
 
-class SelectExamHome extends StatelessWidget {
+import '../../services/content_access_service.dart';
+import '../../services/user_exam_preference_service.dart';
+import '../../widgets/top_header.dart';
+import '../onboarding/select_exam_screen.dart';
+import 'analytics_screen.dart';
+import 'pyq_screen.dart';
+import 'subscription_screen.dart';
+import 'tests_screen.dart';
+
+class SelectExamHome extends StatefulWidget {
   const SelectExamHome({super.key});
+
+  @override
+  State<SelectExamHome> createState() => _SelectExamHomeState();
+}
+
+class _SelectExamHomeState extends State<SelectExamHome> {
+  static const List<String> _quotes = [
+    'Success is the sum of small efforts, repeated day in and day out.',
+    'Small progress each day adds up to big results.',
+    'Focus on consistency. The rank will follow.',
+    'Discipline turns ambition into a daily habit.',
+  ];
+  Future<_HomeVm>? _homeVmFuture;
+  String _homeVmSignature = '';
 
   Future<void> _removeExam(String examId) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .update({
-      'selectedExams': FieldValue.arrayRemove([examId])
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+      'selectedExams': FieldValue.arrayRemove([examId]),
     });
+  }
+
+  Future<_HomeVm> _loadVm({
+    required String userId,
+    required Map<String, dynamic> userData,
+  }) async {
+    final selectedExams = List<String>.from(userData['selectedExams'] ?? const []);
+    final preferredExamId = await UserExamPreferenceService.loadPreferredExamId(
+      availableExamIds: selectedExams,
+    );
+
+    final examIds = selectedExams.toList();
+    final examDocs = await Future.wait(
+      examIds.map(
+        (examId) => FirebaseFirestore.instance.collection('exams').doc(examId).get(),
+      ),
+    );
+
+    final exams = examDocs.map((doc) {
+      final data = doc.data() ?? const <String, dynamic>{};
+      return _ExamCardVm(
+        examId: doc.id,
+        title: (data['name'] ?? doc.id).toString(),
+        description: (data['description'] ?? 'No description available.')
+            .toString(),
+      );
+    }).toList();
+
+    final activeExamId = selectedExams.contains(preferredExamId)
+        ? preferredExamId
+        : (selectedExams.isNotEmpty ? selectedExams.first : null);
+
+    final baseFetches = await Future.wait([
+      FirebaseFirestore.instance
+          .collection('testAttempts')
+          .where('userId', isEqualTo: userId)
+          .get(),
+      FirebaseFirestore.instance
+          .collection('results')
+          .where('userId', isEqualTo: userId)
+          .get(),
+    ]);
+    final attemptsSnap = baseFetches[0] as QuerySnapshot<Map<String, dynamic>>;
+    final resultsSnap = baseFetches[1] as QuerySnapshot<Map<String, dynamic>>;
+    final completedAttempts = attemptsSnap.docs.where((doc) {
+      final data = doc.data();
+      return (data['status'] ?? '').toString() == 'completed';
+    }).toList();
+
+    int? bestRank;
+    double? bestScorePct;
+    for (final doc in resultsSnap.docs) {
+      final data = doc.data();
+      final rank = _asInt(data['rank']);
+      if (rank != null && (bestRank == null || rank < bestRank)) {
+        bestRank = rank;
+      }
+
+      final scorePct = _scorePercent(data);
+      if (scorePct != null &&
+          (bestScorePct == null || scorePct > bestScorePct)) {
+        bestScorePct = scorePct;
+      }
+    }
+
+    final featured = <_FeaturedCardVm>[];
+    if (activeExamId != null) {
+      final featuredFetches = await Future.wait([
+        ContentAccessService.publishedTestsQuery(activeExamId).get(),
+        ContentAccessService.publishedPyqsQuery(activeExamId).get(),
+      ]);
+      final testsSnap =
+          featuredFetches[0] as QuerySnapshot<Map<String, dynamic>>;
+      final tests = testsSnap.docs.where((doc) {
+        return ContentAccessService.isVisibleNow(doc.data());
+      }).toList()
+        ..sort(ContentAccessService.compareCreatedAtAsc);
+
+      final pyqSnap = featuredFetches[1] as QuerySnapshot<Map<String, dynamic>>;
+      final pyqs = pyqSnap.docs.where((doc) {
+        return ContentAccessService.isVisibleNow(doc.data());
+      }).toList()
+        ..sort(ContentAccessService.compareCreatedAtAsc);
+
+      if (pyqs.isNotEmpty) {
+        final pyq = pyqs.last;
+        featured.add(
+          _FeaturedCardVm(
+            title: (pyq.data()['name'] ?? pyq.id).toString(),
+            badge: 'PYQ',
+            meta: '${_pyqPaperCountLabel(pyq.data())} papers',
+            icon: Icons.description_outlined,
+            iconTint: const Color(0xFF31459B),
+            badgeColor: const Color(0xFFE9ECFF),
+            badgeTextColor: const Color(0xFF31459B),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const PyqScreen()),
+              );
+            },
+          ),
+        );
+      }
+
+      if (tests.isNotEmpty) {
+        final test = tests.last;
+        final data = test.data();
+        featured.add(
+          _FeaturedCardVm(
+            title: (data['name'] ?? test.id).toString(),
+            badge: _isNewItem(data) ? 'NEW' : 'TEST',
+            meta: _testMetaLabel(data),
+            icon: Icons.quiz_outlined,
+            iconTint: const Color(0xFF31459B),
+            badgeColor: _isNewItem(data)
+                ? const Color(0xFFE6F9EA)
+                : const Color(0xFFE9ECFF),
+            badgeTextColor: _isNewItem(data)
+                ? const Color(0xFF168A3D)
+                : const Color(0xFF31459B),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => TestsScreen(selectedExam: activeExamId),
+                ),
+              );
+            },
+          ),
+        );
+      }
+    }
+
+    final greetingName = _firstName(
+      (userData['name'] ?? FirebaseAuth.instance.currentUser?.displayName ?? '')
+          .toString(),
+    );
+
+    final activeExam = exams.firstWhere(
+      (exam) => exam.examId == activeExamId,
+      orElse: () => exams.isNotEmpty
+          ? exams.first
+          : const _ExamCardVm(
+              examId: '',
+              title: 'No exam selected',
+              description: 'Choose an exam to personalize your dashboard.',
+            ),
+    );
+
+    return _HomeVm(
+      greetingName: greetingName.isEmpty ? 'Learner' : greetingName,
+      quote: _quoteForUser(userId),
+      activeExam: activeExam.examId.isEmpty ? null : activeExam,
+      selectedExams: exams,
+      testsAttended: completedAttempts.length,
+      bestRank: bestRank,
+      bestScoreText: bestScorePct == null
+          ? '--'
+          : '${bestScorePct.round()}/100',
+      featured: featured.take(2).toList(),
+    );
+  }
+
+  void _ensureHomeVm({
+    required String userId,
+    required Map<String, dynamic> userData,
+    bool force = false,
+  }) {
+    final selectedExams = List<String>.from(userData['selectedExams'] ?? const []);
+    final signature =
+        '${(userData['name'] ?? '').toString()}|${selectedExams.join(',')}';
+    if (!force &&
+        _homeVmFuture != null &&
+        _homeVmSignature == signature) {
+      return;
+    }
+    _homeVmSignature = signature;
+    _homeVmFuture = _loadVm(userId: userId, userData: userData);
   }
 
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-
     if (user == null) {
-      return const Scaffold(
-        body: Center(child: Text("User not logged in")),
-      );
+      return const Scaffold(body: Center(child: Text('User not logged in')));
     }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
       body: SafeArea(
-        child: StreamBuilder<DocumentSnapshot>(
+        child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
           stream: FirebaseFirestore.instance
               .collection('users')
               .doc(user.uid)
@@ -41,164 +236,724 @@ class SelectExamHome extends StatelessWidget {
               return const Center(child: CircularProgressIndicator());
             }
 
-            final data =
-                snapshot.data!.data() as Map<String, dynamic>?;
+            final userData = snapshot.data!.data() ?? const <String, dynamic>{};
+            _ensureHomeVm(userId: user.uid, userData: userData);
+            return FutureBuilder<_HomeVm>(
+              future: _homeVmFuture,
+              builder: (context, vmSnap) {
+                if (!vmSnap.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-            final List selectedExams =
-                List.from(data?['selectedExams'] ?? []);
-
-            if (selectedExams.isEmpty) {
-              return const Center(
-                child: Text("No exams selected"),
-              );
-            }
-
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 30),
-
-                  const Text(
-                    "Your Selected Exams",
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: selectedExams.length,
-                      itemBuilder: (context, index) {
-                        final examId = selectedExams[index];
-
-                        return FutureBuilder<DocumentSnapshot>(
-                          future: FirebaseFirestore.instance
-                              .collection('exams')
-                              .doc(examId)
-                              .get(),
-                          builder: (context, examSnapshot) {
-                            if (!examSnapshot.hasData) {
-                              return const SizedBox();
-                            }
-
-                            final examData =
-                                examSnapshot.data!.data()
-                                    as Map<String, dynamic>?;
-
-                            final title =
-                                examData?['name'] ?? examId;
-                            final desc =
-                                examData?['description'] ?? '';
-
-                            return Container(
-                              margin:
-                                  const EdgeInsets.only(bottom: 18),
-                              child: Material(
-                                borderRadius:
-                                    BorderRadius.circular(18),
-                                color: Colors.white,
-                                elevation: 3,
-                                child: Padding(
-                                  padding:
-                                      const EdgeInsets.all(20),
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 52,
-                                        height: 52,
-                                        decoration:
-                                            BoxDecoration(
-                                          color: const Color(
-                                              0xFFEFF3FF),
-                                          borderRadius:
-                                              BorderRadius
-                                                  .circular(14),
-                                        ),
-                                        child: const Icon(
-                                          Icons.school,
-                                          color:
-                                              Color(0xFF2F6FEB),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 16),
-
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment
-                                                  .start,
-                                          children: [
-                                            Text(
-                                              title,
-                                              style:
-                                                  const TextStyle(
-                                                fontSize: 16,
-                                                fontWeight:
-                                                    FontWeight.w600,
-                                              ),
-                                            ),
-                                            const SizedBox(
-                                                height: 6),
-                                            Text(
-                                              desc,
-                                              style:
-                                                  const TextStyle(
-                                                fontSize: 13,
-                                                color: Colors.grey,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-
-                                      // ❌ Remove Button
-                                      IconButton(
-                                        onPressed: () {
-                                          _removeExam(examId);
-                                        },
-                                        icon: const Icon(
-                                          Icons.close,
-                                          color: Colors.red,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
+                final vm = vmSnap.data!;
+                final selectedExamIds =
+                    vm.selectedExams.map((exam) => exam.examId).toList();
+                return Column(
+                  children: [
+                    TopHeader(
+                      selectedExamId: vm.activeExam?.examId,
+                      userExamIds: selectedExamIds,
+                      onExamChanged: (examId) async {
+                        await UserExamPreferenceService.savePreferredExamId(
+                          examId,
                         );
+                        if (!mounted) return;
+                        _ensureHomeVm(
+                          userId: user.uid,
+                          userData: userData,
+                          force: true,
+                        );
+                        setState(() {});
                       },
                     ),
-                  ),
-
-                  const SizedBox(height: 20),
-                ],
-              ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Hello, ${vm.greetingName} 👋',
+                              style: const TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'Ready to boost your rank today?',
+                              style: TextStyle(
+                                fontSize: 15,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            _buildQuoteCard(vm.quote),
+                            const SizedBox(height: 22),
+                            _buildGoalCard(vm.activeExam),
+                            const SizedBox(height: 26),
+                            const Text(
+                              'Your Selected Exams',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            if (vm.selectedExams.isEmpty)
+                              _buildEmptyExamCard()
+                            else
+                              ...vm.selectedExams.map((exam) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 14),
+                                  child: _buildExamCard(exam),
+                                );
+                              }),
+                            const SizedBox(height: 18),
+                            _buildSectionHeader(
+                              title: 'Quick Stats',
+                              actionLabel: 'View Analytics',
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const AnalyticsScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 14),
+                            _buildStatsRow(vm),
+                            const SizedBox(height: 26),
+                            _buildSectionHeader(
+                              title: 'Featured Mock Tests',
+                              actionLabel: 'See All',
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => TestsScreen(
+                                      selectedExam: vm.activeExam?.examId,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 14),
+                            if (vm.featured.isEmpty)
+                              _buildEmptyFeaturedCard()
+                            else
+                              ...vm.featured.map((item) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 14),
+                                  child: _buildFeaturedCard(item),
+                                );
+                              }),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             );
           },
         ),
       ),
-
-      // ➕ Add Exam Floating Button
       floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF2F3E8F),
+        backgroundColor: const Color(0xFF31459B),
         foregroundColor: Colors.white,
         onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const SelectExamScreen(),
-            ),
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const SelectExamScreen()),
           );
         },
         child: const Icon(Icons.add),
       ),
     );
   }
+
+  Widget _buildQuoteCard(String quote) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x120F172A),
+            blurRadius: 20,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Icon(Icons.format_quote_rounded, color: Color(0xFFC7D2FE)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '"$quote"',
+              style: const TextStyle(
+                fontSize: 15,
+                fontStyle: FontStyle.italic,
+                height: 1.6,
+                color: Color(0xFF334155),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGoalCard(_ExamCardVm? exam) {
+    final remainingDays = _remainingDays(exam?.title ?? '');
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF31459B), Color(0xFF3A4DB3)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x2431459B),
+            blurRadius: 24,
+            offset: Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Expanded(
+                child: Text(
+                  'CURRENT GOAL',
+                  style: TextStyle(
+                    fontSize: 12,
+                    letterSpacing: 1.6,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFFD6DDFF),
+                  ),
+                ),
+              ),
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.edit_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            exam?.title ?? 'Choose your target exam',
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            exam == null
+                ? 'Pick an exam to unlock your personalized study journey.'
+                : remainingDays == null
+                    ? exam.description
+                    : '${exam.description} ${remainingDays} days remaining in this sprint.',
+            style: const TextStyle(
+              fontSize: 14,
+              height: 1.6,
+              color: Color(0xFFE6EBFF),
+            ),
+          ),
+          const SizedBox(height: 18),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => SubscriptionScreen(
+                    initialExamId: exam?.examId,
+                  ),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: const Color(0xFF31459B),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'View Plan',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                SizedBox(width: 10),
+                Icon(Icons.arrow_forward_rounded),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExamCard(_ExamCardVm exam) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x120F172A),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEDF3FF),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(
+              Icons.school_rounded,
+              color: Color(0xFF31459B),
+              size: 34,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  exam.title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF111827),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  exam.description,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    height: 1.55,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () => _removeExam(exam.examId),
+            icon: const Icon(Icons.close_rounded, color: Color(0xFFEF4444)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyExamCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: const Text(
+        'No exams selected yet. Tap the + button to add one.',
+        style: TextStyle(color: Color(0xFF64748B)),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader({
+    required String title,
+    required String actionLabel,
+    required VoidCallback onTap,
+  }) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+        ),
+        TextButton(
+          onPressed: onTap,
+          child: Text(
+            actionLabel,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF31459B),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatsRow(_HomeVm vm) {
+    final cards = [
+      _StatCardVm(
+        icon: Icons.event_available_rounded,
+        iconColor: const Color(0xFF31459B),
+        value: vm.testsAttended.toString(),
+        label: 'Tests Attended',
+      ),
+      _StatCardVm(
+        icon: Icons.workspace_premium_rounded,
+        iconColor: const Color(0xFF16A34A),
+        value: vm.bestRank == null ? '--' : '#${vm.bestRank}',
+        label: 'Best Rank',
+      ),
+      _StatCardVm(
+        icon: Icons.stars_rounded,
+        iconColor: const Color(0xFFF97316),
+        value: vm.bestScoreText,
+        label: 'Best Score',
+      ),
+    ];
+
+    return Row(
+      children: cards.map((card) {
+        return Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(right: card == cards.last ? 0 : 12),
+            child: _buildStatCard(card),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildStatCard(_StatCardVm vm) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(vm.icon, color: vm.iconColor, size: 22),
+          const SizedBox(height: 14),
+          Text(
+            vm.value,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF111827),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            vm.label,
+            style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeaturedCard(_FeaturedCardVm item) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x120F172A),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3F4F6),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(item.icon, color: item.iconTint, size: 36),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF111827),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: item.badgeColor,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        item.badge,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: item.badgeTextColor,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        item.meta,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF6B7280),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          ElevatedButton(
+            onPressed: item.onTap,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF31459B),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text(
+              'Start',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyFeaturedCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: const Text(
+        'No featured practice items available for your selected exam yet.',
+        style: TextStyle(color: Color(0xFF64748B)),
+      ),
+    );
+  }
+
+  String _firstName(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return '';
+    return trimmed.split(RegExp(r'\s+')).first;
+  }
+
+  String _quoteForUser(String userId) {
+    if (userId.isEmpty) return _quotes.first;
+    return _quotes[userId.codeUnits.fold<int>(0, (a, b) => a + b) % _quotes.length];
+  }
+
+  int? _remainingDays(String title) {
+    final match = RegExp(r'(20\d{2})').firstMatch(title);
+    if (match == null) return null;
+    final year = int.tryParse(match.group(1)!);
+    if (year == null) return null;
+    final end = DateTime(year, 12, 31);
+    final now = DateTime.now();
+    return math.max(0, end.difference(now).inDays);
+  }
+
+  int? _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  double? _scorePercent(Map<String, dynamic> data) {
+    final score = _asDouble(data['score'] ?? data['marksObtained']);
+    final total =
+        _asDouble(data['totalMarks'] ?? data['maxMarks'] ?? data['marks']);
+    if (score == null) return null;
+    if (total != null && total > 0) {
+      return (score / total) * 100;
+    }
+    return score <= 100 ? score : null;
+  }
+
+  double? _asDouble(dynamic value) {
+    if (value is double) return value;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '');
+  }
+
+  static bool _isNewItem(Map<String, dynamic> data) {
+    final createdAt = data['createdAt'];
+    if (createdAt is! Timestamp) return false;
+    return DateTime.now().difference(createdAt.toDate()).inDays <= 14;
+  }
+
+  static String _testMetaLabel(Map<String, dynamic> data) {
+    final totalQuestions =
+        data['totalQuestions'] ?? data['questionCount'] ?? data['questionsCount'];
+    if (totalQuestions != null) {
+      return '$totalQuestions Qs';
+    }
+    final duration = data['totalDurationMinutes'] ??
+        (data['timing'] is Map
+            ? (data['timing'] as Map)['totalDurationMinutes']
+            : null);
+    if (duration != null) {
+      return '$duration mins';
+    }
+    return 'Mock Test';
+  }
+
+  static String _pyqPaperCountLabel(Map<String, dynamic> data) {
+    final count = data['paperCount'] ?? data['count'];
+    return count?.toString() ?? 'Practice';
+  }
+}
+
+class _HomeVm {
+  const _HomeVm({
+    required this.greetingName,
+    required this.quote,
+    required this.activeExam,
+    required this.selectedExams,
+    required this.testsAttended,
+    required this.bestRank,
+    required this.bestScoreText,
+    required this.featured,
+  });
+
+  final String greetingName;
+  final String quote;
+  final _ExamCardVm? activeExam;
+  final List<_ExamCardVm> selectedExams;
+  final int testsAttended;
+  final int? bestRank;
+  final String bestScoreText;
+  final List<_FeaturedCardVm> featured;
+}
+
+class _ExamCardVm {
+  const _ExamCardVm({
+    required this.examId,
+    required this.title,
+    required this.description,
+  });
+
+  final String examId;
+  final String title;
+  final String description;
+}
+
+class _StatCardVm {
+  const _StatCardVm({
+    required this.icon,
+    required this.iconColor,
+    required this.value,
+    required this.label,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String value;
+  final String label;
+}
+
+class _FeaturedCardVm {
+  const _FeaturedCardVm({
+    required this.title,
+    required this.badge,
+    required this.meta,
+    required this.icon,
+    required this.iconTint,
+    required this.badgeColor,
+    required this.badgeTextColor,
+    required this.onTap,
+  });
+
+  final String title;
+  final String badge;
+  final String meta;
+  final IconData icon;
+  final Color iconTint;
+  final Color badgeColor;
+  final Color badgeTextColor;
+  final VoidCallback onTap;
 }
