@@ -11,6 +11,7 @@ class TopHeader extends StatelessWidget {
   final List<String> userExamIds;
   final Function(String) onExamChanged;
   final bool showExamDropdown;
+  final bool showNotificationBell;
   final VoidCallback? onBellTap;
   final bool enableTitleNavigation;
 
@@ -20,6 +21,7 @@ class TopHeader extends StatelessWidget {
     required this.userExamIds,
     required this.onExamChanged,
     this.showExamDropdown = true,
+    this.showNotificationBell = true,
     this.onBellTap,
     this.enableTitleNavigation = true,
   });
@@ -238,58 +240,59 @@ class TopHeader extends StatelessWidget {
                       ),
                     ),
                   if (showExamDropdown) const SizedBox(width: 12),
-                  StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseAuth.instance.currentUser == null
-                        ? const Stream.empty()
-                        : FirebaseFirestore.instance
-                              .collection('notification')
-                              .snapshots(),
-                    builder: (context, notifSnap) {
-                      final user = FirebaseAuth.instance.currentUser;
-                      if (!notifSnap.hasData || user == null) {
-                        return const SizedBox(
-                          width: 28,
-                          child: Icon(Icons.notifications_none, size: 28),
-                        );
-                      }
-                      return StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection('users')
-                            .doc(user.uid)
-                            .collection('notifications')
-                            .snapshots(),
-                        builder: (context, metaSnap) {
-                          int unread = 0;
-                          final notifications = notifSnap.data!.docs.where((
-                            doc,
-                          ) {
-                            final data = doc.data() as Map<String, dynamic>;
-                            final userIds = data['userId'] as List<dynamic>?;
-                            return userIds == null ||
-                                userIds.isEmpty ||
-                                userIds.contains(user.uid);
-                          }).toList();
-                          for (var doc in notifications) {
-                            final notifId = doc.id;
-                            final metaDocs = metaSnap.data?.docs ?? [];
-                            final metaDocList = metaDocs
-                                .cast<QueryDocumentSnapshot>()
-                                .where((m) => m.id == notifId);
-                            final metaDoc = metaDocList.isNotEmpty
-                                ? metaDocList.first
-                                : null;
-                            if (metaDoc == null || metaDoc['isRead'] == false) {
-                              unread++;
-                            }
-                          }
-                          return NotificationBell(
-                            unread: unread,
-                            onBellTap: onBellTap,
+                  if (showNotificationBell)
+                    StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseAuth.instance.currentUser == null
+                          ? const Stream.empty()
+                          : FirebaseFirestore.instance
+                                .collection('notification')
+                                .snapshots(),
+                      builder: (context, notifSnap) {
+                        final user = FirebaseAuth.instance.currentUser;
+                        if (!notifSnap.hasData || user == null) {
+                          return const SizedBox(
+                            width: 28,
+                            child: Icon(Icons.notifications_none, size: 28),
                           );
-                        },
-                      );
-                    },
-                  ),
+                        }
+                        return StreamBuilder<QuerySnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(user.uid)
+                              .collection('notifications')
+                              .snapshots(),
+                          builder: (context, metaSnap) {
+                            int unread = 0;
+                            final notifications = notifSnap.data!.docs.where((
+                              doc,
+                            ) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              final userIds = data['userId'] as List<dynamic>?;
+                              return userIds == null ||
+                                  userIds.isEmpty ||
+                                  userIds.contains(user.uid);
+                            }).toList();
+                            for (var doc in notifications) {
+                              final notifId = doc.id;
+                              final metaDocs = metaSnap.data?.docs ?? [];
+                              final metaDocList = metaDocs
+                                  .cast<QueryDocumentSnapshot>()
+                                  .where((m) => m.id == notifId);
+                              final metaDoc = metaDocList.isNotEmpty
+                                  ? metaDocList.first
+                                  : null;
+                              if (metaDoc == null || metaDoc['isRead'] == false) {
+                                unread++;
+                              }
+                            }
+                            return NotificationBell(
+                              unread: unread,
+                              onBellTap: onBellTap,
+                            );
+                          },
+                        );
+                      },
+                    ),
                 ],
               ),
             ),

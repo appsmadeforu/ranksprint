@@ -6,6 +6,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import '../../widgets/top_header.dart';
+
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
 
@@ -312,32 +314,37 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        title: const Text('Edit Profile'),
-        backgroundColor: const Color(0xFFF5F6FA),
-        foregroundColor: const Color(0xFF111827),
-        elevation: 0,
-      ),
-      body: loading && !_initialLoadComplete
-          ? const Center(child: CircularProgressIndicator())
-          : SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Keep your details accurate so RankSprint can personalize your exam journey.',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF6B7280),
-                          height: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      _buildSectionCard(
+      body: SafeArea(
+        child: Column(
+          children: [
+            TopHeader(
+              selectedExamId: null,
+              userExamIds: const [],
+              onExamChanged: (_) {},
+              showExamDropdown: false,
+              showNotificationBell: false,
+              enableTitleNavigation: false,
+            ),
+            Expanded(
+              child: loading && !_initialLoadComplete
+                  ? const Center(child: CircularProgressIndicator())
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Keep your details accurate so RankSprint can personalize your exam journey.',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Color(0xFF6B7280),
+                                height: 1.5,
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            _buildSectionCard(
                         title: 'Basic Details',
                         subtitle: 'Your identity and personal information',
                         children: [
@@ -347,6 +354,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                 child: _buildTextField(
                                   firstNameController,
                                   'First Name',
+                                  required: true,
                                   validator: (value) {
                                     if ((value ?? '').trim().isEmpty) {
                                       return 'First name is required';
@@ -367,6 +375,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           _buildTextField(
                             lastNameController,
                             'Last Name',
+                            required: true,
                             validator: (value) {
                               if ((value ?? '').trim().isEmpty) {
                                 return 'Last name is required';
@@ -415,8 +424,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           _buildDobField(),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      _buildSectionCard(
+                            const SizedBox(height: 16),
+                            _buildSectionCard(
                         title: 'Location',
                         subtitle:
                             'PIN code can help autofill your city and state',
@@ -496,45 +505,48 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 24),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: loading ? null : _saveProfile,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2F3E8F),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            elevation: 0,
-                          ),
-                          child: loading
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white,
-                                    ),
+                            const SizedBox(height: 24),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: loading ? null : _saveProfile,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF2F3E8F),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 15),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
                                   ),
-                                )
-                              : const Text(
-                                  'Save Changes',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                                  elevation: 0,
                                 ),
+                                child: loading
+                                    ? const SizedBox(
+                                        height: 20,
+                                        width: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(
+                                            Colors.white,
+                                          ),
+                                        ),
+                                      )
+                                    : const Text(
+                                        'Save Changes',
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              ),
+                    ),
             ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -640,6 +652,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     TextEditingController controller,
     String label, {
     bool enabled = true,
+    bool required = false,
     TextInputType keyboardType = TextInputType.text,
     String? helperText,
     String? Function(String?)? validator,
@@ -652,10 +665,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         controller: controller,
         enabled: enabled,
         keyboardType: keyboardType,
+        autovalidateMode: AutovalidateMode.onUserInteraction,
         validator: validator,
         onChanged: onChanged,
         decoration: _inputDecoration(
-          label,
+          required ? '$label *' : label,
           helperText: helperText,
           suffixIcon: suffixIcon,
         ),

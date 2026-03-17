@@ -39,11 +39,153 @@ class _SelectExamHomeState extends State<SelectExamHome> {
     });
   }
 
+  Future<void> _editGoal({
+    required String userId,
+    required _GoalVm? goal,
+    required _ExamCardVm? activeExam,
+  }) async {
+    final today = DateTime.now();
+    final todayDateOnly = DateTime(today.year, today.month, today.day);
+    final titleController = TextEditingController(
+      text: goal?.title ?? activeExam?.title ?? '',
+    );
+    final descriptionController = TextEditingController(
+      text:
+          goal?.description ??
+          activeExam?.description ??
+          'Add a goal description to stay focused.',
+    );
+    DateTime? selectedDate = goal?.targetDate;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Edit Current Goal'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: titleController,
+                      decoration: const InputDecoration(
+                        labelText: 'Goal title',
+                        hintText: 'Crack JEE Main 2026',
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: descriptionController,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: 'Goal description',
+                        hintText: 'Complete weekly mocks and revise weak areas.',
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final pickerInitialDate = selectedDate == null
+                            ? todayDateOnly.add(const Duration(days: 30))
+                            : DateTime(
+                                selectedDate!.year,
+                                selectedDate!.month,
+                                selectedDate!.day,
+                              );
+                        final safeInitialDate = pickerInitialDate.isBefore(todayDateOnly)
+                            ? todayDateOnly
+                            : pickerInitialDate;
+                        final picked = await showDatePicker(
+                          context: dialogContext,
+                          initialDate: safeInitialDate,
+                          firstDate: todayDateOnly,
+                          lastDate: DateTime(2100),
+                        );
+                        if (!dialogContext.mounted) return;
+                        if (picked != null) {
+                          setDialogState(() {
+                            selectedDate = picked;
+                          });
+                        }
+                      },
+                      icon: const Icon(Icons.calendar_today_rounded, size: 18),
+                      label: Text(
+                        selectedDate == null
+                            ? 'Select target date'
+                            : _formatGoalDate(selectedDate!),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    final normalizedSelectedDate = selectedDate == null
+                        ? null
+                        : DateTime(
+                            selectedDate!.year,
+                            selectedDate!.month,
+                            selectedDate!.day,
+                          );
+                    if (normalizedSelectedDate != null &&
+                        normalizedSelectedDate.isBefore(todayDateOnly)) {
+                      if (!dialogContext.mounted) return;
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        const SnackBar(
+                          content: Text('Goal target date cannot be in the past.'),
+                        ),
+                      );
+                      return;
+                    }
+                    await FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(userId)
+                        .set({
+                          'currentGoal': {
+                            'title': titleController.text.trim(),
+                            'description': descriptionController.text.trim(),
+                            'targetDate': normalizedSelectedDate == null
+                                ? null
+                                : Timestamp.fromDate(normalizedSelectedDate),
+                            'examId': activeExam?.examId,
+                            'updatedAt': FieldValue.serverTimestamp(),
+                          },
+                        }, SetOptions(merge: true));
+                    if (!dialogContext.mounted) return;
+                    Navigator.pop(dialogContext, true);
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    titleController.dispose();
+    descriptionController.dispose();
+
+    if (saved == true && mounted) {
+      setState(() {});
+    }
+  }
+
   Future<_HomeVm> _loadVm({
     required String userId,
     required Map<String, dynamic> userData,
   }) async {
-    final selectedExams = List<String>.from(userData['selectedExams'] ?? const []);
+    final selectedExams = List<String>.from(
+      userData['selectedExams'] ?? const [],
+    );
     final preferredExamId = await UserExamPreferenceService.loadPreferredExamId(
       availableExamIds: selectedExams,
     );
@@ -51,7 +193,8 @@ class _SelectExamHomeState extends State<SelectExamHome> {
     final examIds = selectedExams.toList();
     final examDocs = await Future.wait(
       examIds.map(
-        (examId) => FirebaseFirestore.instance.collection('exams').doc(examId).get(),
+        (examId) =>
+            FirebaseFirestore.instance.collection('exams').doc(examId).get(),
       ),
     );
 
@@ -102,49 +245,56 @@ class _SelectExamHomeState extends State<SelectExamHome> {
       }
     }
 
-    final featured = <_FeaturedCardVm>[];
+    final featuredMockTests = <_FeaturedCardVm>[];
+    final featuredPyqs = <_FeaturedCardVm>[];
     if (activeExamId != null) {
+      final featuredConfigDoc = await FirebaseFirestore.instance
+          .collection('exams')
+          .doc(activeExamId)
+          .collection('home_config')
+          .doc('featured')
+          .get();
+      final featuredConfig = featuredConfigDoc.data() ?? const <String, dynamic>{};
+      final featuredMockTestIds = List<String>.from(
+        featuredConfig['featuredMockTestIds'] ?? const [],
+      );
+      final featuredPyqIds = List<String>.from(
+        featuredConfig['featuredPyqIds'] ?? const [],
+      );
+
       final featuredFetches = await Future.wait([
-        ContentAccessService.publishedTestsQuery(activeExamId).get(),
-        ContentAccessService.publishedPyqsQuery(activeExamId).get(),
-      ]);
-      final testsSnap =
-          featuredFetches[0] as QuerySnapshot<Map<String, dynamic>>;
-      final tests = testsSnap.docs.where((doc) {
-        return ContentAccessService.isVisibleNow(doc.data());
-      }).toList()
-        ..sort(ContentAccessService.compareCreatedAtAsc);
-
-      final pyqSnap = featuredFetches[1] as QuerySnapshot<Map<String, dynamic>>;
-      final pyqs = pyqSnap.docs.where((doc) {
-        return ContentAccessService.isVisibleNow(doc.data());
-      }).toList()
-        ..sort(ContentAccessService.compareCreatedAtAsc);
-
-      if (pyqs.isNotEmpty) {
-        final pyq = pyqs.last;
-        featured.add(
-          _FeaturedCardVm(
-            title: (pyq.data()['name'] ?? pyq.id).toString(),
-            badge: 'PYQ',
-            meta: '${_pyqPaperCountLabel(pyq.data())} papers',
-            icon: Icons.description_outlined,
-            iconTint: const Color(0xFF31459B),
-            badgeColor: const Color(0xFFE9ECFF),
-            badgeTextColor: const Color(0xFF31459B),
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const PyqScreen()),
-              );
-            },
+        Future.wait(
+          featuredMockTestIds.map(
+            (id) => FirebaseFirestore.instance
+                .collection('exams')
+                .doc(activeExamId)
+                .collection('tests')
+                .doc(id)
+                .get(),
           ),
-        );
-      }
+        ),
+        Future.wait(
+          featuredPyqIds.map(
+            (id) => FirebaseFirestore.instance
+                .collection('exams')
+                .doc(activeExamId)
+                .collection('pyqs')
+                .doc(id)
+                .get(),
+          ),
+        ),
+      ]);
 
-      if (tests.isNotEmpty) {
-        final test = tests.last;
-        final data = test.data();
-        featured.add(
+      final testDocs = (featuredFetches[0] as List<DocumentSnapshot<Map<String, dynamic>>>)
+          .where((doc) => doc.exists && ContentAccessService.isVisibleNow(doc.data()))
+          .toList();
+      final pyqDocs = (featuredFetches[1] as List<DocumentSnapshot<Map<String, dynamic>>>)
+          .where((doc) => doc.exists && ContentAccessService.isVisibleNow(doc.data()))
+          .toList();
+
+      for (final test in testDocs) {
+        final data = test.data()!;
+        featuredMockTests.add(
           _FeaturedCardVm(
             title: (data['name'] ?? test.id).toString(),
             badge: _isNewItem(data) ? 'NEW' : 'TEST',
@@ -167,6 +317,26 @@ class _SelectExamHomeState extends State<SelectExamHome> {
           ),
         );
       }
+
+      for (final pyq in pyqDocs) {
+        final data = pyq.data()!;
+        featuredPyqs.add(
+          _FeaturedCardVm(
+            title: (data['name'] ?? pyq.id).toString(),
+            badge: 'PYQ',
+            meta: '${_pyqPaperCountLabel(data)} papers',
+            icon: Icons.description_outlined,
+            iconTint: const Color(0xFF31459B),
+            badgeColor: const Color(0xFFE9ECFF),
+            badgeTextColor: const Color(0xFF31459B),
+            onTap: () {
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const PyqScreen()));
+            },
+          ),
+        );
+      }
     }
 
     final greetingName = _firstName(
@@ -185,6 +355,9 @@ class _SelectExamHomeState extends State<SelectExamHome> {
             ),
     );
 
+    final goalData = userData['currentGoal'] as Map<String, dynamic>?;
+    final currentGoal = _GoalVm.fromMap(goalData, fallbackExam: activeExam);
+
     return _HomeVm(
       greetingName: greetingName.isEmpty ? 'Learner' : greetingName,
       quote: _quoteForUser(userId),
@@ -195,7 +368,9 @@ class _SelectExamHomeState extends State<SelectExamHome> {
       bestScoreText: bestScorePct == null
           ? '--'
           : '${bestScorePct.round()}/100',
-      featured: featured.take(2).toList(),
+      currentGoal: currentGoal,
+      featuredMockTests: featuredMockTests,
+      featuredPyqs: featuredPyqs,
     );
   }
 
@@ -204,12 +379,16 @@ class _SelectExamHomeState extends State<SelectExamHome> {
     required Map<String, dynamic> userData,
     bool force = false,
   }) {
-    final selectedExams = List<String>.from(userData['selectedExams'] ?? const []);
+    final selectedExams = List<String>.from(
+      userData['selectedExams'] ?? const [],
+    );
+    final currentGoal = userData['currentGoal'] as Map<String, dynamic>?;
     final signature =
-        '${(userData['name'] ?? '').toString()}|${selectedExams.join(',')}';
-    if (!force &&
-        _homeVmFuture != null &&
-        _homeVmSignature == signature) {
+        '${(userData['name'] ?? '').toString()}|${selectedExams.join(',')}|'
+        '${(currentGoal?['title'] ?? '').toString()}|'
+        '${(currentGoal?['description'] ?? '').toString()}|'
+        '${currentGoal?['targetDate'] ?? ''}';
+    if (!force && _homeVmFuture != null && _homeVmSignature == signature) {
       return;
     }
     _homeVmSignature = signature;
@@ -246,13 +425,15 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                 }
 
                 final vm = vmSnap.data!;
-                final selectedExamIds =
-                    vm.selectedExams.map((exam) => exam.examId).toList();
+                final selectedExamIds = vm.selectedExams
+                    .map((exam) => exam.examId)
+                    .toList();
                 return Column(
                   children: [
                     TopHeader(
                       selectedExamId: vm.activeExam?.examId,
                       userExamIds: selectedExamIds,
+                      showExamDropdown: false,
                       onExamChanged: (examId) async {
                         await UserExamPreferenceService.savePreferredExamId(
                           examId,
@@ -291,7 +472,15 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                             const SizedBox(height: 18),
                             _buildQuoteCard(vm.quote),
                             const SizedBox(height: 22),
-                            _buildGoalCard(vm.activeExam),
+                            _buildGoalCard(
+                              vm.currentGoal,
+                              activeExam: vm.activeExam,
+                              onEdit: () => _editGoal(
+                                userId: user.uid,
+                                goal: vm.currentGoal,
+                                activeExam: vm.activeExam,
+                              ),
+                            ),
                             const SizedBox(height: 26),
                             const Text(
                               'Your Selected Exams',
@@ -340,10 +529,35 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                               },
                             ),
                             const SizedBox(height: 14),
-                            if (vm.featured.isEmpty)
+                            if (vm.featuredMockTests.isEmpty)
                               _buildEmptyFeaturedCard()
                             else
-                              ...vm.featured.map((item) {
+                              ...vm.featuredMockTests.map((item) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 14),
+                                  child: _buildFeaturedCard(item),
+                                );
+                              }),
+                            const SizedBox(height: 26),
+                            _buildSectionHeader(
+                              title: 'Featured PYQs',
+                              actionLabel: 'See All',
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const PyqScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 14),
+                            if (vm.featuredPyqs.isEmpty)
+                              _buildEmptyFeaturedCard(
+                                message:
+                                    'No featured PYQs available for your selected exam yet.',
+                              )
+                            else
+                              ...vm.featuredPyqs.map((item) {
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 14),
                                   child: _buildFeaturedCard(item),
@@ -364,9 +578,9 @@ class _SelectExamHomeState extends State<SelectExamHome> {
         backgroundColor: const Color(0xFF31459B),
         foregroundColor: Colors.white,
         onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const SelectExamScreen()),
-          );
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const SelectExamScreen()));
         },
         child: const Icon(Icons.add),
       ),
@@ -412,8 +626,14 @@ class _SelectExamHomeState extends State<SelectExamHome> {
     );
   }
 
-  Widget _buildGoalCard(_ExamCardVm? exam) {
-    final remainingDays = _remainingDays(exam?.title ?? '');
+  Widget _buildGoalCard(
+    _GoalVm? goal, {
+    required _ExamCardVm? activeExam,
+    required VoidCallback onEdit,
+  }) {
+    final remainingDays = goal?.targetDate == null
+        ? null
+        : math.max(0, goal!.targetDate!.difference(DateTime.now()).inDays);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(22),
@@ -449,24 +669,28 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                   ),
                 ),
               ),
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.edit_rounded,
-                  color: Colors.white,
-                  size: 20,
+              InkWell(
+                onTap: onEdit,
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.edit_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 14),
           Text(
-            exam?.title ?? 'Choose your target exam',
+            goal?.title ?? activeExam?.title ?? 'Choose your target exam',
             style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w800,
@@ -475,11 +699,13 @@ class _SelectExamHomeState extends State<SelectExamHome> {
           ),
           const SizedBox(height: 12),
           Text(
-            exam == null
+            goal == null && activeExam == null
                 ? 'Pick an exam to unlock your personalized study journey.'
                 : remainingDays == null
-                    ? exam.description
-                    : '${exam.description} ${remainingDays} days remaining in this sprint.',
+                ? (goal?.description ??
+                    activeExam?.description ??
+                    'Define your current preparation goal.')
+                : '${goal?.description ?? activeExam?.description ?? 'Stay on track with your study sprint.'} $remainingDays days remaining in this sprint.',
             style: const TextStyle(
               fontSize: 14,
               height: 1.6,
@@ -491,9 +717,8 @@ class _SelectExamHomeState extends State<SelectExamHome> {
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => SubscriptionScreen(
-                    initialExamId: exam?.examId,
-                  ),
+                  builder: (_) =>
+                      SubscriptionScreen(initialExamId: activeExam?.examId),
                 ),
               );
             },
@@ -664,7 +889,10 @@ class _SelectExamHomeState extends State<SelectExamHome> {
         return Expanded(
           child: Padding(
             padding: EdgeInsets.only(right: card == cards.last ? 0 : 12),
-            child: _buildStatCard(card),
+            child: SizedBox(
+              height: 146,
+              child: _buildStatCard(card),
+            ),
           ),
         );
       }).toList(),
@@ -673,6 +901,7 @@ class _SelectExamHomeState extends State<SelectExamHome> {
 
   Widget _buildStatCard(_StatCardVm vm) {
     return Container(
+      height: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -680,6 +909,7 @@ class _SelectExamHomeState extends State<SelectExamHome> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.start,
         children: [
           Icon(vm.icon, color: vm.iconColor, size: 22),
           const SizedBox(height: 14),
@@ -694,7 +924,13 @@ class _SelectExamHomeState extends State<SelectExamHome> {
           const SizedBox(height: 4),
           Text(
             vm.label,
-            style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 13,
+              height: 1.3,
+              color: Color(0xFF6B7280),
+            ),
           ),
         ],
       ),
@@ -801,7 +1037,9 @@ class _SelectExamHomeState extends State<SelectExamHome> {
     );
   }
 
-  Widget _buildEmptyFeaturedCard() {
+  Widget _buildEmptyFeaturedCard({
+    String message = 'No featured practice items available for your selected exam yet.',
+  }) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -809,11 +1047,29 @@ class _SelectExamHomeState extends State<SelectExamHome> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: const Text(
-        'No featured practice items available for your selected exam yet.',
-        style: TextStyle(color: Color(0xFF64748B)),
+      child: Text(
+        message,
+        style: const TextStyle(color: Color(0xFF64748B)),
       ),
     );
+  }
+
+  String _formatGoalDate(DateTime value) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${value.day} ${months[value.month - 1]} ${value.year}';
   }
 
   String _firstName(String value) {
@@ -824,7 +1080,8 @@ class _SelectExamHomeState extends State<SelectExamHome> {
 
   String _quoteForUser(String userId) {
     if (userId.isEmpty) return _quotes.first;
-    return _quotes[userId.codeUnits.fold<int>(0, (a, b) => a + b) % _quotes.length];
+    return _quotes[userId.codeUnits.fold<int>(0, (a, b) => a + b) %
+        _quotes.length];
   }
 
   int? _remainingDays(String title) {
@@ -845,8 +1102,9 @@ class _SelectExamHomeState extends State<SelectExamHome> {
 
   double? _scorePercent(Map<String, dynamic> data) {
     final score = _asDouble(data['score'] ?? data['marksObtained']);
-    final total =
-        _asDouble(data['totalMarks'] ?? data['maxMarks'] ?? data['marks']);
+    final total = _asDouble(
+      data['totalMarks'] ?? data['maxMarks'] ?? data['marks'],
+    );
     if (score == null) return null;
     if (total != null && total > 0) {
       return (score / total) * 100;
@@ -868,11 +1126,14 @@ class _SelectExamHomeState extends State<SelectExamHome> {
 
   static String _testMetaLabel(Map<String, dynamic> data) {
     final totalQuestions =
-        data['totalQuestions'] ?? data['questionCount'] ?? data['questionsCount'];
+        data['totalQuestions'] ??
+        data['questionCount'] ??
+        data['questionsCount'];
     if (totalQuestions != null) {
       return '$totalQuestions Qs';
     }
-    final duration = data['totalDurationMinutes'] ??
+    final duration =
+        data['totalDurationMinutes'] ??
         (data['timing'] is Map
             ? (data['timing'] as Map)['totalDurationMinutes']
             : null);
@@ -897,7 +1158,9 @@ class _HomeVm {
     required this.testsAttended,
     required this.bestRank,
     required this.bestScoreText,
-    required this.featured,
+    required this.currentGoal,
+    required this.featuredMockTests,
+    required this.featuredPyqs,
   });
 
   final String greetingName;
@@ -907,7 +1170,48 @@ class _HomeVm {
   final int testsAttended;
   final int? bestRank;
   final String bestScoreText;
-  final List<_FeaturedCardVm> featured;
+  final _GoalVm? currentGoal;
+  final List<_FeaturedCardVm> featuredMockTests;
+  final List<_FeaturedCardVm> featuredPyqs;
+}
+
+class _GoalVm {
+  const _GoalVm({
+    required this.title,
+    required this.description,
+    required this.targetDate,
+    required this.examId,
+  });
+
+  final String title;
+  final String description;
+  final DateTime? targetDate;
+  final String? examId;
+
+  static _GoalVm? fromMap(
+    Map<String, dynamic>? data, {
+    required _ExamCardVm? fallbackExam,
+  }) {
+    if (data == null && fallbackExam == null) return null;
+    final title = (data?['title'] ?? fallbackExam?.title ?? '').toString().trim();
+    final description = (data?['description'] ?? fallbackExam?.description ?? '')
+        .toString()
+        .trim();
+    final targetDateValue = data?['targetDate'];
+    final targetDate = targetDateValue is Timestamp
+        ? targetDateValue.toDate()
+        : null;
+    final examId = (data?['examId'] ?? fallbackExam?.examId)?.toString();
+    if (title.isEmpty && description.isEmpty && targetDate == null) {
+      return null;
+    }
+    return _GoalVm(
+      title: title,
+      description: description,
+      targetDate: targetDate,
+      examId: examId,
+    );
+  }
 }
 
 class _ExamCardVm {

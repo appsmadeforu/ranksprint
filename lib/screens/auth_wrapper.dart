@@ -71,7 +71,7 @@ class AuthWrapper extends StatelessWidget {
             }
 
             // ✅ Everything good → go to tests screen
-            return const MainNavigation(initialIndex: 1);
+            return const MainNavigation(initialIndex: 0);
           },
         );
       },
