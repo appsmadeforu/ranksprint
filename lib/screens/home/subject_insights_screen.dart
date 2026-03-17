@@ -1061,7 +1061,7 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
       }
       final total = snap.docs.fold<double>(
         0,
-        (sum, doc) => sum + _platformScore(doc.data()),
+        (sum, doc) => sum + _platformScore(const <String, dynamic>{}, doc.data()),
       );
       _competitionAverageCache = total / snap.docs.length;
       return _competitionAverageCache!;
@@ -1124,26 +1124,34 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     Map<String, dynamic> attempt,
     Map<String, dynamic> result,
   ) {
-    final correct =
-        _toInt(result['correct']) ?? (attempt['answers'] as Map?)?.length ?? 0;
-    final incorrect =
-        _toInt(result['incorrect']) ?? _toInt(attempt['wrong']) ?? 0;
-    final unanswered =
-        _toInt(result['unanswered']) ?? _toInt(attempt['skipped']) ?? 0;
+    final normalizedCounts = ResultDataService.normalizeCounts(
+      attempt: attempt,
+      result: result,
+    );
+    final correct = normalizedCounts['correct'] ?? 0;
+    final incorrect = normalizedCounts['incorrect'] ?? 0;
+    final unanswered = normalizedCounts['unanswered'] ?? 0;
     final total = (correct + incorrect + unanswered) > 0
         ? (correct + incorrect + unanswered)
         : 20;
     return (correct * 100.0 / total).clamp(0.0, 100.0);
   }
 
-  double _platformScore(Map<String, dynamic> result) {
+  double _platformScore(
+    Map<String, dynamic> attempt,
+    Map<String, dynamic> result,
+  ) {
     final directScore = _toDouble(result['score']);
     if (directScore != null && directScore > 0) {
       return directScore;
     }
-    final correct = _toInt(result['correct']) ?? 0;
-    final incorrect = _toInt(result['incorrect']) ?? 0;
-    final unanswered = _toInt(result['unanswered']) ?? 0;
+    final normalizedCounts = ResultDataService.normalizeCounts(
+      attempt: attempt,
+      result: result,
+    );
+    final correct = normalizedCounts['correct'] ?? 0;
+    final incorrect = normalizedCounts['incorrect'] ?? 0;
+    final unanswered = normalizedCounts['unanswered'] ?? 0;
     final total = correct + incorrect + unanswered;
     if (total > 0) return (correct * 100.0 / total).clamp(0.0, 100.0);
     return (_toDouble(result['score']) ?? 0).clamp(0.0, 100.0);
@@ -1156,10 +1164,14 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
   ) {
     final minutes = _attemptMinutes(attempt);
     if (minutes <= 0 || totalQuestions <= 0) return null;
+    final normalizedCounts = ResultDataService.normalizeCounts(
+      attempt: attempt,
+      result: result,
+    );
     final answered =
-        (_toInt(result['correct']) ?? 0) +
-        (_toInt(result['incorrect']) ?? _toInt(attempt['wrong']) ?? 0) +
-        (_toInt(result['unanswered']) ?? _toInt(attempt['skipped']) ?? 0);
+        (normalizedCounts['correct'] ?? 0) +
+        (normalizedCounts['incorrect'] ?? 0) +
+        (normalizedCounts['unanswered'] ?? 0);
     final count = answered > 0 ? answered : totalQuestions;
     return (minutes * 60.0) / count;
   }

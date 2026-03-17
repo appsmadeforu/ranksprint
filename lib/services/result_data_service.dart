@@ -11,6 +11,38 @@ import 'result_schema_contract.dart';
 class ResultDataService {
   const ResultDataService._();
 
+  static Map<String, int> normalizeCounts({
+    required Map<String, dynamic> attempt,
+    required Map<String, dynamic> result,
+  }) {
+    final answers = _readAnswers(result['answers'] ?? attempt['answers']);
+    final questionIds = _readQuestionIds(result['question'] ?? attempt['question']);
+    final correct = _toInt(result['correct']) ?? 0;
+    final unanswered = _toInt(result['unanswered']) ?? _toInt(attempt['skipped']) ?? 0;
+    final storedIncorrect =
+        _toInt(result['incorrect']) ?? _toInt(attempt['wrong']) ?? 0;
+
+    if (answers.isEmpty || questionIds.isEmpty) {
+      return {
+        'correct': correct,
+        'incorrect': storedIncorrect,
+        'unanswered': unanswered,
+      };
+    }
+
+    final answeredCount = answers.values.where((value) => value.trim().isNotEmpty).length;
+    final normalizedIncorrect = answeredCount > correct ? answeredCount - correct : 0;
+    final normalizedUnanswered = questionIds.length > answeredCount
+        ? questionIds.length - answeredCount
+        : 0;
+
+    return {
+      'correct': correct,
+      'incorrect': normalizedIncorrect,
+      'unanswered': normalizedUnanswered,
+    };
+  }
+
   static Future<Map<String, Map<String, dynamic>>> loadResultsMap({
     required List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
     required String userId,
@@ -183,5 +215,31 @@ class ResultDataService {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
     return null;
+  }
+
+  static int? _toInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  static Map<String, String> _readAnswers(dynamic raw) {
+    if (raw is! Map) return const {};
+    final out = <String, String>{};
+    for (final entry in raw.entries) {
+      out[entry.key.toString()] = entry.value?.toString() ?? '';
+    }
+    return out;
+  }
+
+  static List<String> _readQuestionIds(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw.map((item) {
+      if (item is Map) {
+        final map = Map<String, dynamic>.from(item as Map);
+        return (map['__id'] ?? map['id'] ?? '').toString();
+      }
+      return '';
+    }).where((id) => id.isNotEmpty).toList();
   }
 }

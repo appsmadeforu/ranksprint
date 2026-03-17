@@ -292,14 +292,18 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
 
     // compute a simple score for placeholder results
     int correct = 0;
+    int answered = 0;
     int total = questions.length;
     for (final q in questions) {
       final qid = q['__id'] as String;
       final selected = answers[qid];
-      if (selected != null &&
-          q['correctOption'] != null &&
-          ExamResultScreenState.optionLetter(q['correctOption']) == selected) {
-        correct += 1;
+      if (selected != null && selected.isNotEmpty) {
+        answered += 1;
+        if (q['correctOption'] != null &&
+            ExamResultScreenState.optionLetter(q['correctOption']) ==
+                selected) {
+          correct += 1;
+        }
       }
     }
 
@@ -316,8 +320,8 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
       'testId': widget.testId,
       'score': score,
       'correct': correct,
-      'incorrect': total - correct,
-      'unanswered': total - answers.length,
+      'incorrect': answered - correct,
+      'unanswered': total - answered,
       'answers': answers,
       'question': questions,
       'percentile': 0,
@@ -602,6 +606,17 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
     });
   }
 
+  void _markCurrentQuestionVisited() {
+    if (questions.isEmpty || currentIndex < 0 || currentIndex >= questions.length) {
+      return;
+    }
+    final qid = questions[currentIndex]['__id']?.toString();
+    if (qid == null || qid.isEmpty || visited.contains(qid)) {
+      return;
+    }
+    visited.add(qid);
+  }
+
   void _openPalette() {
     showModalBottomSheet(
       context: context,
@@ -771,6 +786,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                   onQuestionTap: (index) {
                     Navigator.pop(context);
                     setState(() {
+                      _markCurrentQuestionVisited();
                       currentIndex = index;
                     });
                   },
@@ -1046,6 +1062,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                                       currentIndex + 1,
                                                     )) {
                                                       setState(() {
+                                                        _markCurrentQuestionVisited();
                                                         currentIndex += 1;
                                                       });
                                                     }
@@ -1154,6 +1171,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                   _toggleReview(qid);
                                   if (_canOpenQuestion(currentIndex + 1)) {
                                     setState(() {
+                                      _markCurrentQuestionVisited();
                                       currentIndex += 1;
                                     });
                                   }
@@ -1227,6 +1245,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                     onPressed: () {
                                       if (_canOpenQuestion(currentIndex + 1)) {
                                         setState(() {
+                                          _markCurrentQuestionVisited();
                                           currentIndex += 1;
                                         });
                                       }

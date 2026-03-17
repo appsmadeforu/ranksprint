@@ -26,7 +26,7 @@ class TestSolutionScreen extends StatefulWidget {
 class _TestSolutionScreenState extends State<TestSolutionScreen> {
   late final Future<_Vm> _future;
   SectionService sectionService = SectionService();
-  List<SectionBean> sectionBeans =[];
+  List<SectionBean> sectionBeans = [];
 
   @override
   void initState() {
@@ -53,9 +53,13 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
       }
     }
 
-    int correct = _toInt(result['correct']) ?? 0;
-    int incorrect = _toInt(result['incorrect']) ?? 0;
-    int skipped = _toInt(result['unanswered']) ?? 0;
+    final normalizedCounts = ResultDataService.normalizeCounts(
+      attempt: attempt,
+      result: result,
+    );
+    int correct = normalizedCounts['correct'] ?? 0;
+    int incorrect = normalizedCounts['incorrect'] ?? 0;
+    int skipped = normalizedCounts['unanswered'] ?? 0;
     int rank = _toInt(result['rank']) ?? 0;
     double percentile = _toDouble(result['percentile']) ?? 0;
 
@@ -69,9 +73,6 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
           .collection('questions')
           .get();
 
-      int c = 0;
-      int w = 0;
-      int s = 0;
       for (final q in qSnap.docs) {
         final qData = q.data();
         final section = _sectionName(qData);
@@ -80,23 +81,16 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
           () => _SectionStats(section),
         );
         final selected = answers[q.id];
-        final correctOption = qData['correctOption']?.toString();
+        final correctOption = ExamResultScreenState.optionLetter(
+          qData['correctOption'],
+        );
         if (selected == null || selected.isEmpty) {
-          s++;
           st.skipped++;
-        } else if (correctOption != null && selected == correctOption) {
-          c++;
+        } else if (selected == correctOption) {
           st.correct++;
         } else {
-          w++;
           st.incorrect++;
         }
-      }
-
-      if (correct == 0 && incorrect == 0 && skipped == 0) {
-        correct = c;
-        incorrect = w;
-        skipped = s;
       }
     }
 
@@ -106,8 +100,7 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
     final scorePct = total > 0 ? (correct * 100.0 / total) : 0.0;
     final timeMinutes = _timeMinutes(widget.attemptData);
 
-    final sections = sectionStats.values.toList()
-      ..sort((a, b) => b.accuracy.compareTo(a.accuracy));
+    final sections = _orderedSectionStats(sectionStats);
 
     final trend = await _loadTrendPoints(
       userId: (attempt['userId'] ?? '').toString(),
@@ -128,6 +121,9 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
       timeMinutes: timeMinutes,
       sections: sections,
       trend: trend,
+      attemptedAccuracy: (correct + incorrect) == 0
+          ? 0
+          : (correct * 100.0 / (correct + incorrect)),
     );
   }
 
@@ -182,12 +178,13 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
     Map<String, dynamic> attempt,
     Map<String, dynamic> result,
   ) {
-    final correct =
-        _toInt(result['correct']) ?? (attempt['answers'] as Map?)?.length ?? 0;
-    final incorrect =
-        _toInt(result['incorrect']) ?? _toInt(attempt['wrong']) ?? 0;
-    final unanswered =
-        _toInt(result['unanswered']) ?? _toInt(attempt['skipped']) ?? 0;
+    final normalizedCounts = ResultDataService.normalizeCounts(
+      attempt: attempt,
+      result: result,
+    );
+    final correct = normalizedCounts['correct'] ?? 0;
+    final incorrect = normalizedCounts['incorrect'] ?? 0;
+    final unanswered = normalizedCounts['unanswered'] ?? 0;
     final total = (correct + incorrect + unanswered) > 0
         ? (correct + incorrect + unanswered)
         : 20;
@@ -195,12 +192,44 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
   }
 
   String _sectionName(Map<String, dynamic> qData) {
+    final sectionId = (qData['sectionId'] ?? '').toString();
+    if (sectionId.isNotEmpty) {
+      for (final section in sectionBeans) {
+        final beanId = (section.id ?? '').toString();
+        if (beanId == sectionId) {
+          final beanName = (section.name ?? '').toString().trim();
+          if (beanName.isNotEmpty) return beanName;
+        }
+      }
+    }
     return (qData['sectionName'] ??
+            qData['sectionTitle'] ??
             qData['section'] ??
             qData['subject'] ??
             qData['topic'] ??
             'General')
         .toString();
+  }
+
+  List<_SectionStats> _orderedSectionStats(Map<String, _SectionStats> statsMap) {
+    final ordered = <_SectionStats>[];
+    final seen = <String>{};
+
+    for (final section in sectionBeans) {
+      final name = (section.name ?? '').toString().trim();
+      if (name.isEmpty) continue;
+      final stats = statsMap[name] ?? _SectionStats(name);
+      ordered.add(stats);
+      seen.add(name);
+    }
+
+    for (final entry in statsMap.entries) {
+      if (seen.add(entry.key)) {
+        ordered.add(entry.value);
+      }
+    }
+
+    return ordered;
   }
 
   int _timeMinutes(Map<String, dynamic> data) {
@@ -526,31 +555,33 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ),
-                    Text(
-                      '${s.accuracy.toStringAsFixed(0)}%',
-                      style: const TextStyle(
-                        color: Color(0xFF1D4ED8),
-                        fontSize: 12,
+                     Text(
+                       s.attempted == 0
+                           ? '--'
+                           : '${s.accuracy.toStringAsFixed(0)}%',
+                       style: const TextStyle(
+                         color: Color(0xFF1D4ED8),
+                         fontSize: 12,
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: LinearProgressIndicator(
-                    minHeight: 6,
-                    value: s.accuracy / 100,
-                    backgroundColor: const Color(0xFFE5E7EB),
-                    color: const Color(0xFF1E3A8A),
-                  ),
+                 ClipRRect(
+                   borderRadius: BorderRadius.circular(10),
+                   child: LinearProgressIndicator(
+                     minHeight: 6,
+                     value: s.attempted == 0 ? 0 : s.accuracy / 100,
+                     backgroundColor: const Color(0xFFE5E7EB),
+                     color: const Color(0xFF1E3A8A),
+                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${s.correct} correct          ${s.incorrect} incorrect          ${s.skipped} skipped',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: Color(0xFF6B7280),
+                   '${s.correct} correct          ${s.incorrect} incorrect          ${s.skipped} skipped          ${s.attempted}/${s.total} attempted',
+                   style: const TextStyle(
+                     fontSize: 10,
+                     color: Color(0xFF6B7280),
                   ),
                 ),
               ],
@@ -562,74 +593,93 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
   }
 
   Widget _accuracyComparison(_Vm vm) {
-    final top = vm.sections.take(3).toList();
+    final sections = vm.sections;
+    if (sections.isEmpty) {
+      return _card(
+        title: 'Accuracy Comparison',
+        child: const Text(
+          'No accuracy data available yet.',
+          style: TextStyle(color: Color(0xFF6B7280)),
+        ),
+      );
+    }
     return _card(
       title: 'Accuracy Comparison',
-      child: SizedBox(
-        height: 150,
-        child: LayoutBuilder(
-          builder: (context, c) {
-            return Stack(
-              children: [
-                Positioned.fill(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: const [_YTick('100'), _YTick('50'), _YTick('0')],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              'Overall attempted accuracy: ${vm.attemptedAccuracy.toStringAsFixed(0)}%',
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF1E3A8A),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...sections.map((s) {
+            final accuracy = s.attempted == 0 ? 0.0 : s.accuracy;
+            final delta = accuracy - vm.attemptedAccuracy;
+            final deltaColor = delta >= 0
+                ? const Color(0xFF16A34A)
+                : const Color(0xFFDC2626);
+            final deltaText = s.attempted == 0
+                ? 'No attempts yet'
+                : delta == 0
+                ? 'Matches overall'
+                : '${delta > 0 ? '+' : ''}${delta.toStringAsFixed(0)} pts vs overall';
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          s.name,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      Text(
+                        s.attempted == 0
+                            ? '--'
+                            : '${accuracy.toStringAsFixed(0)}%',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                Positioned(
-                  left: 30,
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: top.map((s) {
-                      return Column(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TweenAnimationBuilder<double>(
-                            duration: const Duration(milliseconds: 460),
-                            curve: Curves.easeOutCubic,
-                            tween: Tween<double>(
-                              begin: 0,
-                              end: s.accuracy.clamp(0, 100),
-                            ),
-                            builder: (context, v, _) {
-                              return Container(
-                                width: 36,
-                                height: v * 0.9,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF1E3A8A),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                              );
-                            },
-                          ),
-                          const SizedBox(height: 6),
-                          SizedBox(
-                            width: 50,
-                            child: Text(
-                              s.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: Color(0xFF6B7280),
-                              ),
-                            ),
-                          ),
-                        ],
-                      );
-                    }).toList(),
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      minHeight: 8,
+                      value: s.attempted == 0 ? 0 : (accuracy / 100).clamp(0, 1),
+                      backgroundColor: const Color(0xFFE5E7EB),
+                      color: const Color(0xFF1E3A8A),
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 6),
+                  Text(
+                    '$deltaText • ${s.attempted}/${s.total} attempted',
+                    style: TextStyle(fontSize: 11, color: deltaColor),
+                  ),
+                ],
+              ),
             );
-          },
-        ),
+          }),
+        ],
       ),
     );
   }
@@ -685,6 +735,7 @@ class _Vm {
   final int timeMinutes;
   final List<_SectionStats> sections;
   final List<_TrendPoint> trend;
+  final double attemptedAccuracy;
 
   _Vm({
     required this.examId,
@@ -699,6 +750,7 @@ class _Vm {
     required this.timeMinutes,
     required this.sections,
     required this.trend,
+    required this.attemptedAccuracy,
   });
 }
 
@@ -711,30 +763,8 @@ class _SectionStats {
   _SectionStats(this.name);
 
   int get total => correct + incorrect + skipped;
-  double get accuracy => total == 0 ? 0 : (correct * 100.0 / total);
-}
-
-class _YTick extends StatelessWidget {
-  final String value;
-  const _YTick(this.value);
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        SizedBox(
-          width: 24,
-          child: Text(
-            value,
-            textAlign: TextAlign.right,
-            style: const TextStyle(fontSize: 9, color: Color(0xFF9CA3AF)),
-          ),
-        ),
-        const SizedBox(width: 6),
-        const Expanded(child: Divider(height: 1, color: Color(0xFFE5E7EB))),
-      ],
-    );
-  }
+  int get attempted => correct + incorrect;
+  double get accuracy => attempted == 0 ? 0 : (correct * 100.0 / attempted);
 }
 
 class _TrendPoint {

@@ -2292,11 +2292,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         100.0,
       );
       final rank = _toInt(result['rank']) ?? 0;
-      final correct = _toInt(result['correct']) ?? 0;
-      final incorrect =
-          _toInt(result['incorrect']) ?? _toInt(attempt['wrong']) ?? 0;
-      final unanswered =
-          _toInt(result['unanswered']) ?? _toInt(attempt['skipped']) ?? 0;
+      final normalizedCounts = ResultDataService.normalizeCounts(
+        attempt: attempt,
+        result: result,
+      );
+      final correct = normalizedCounts['correct'] ?? 0;
+      final incorrect = normalizedCounts['incorrect'] ?? 0;
+      final unanswered = normalizedCounts['unanswered'] ?? 0;
       final questionCount = (correct + incorrect + unanswered) > 0
           ? (correct + incorrect + unanswered)
           : detail.totalQuestionsForAttempt(attempts[i].id);
@@ -2710,11 +2712,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   }
 
   double _scorePct(Map<String, dynamic> attempt, Map<String, dynamic> result) {
-    final correct = _toInt(result['correct']) ?? _toInt(result['score']) ?? 0;
-    final incorrect =
-        _toInt(result['incorrect']) ?? _toInt(attempt['wrong']) ?? 0;
-    final unanswered =
-        _toInt(result['unanswered']) ?? _toInt(attempt['skipped']) ?? 0;
+    final normalizedCounts = ResultDataService.normalizeCounts(
+      attempt: attempt,
+      result: result,
+    );
+    final correct =
+        normalizedCounts['correct'] ?? _toInt(result['score']) ?? 0;
+    final incorrect = normalizedCounts['incorrect'] ?? 0;
+    final unanswered = normalizedCounts['unanswered'] ?? 0;
     final total = (correct + incorrect + unanswered) > 0
         ? (correct + incorrect + unanswered)
         : 20;
@@ -2727,10 +2732,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     int fallbackQuestions,
   ) {
     final mins = _attemptMinutes(attempt);
+    final normalizedCounts = ResultDataService.normalizeCounts(
+      attempt: attempt,
+      result: result,
+    );
     final totalQuestions =
-        (_toInt(result['correct']) ?? 0) +
-        (_toInt(result['incorrect']) ?? 0) +
-        (_toInt(result['unanswered']) ?? 0);
+        (normalizedCounts['correct'] ?? 0) +
+        (normalizedCounts['incorrect'] ?? 0) +
+        (normalizedCounts['unanswered'] ?? 0);
     final effectiveQuestions = totalQuestions > 0
         ? totalQuestions
         : fallbackQuestions;

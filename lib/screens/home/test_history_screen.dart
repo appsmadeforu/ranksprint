@@ -742,11 +742,13 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
     Map<String, dynamic> result,
   ) {
     final data = doc.data();
-    final correct =
-        _toInt(result['correct']) ?? (data['answers'] as Map?)?.length ?? 0;
-    final wrong = _toInt(result['incorrect']) ?? _toInt(data['wrong']) ?? 0;
-    final skipped =
-        _toInt(result['unanswered']) ?? _toInt(data['skipped']) ?? 0;
+    final normalizedCounts = ResultDataService.normalizeCounts(
+      attempt: data,
+      result: result,
+    );
+    final correct = normalizedCounts['correct'] ?? 0;
+    final wrong = normalizedCounts['incorrect'] ?? 0;
+    final skipped = normalizedCounts['unanswered'] ?? 0;
 
     final totalQuestions = (correct + wrong + skipped) > 0
         ? (correct + wrong + skipped)
@@ -1101,11 +1103,13 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
     Map<String, dynamic> attempt,
     Map<String, dynamic> result,
   ) {
-    final correct =
-        _toInt(result['correct']) ?? (attempt['answers'] as Map?)?.length ?? 0;
-    final wrong = _toInt(result['incorrect']) ?? _toInt(attempt['wrong']) ?? 0;
-    final skipped =
-        _toInt(result['unanswered']) ?? _toInt(attempt['skipped']) ?? 0;
+    final normalizedCounts = ResultDataService.normalizeCounts(
+      attempt: attempt,
+      result: result,
+    );
+    final correct = normalizedCounts['correct'] ?? 0;
+    final wrong = normalizedCounts['incorrect'] ?? 0;
+    final skipped = normalizedCounts['unanswered'] ?? 0;
 
     final total = (correct + wrong + skipped) > 0
         ? (correct + wrong + skipped)
