@@ -11,6 +11,7 @@ import '../onboarding/select_exam_screen.dart';
 import 'analytics_screen.dart';
 import 'pyq_screen.dart';
 import 'subscription_screen.dart';
+import 'test_detail_screen.dart';
 import 'tests_screen.dart';
 
 class SelectExamHome extends StatefulWidget {
@@ -37,6 +38,39 @@ class _SelectExamHomeState extends State<SelectExamHome> {
     await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
       'selectedExams': FieldValue.arrayRemove([examId]),
     });
+  }
+
+  Future<void> _confirmRemoveExam(_ExamCardVm exam) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          title: const Text('Remove Exam'),
+          content: Text('Do you want to remove ${exam.title}?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('No'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFDC2626),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Yes'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true) {
+      await _removeExam(exam.examId);
+    }
   }
 
   Future<void> _editGoal({
@@ -310,7 +344,10 @@ class _SelectExamHomeState extends State<SelectExamHome> {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => TestsScreen(selectedExam: activeExamId),
+                  builder: (_) => TestDetailScreen(
+                    examId: activeExamId,
+                    testId: test.id,
+                  ),
                 ),
               );
             },
@@ -507,7 +544,9 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                               onTap: () {
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
-                                    builder: (_) => const AnalyticsScreen(),
+                                    builder: (_) => const AnalyticsScreen(
+                                      initialTabIndex: 1,
+                                    ),
                                   ),
                                 );
                               },
@@ -807,7 +846,7 @@ class _SelectExamHomeState extends State<SelectExamHome> {
             ),
           ),
           IconButton(
-            onPressed: () => _removeExam(exam.examId),
+            onPressed: () => _confirmRemoveExam(exam),
             icon: const Icon(Icons.close_rounded, color: Color(0xFFEF4444)),
           ),
         ],

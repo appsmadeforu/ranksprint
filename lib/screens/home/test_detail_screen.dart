@@ -206,18 +206,43 @@ class TestDetailScreen extends StatelessWidget {
                         const SizedBox(height: 18),
 
                         // Legend
-                        Card(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFF),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFE3E8F5)),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x120E1A33),
+                                blurRadius: 12,
+                                offset: Offset(0, 4),
+                              ),
+                            ],
                           ),
                           child: Padding(
-                            padding: const EdgeInsets.all(12),
+                            padding: const EdgeInsets.all(2),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'Question Status Legend',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                Row(
+                                  children: const [
+                                    Icon(
+                                      Icons.flag_outlined,
+                                      size: 18,
+                                      color: Color(0xFF3046A5),
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Question Status Legend',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF172554),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                                 const SizedBox(height: 12),
                                 Wrap(
@@ -239,6 +264,10 @@ class TestDetailScreen extends StatelessWidget {
                                     _LegendChip(
                                       color: Colors.grey,
                                       label: 'Not Visited',
+                                    ),
+                                    _LegendChip(
+                                      color: Colors.blue,
+                                      label: 'Answered & Marked',
                                     ),
                                   ],
                                 ),
@@ -332,20 +361,35 @@ class _LegendChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 14,
-          height: 14,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(4),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(4),
+            ),
           ),
-        ),
-        const SizedBox(width: 8),
-        Text(label),
-      ],
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF1F2937),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

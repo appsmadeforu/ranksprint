@@ -59,48 +59,12 @@ class TopHeader extends StatelessWidget {
                     text: const TextSpan(
                       children: [
                         TextSpan(
-                          text: 'R',
+                          text: 'RankSprintAI',
                           style: TextStyle(
                             fontSize: 19,
                             fontWeight: FontWeight.w800,
                             letterSpacing: -0.1,
-                            color: Color(0xFF2F6FEB),
-                          ),
-                        ),
-                        TextSpan(
-                          text: 'ank',
-                          style: TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.3,
-                            color: Colors.black,
-                          ),
-                        ),
-                        TextSpan(
-                          text: 'S',
-                          style: TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.1,
-                            color: Color(0xFF2F6FEB),
-                          ),
-                        ),
-                        TextSpan(
-                          text: 'print',
-                          style: TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.3,
-                            color: Colors.black,
-                          ),
-                        ),
-                        TextSpan(
-                          text: 'AI',
-                          style: TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.1,
-                            color: Color(0xFF2F6FEB),
+                            color: Color(0xFF3A53B7),
                           ),
                         ),
                       ],
@@ -281,7 +245,8 @@ class TopHeader extends StatelessWidget {
                               final metaDoc = metaDocList.isNotEmpty
                                   ? metaDocList.first
                                   : null;
-                              if (metaDoc == null || metaDoc['isRead'] == false) {
+                              if (metaDoc == null ||
+                                  metaDoc['isRead'] == false) {
                                 unread++;
                               }
                             }

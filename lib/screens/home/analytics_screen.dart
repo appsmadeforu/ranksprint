@@ -11,7 +11,9 @@ import 'main_navigation.dart';
 import 'subject_insights_screen.dart';
 
 class AnalyticsScreen extends StatefulWidget {
-  const AnalyticsScreen({super.key});
+  final int initialTabIndex;
+
+  const AnalyticsScreen({super.key, this.initialTabIndex = 0});
 
   @override
   State<AnalyticsScreen> createState() => _AnalyticsScreenState();
@@ -117,6 +119,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                   ? const Center(child: Text('No exam selected'))
                   : DefaultTabController(
                       length: 2,
+                      initialIndex: widget.initialTabIndex.clamp(0, 1),
                       child: Column(
                         children: [
                           Padding(
@@ -317,8 +320,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
         for (final doc in snap.docs) {
           final data = doc.data();
-          _userNameCache[doc.id] =
+          final rawName =
               (data['name'] ?? data['displayName'] ?? doc.id).toString();
+          _userNameCache[doc.id] = _compactLeaderboardName(rawName);
         }
 
         for (final id in chunk) {
@@ -337,6 +341,26 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
     return row.displayName.toLowerCase().contains(_leaderboardQuery) ||
         row.rank.toString().contains(_leaderboardQuery);
+  }
+
+  String _compactLeaderboardName(String rawName) {
+    final parts = rawName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return rawName.trim();
+    if (parts.length == 1) return parts.first;
+    return '${parts.first} ${parts.last}';
+  }
+
+  double _leaderboardPercentile(Map<String, dynamic> data, double score) {
+    final raw = (data['percentile'] as num?)?.toDouble() ??
+        (data['avgPercentile'] as num?)?.toDouble() ??
+        (data['percentileScore'] as num?)?.toDouble() ??
+        (data['percentage'] as num?)?.toDouble();
+    final fallback = raw == null || raw <= 0 ? score : raw;
+    return fallback.clamp(0.0, 100.0);
   }
 
   Widget _buildLeaderboardCard({
@@ -974,10 +998,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
               const SizedBox(width: 10),
               Expanded(
                 child: _glassStat(
-                  label: 'Neg Marks',
-                  value: '-${vm.negativeMarksLost}',
+                  label: vm.hasNegativeMarking ? 'Neg Marks' : 'Marks Lost',
+                  value:
+                      '${vm.hasNegativeMarking ? '-' : ''}${_formatDashboardMetric(vm.marksLost)}',
                   helper:
-                      '-${math.max(0, vm.negativeMarksLost ~/ math.max(1, vm.testsTaken))} vs last',
+                      '${vm.hasNegativeMarking ? '-' : ''}${_formatDashboardMetric(vm.avgMarksLostPerTest)} avg/test',
                   emphasize: const Color(0xFFFF7474),
                 ),
               ),
@@ -1330,9 +1355,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                   children: vm.subjects.take(4).map((subject) {
                     final maxValue = _subjectMaxValue(vm.subjects);
                     final value = _subjectMetricValue(subject);
-                    final height = maxValue <= 0
+                    final normalizedHeight = maxValue <= 0
                         ? 0.0
                         : 120 * (value / maxValue);
+                    final height = value <= 0
+                        ? 0.0
+                        : normalizedHeight.clamp(10.0, 120.0);
                     return Expanded(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -1350,7 +1378,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                               height: 126,
                               alignment: Alignment.bottomCenter,
                               child: Container(
-                                height: height.clamp(10.0, 120.0),
+                                height: height,
                                 decoration: BoxDecoration(
                                   color: _subjectColor(subject.name),
                                   borderRadius: BorderRadius.circular(14),
@@ -1594,9 +1622,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                   SizedBox(
                     width: cardWidth,
                     child: _riskStatCard(
-                      label: 'Neg. Marks Lost',
-                      value: '-${vm.negativeMarksLost}',
-                      subtitle: 'from wrong answers',
+                      label:
+                          vm.hasNegativeMarking
+                              ? 'Neg. Marks Lost'
+                              : 'Marks Lost',
+                      value:
+                          '${vm.hasNegativeMarking ? '-' : ''}${_formatDashboardMetric(vm.marksLost)}',
+                      subtitle:
+                          vm.hasNegativeMarking
+                              ? 'from wrong answers'
+                              : 'potential score from wrong answers',
                       tone: _RiskTone.red,
                     ),
                   ),
@@ -1861,11 +1896,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                       ],
                     ),
                   ),
-                  const Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    size: 14,
-                    color: Colors.white70,
-                  ),
                 ],
               ),
             ),
@@ -1879,7 +1909,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             ),
             child: Text(
               'Total Gain Potential  +${vm.gainPotential.round()} Marks',
-              textAlign: TextAlign.right,
+              textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Color(0xFF73F49A),
                 fontSize: 13,
@@ -2251,6 +2281,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     );
     final detail = await _loadQuestionDetails(attempts, resultMap);
     final leaderboardRows = await _loadExamLeaderboardRows(examId);
+    final testConfigs = await _loadTestConfigs(attempts);
 
     final trendPoints = <_TrendPoint>[];
     final riskBars = <double>[];
@@ -2265,6 +2296,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     int totalCorrect = 0;
     int totalIncorrect = 0;
     int totalSkipped = 0;
+    double totalMarksLost = 0;
+    var hasNegativeMarking = false;
     double totalSecondsPerQuestion = 0;
     int secondsPerQuestionCount = 0;
     DateTime lastUpdated = DateTime.fromMillisecondsSinceEpoch(0);
@@ -2299,6 +2332,21 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       final correct = normalizedCounts['correct'] ?? 0;
       final incorrect = normalizedCounts['incorrect'] ?? 0;
       final unanswered = normalizedCounts['unanswered'] ?? 0;
+      final testConfig = testConfigs['$examId|${(attempt['testId'] ?? '').toString()}'];
+      final negativeMarkingEnabled =
+          (testConfig?['negativeMarkingEnabled'] == true) ||
+          ((_toDouble(testConfig?['negativeMarks']) ?? 0) > 0);
+      final penaltyPerWrong =
+          _toDouble(testConfig?['negativeMarks']) ?? 0.0;
+      final marksPerQuestion =
+          _toDouble(testConfig?['marksPerQuestion']) ??
+          _toDouble(testConfig?['positiveMarks']) ??
+          0.0;
+      if (negativeMarkingEnabled) {
+        hasNegativeMarking = true;
+      }
+      totalMarksLost += incorrect *
+          (negativeMarkingEnabled ? penaltyPerWrong : marksPerQuestion);
       final questionCount = (correct + incorrect + unanswered) > 0
           ? (correct + incorrect + unanswered)
           : detail.totalQuestionsForAttempt(attempts[i].id);
@@ -2432,7 +2480,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     ];
 
     final weakChapters = chapters.take(3).toList();
-    final recommendations = weakChapters.isEmpty
+    final fallbackRecommendations = weakChapters.isEmpty
         ? <_Recommendation>[
             const _Recommendation(
               title: 'Attempt More Tests',
@@ -2448,6 +2496,20 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
               icon: Icons.auto_awesome,
             );
           }).toList();
+    final fallbackGainPotential = weakChapters.fold<double>(
+      0,
+      (sum, chapter) => sum + (100 - chapter.accuracy) * 0.15,
+    );
+    final dbRecommendations = await _loadDbRecommendations(
+      userId: userId,
+      examId: examId,
+    );
+    final recommendations =
+        dbRecommendations?.recommendations ?? fallbackRecommendations;
+    final gainPotential =
+        dbRecommendations?.gainPotential ?? fallbackGainPotential;
+    final recommendationTestsTaken =
+        dbRecommendations?.testsTaken ?? attempts.length;
 
     final rankGapText = myLeaderboardRow == null
         ? 'Keep attempting tests to enter the live ranking pool.'
@@ -2472,7 +2534,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       lastUpdated: lastUpdated == DateTime.fromMillisecondsSinceEpoch(0)
           ? DateTime.now()
           : lastUpdated,
-      testsTaken: attempts.length,
+      testsTaken: recommendationTestsTaken,
       totalQuestions: totalQuestions,
       totalMinutes: totalMinutes,
       avgScore: avgScore,
@@ -2495,7 +2557,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       timeScoreTrend: timeScoreTrend,
       timeInsight: timeInsight,
       riskBars: riskBars.take(6).toList(),
-      negativeMarksLost: totalIncorrect,
+      marksLost: totalMarksLost,
+      hasNegativeMarking: hasNegativeMarking,
       riskAccuracy: riskAccuracy,
       safeAttempts: safeAttempts,
       comparisonRows: comparisonRows,
@@ -2507,11 +2570,81 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       speed: speed,
       consistencyLabel: consistencyLabel,
       recommendations: recommendations,
-      gainPotential: weakChapters.fold<double>(
-        0,
-        (sum, chapter) => sum + (100 - chapter.accuracy) * 0.15,
-      ),
+      gainPotential: gainPotential,
     );
+  }
+
+  Future<_DbRecommendationPayload?> _loadDbRecommendations({
+    required String userId,
+    required String examId,
+  }) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('examRecommendations')
+          .doc(examId)
+          .get();
+      final data = doc.data();
+      if (data == null) return null;
+
+      final rawItems = data['recommendations'];
+      final items = <_Recommendation>[];
+      if (rawItems is List) {
+        for (final item in rawItems) {
+          if (item is! Map) continue;
+          final map = Map<String, dynamic>.from(
+            item.map((key, value) => MapEntry(key.toString(), value)),
+          );
+          final title = (map['title'] ?? '').toString().trim();
+          if (title.isEmpty) continue;
+          final subject = (map['subject'] ?? '').toString().trim();
+          final subtitleRaw = (map['subtitle'] ?? '').toString().trim();
+          final focusPotential = _toDouble(map['focusPotential']);
+          final subtitle = subtitleRaw.isNotEmpty
+              ? subtitleRaw
+              : subject.isNotEmpty && focusPotential != null
+              ? '$subject - ${focusPotential.round()}% focus potential'
+              : subject;
+          items.add(
+            _Recommendation(
+              title: title,
+              subtitle: subtitle,
+              icon: _recommendationIcon((map['icon'] ?? '').toString()),
+            ),
+          );
+        }
+      }
+
+      if (items.isEmpty) return null;
+      return _DbRecommendationPayload(
+        testsTaken: _toInt(data['testsTaken']),
+        gainPotential: _toDouble(data['gainPotential']),
+        recommendations: items,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  IconData _recommendationIcon(String rawIcon) {
+    switch (rawIcon.trim().toLowerCase()) {
+      case 'timeline':
+      case 'timeline_rounded':
+        return Icons.timeline_rounded;
+      case 'book':
+      case 'menu_book':
+        return Icons.menu_book_rounded;
+      case 'bolt':
+      case 'flash':
+        return Icons.bolt_rounded;
+      case 'science':
+        return Icons.science_rounded;
+      case 'auto_awesome':
+      case 'sparkles':
+      default:
+        return Icons.auto_awesome;
+    }
   }
 
   Future<_QuestionDetailBundle> _loadQuestionDetails(
@@ -2702,6 +2835,32 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     return 'General';
   }
 
+  Future<Map<String, Map<String, dynamic>>> _loadTestConfigs(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
+  ) async {
+    final configs = <String, Map<String, dynamic>>{};
+    for (final attemptDoc in attempts) {
+      final attempt = attemptDoc.data();
+      final examId = (attempt['examId'] ?? '').toString();
+      final testId = (attempt['testId'] ?? '').toString();
+      if (examId.isEmpty || testId.isEmpty) continue;
+      final key = '$examId|$testId';
+      if (configs.containsKey(key)) continue;
+      try {
+        final snap = await FirebaseFirestore.instance
+            .collection('exams')
+            .doc(examId)
+            .collection('tests')
+            .doc(testId)
+            .get();
+        configs[key] = snap.data() ?? const <String, dynamic>{};
+      } catch (_) {
+        configs[key] = const <String, dynamic>{};
+      }
+    }
+    return configs;
+  }
+
   String _chapterName(Map<String, dynamic> question, String fallbackSubject) {
     return (question['chapter'] ??
             question['chapterName'] ??
@@ -2772,6 +2931,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     if (value is double) return value;
     if (value is num) return value.toDouble();
     return double.tryParse(value?.toString() ?? '');
+  }
+
+  String _formatDashboardMetric(double value) {
+    if (value == value.roundToDouble()) {
+      return value.round().toString();
+    }
+    return value.toStringAsFixed(1);
   }
 
   double _consistencyScore(List<_TrendPoint> points) {
@@ -2857,7 +3023,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       if (uid.isEmpty) continue;
 
       final score = (data['score'] as num?)?.toDouble() ?? 0.0;
-      final percentile = (data['percentile'] as num?)?.toDouble() ?? 0.0;
+      final percentile = _leaderboardPercentile(data, score);
 
       final agg = byUser.putIfAbsent(uid, () => _LeaderboardAgg(userId: uid));
       agg.testsTaken += 1;
@@ -2958,7 +3124,8 @@ class _DashboardVm {
   final List<double> timeScoreTrend;
   final String timeInsight;
   final List<double> riskBars;
-  final int negativeMarksLost;
+  final double marksLost;
+  final bool hasNegativeMarking;
   final double riskAccuracy;
   final double safeAttempts;
   final List<_ComparisonRow> comparisonRows;
@@ -2971,6 +3138,9 @@ class _DashboardVm {
   final String consistencyLabel;
   final List<_Recommendation> recommendations;
   final double gainPotential;
+
+  double get avgMarksLostPerTest =>
+      testsTaken <= 0 ? 0.0 : marksLost / testsTaken;
 
   const _DashboardVm({
     required this.examName,
@@ -2998,7 +3168,8 @@ class _DashboardVm {
     required this.timeScoreTrend,
     required this.timeInsight,
     required this.riskBars,
-    required this.negativeMarksLost,
+    required this.marksLost,
+    required this.hasNegativeMarking,
     required this.riskAccuracy,
     required this.safeAttempts,
     required this.comparisonRows,
@@ -3156,6 +3327,18 @@ class _Recommendation {
     required this.title,
     required this.subtitle,
     required this.icon,
+  });
+}
+
+class _DbRecommendationPayload {
+  final int? testsTaken;
+  final double? gainPotential;
+  final List<_Recommendation> recommendations;
+
+  const _DbRecommendationPayload({
+    required this.testsTaken,
+    required this.gainPotential,
+    required this.recommendations,
   });
 }
 
@@ -3758,6 +3941,7 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
       ),
     );
   }
+
 }
 
 class _SubjectExplorerScreen extends StatefulWidget {
@@ -4329,22 +4513,31 @@ class _ExplorerBarChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scaleMax = maxY <= 0 ? 1.0 : maxY;
+    final tickLabels = _chartTickLabels(
+      maxValue: scaleMax,
+      steps: 5,
+      formatter: (value) => '${value.toStringAsFixed(0)}m',
+    );
     return SizedBox(
       height: 180,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          const SizedBox(
+          SizedBox(
             width: 28,
             child: Column(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('4m', style: TextStyle(fontSize: 9, color: Color(0xFF9AA3B8))),
-                Text('3m', style: TextStyle(fontSize: 9, color: Color(0xFF9AA3B8))),
-                Text('2m', style: TextStyle(fontSize: 9, color: Color(0xFF9AA3B8))),
-                Text('1m', style: TextStyle(fontSize: 9, color: Color(0xFF9AA3B8))),
-                Text('0m', style: TextStyle(fontSize: 9, color: Color(0xFF9AA3B8))),
-              ],
+              children: tickLabels
+                  .map(
+                    (label) => Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 9,
+                        color: Color(0xFF9AA3B8),
+                      ),
+                    ),
+                  )
+                  .toList(),
             ),
           ),
           Expanded(
@@ -4396,6 +4589,11 @@ class _ExplorerGroupedBarChart extends StatelessWidget {
             .expand((item) => item.points.map((point) => point.value))
             .fold<double>(0.0, math.max) +
         1;
+    final tickLabels = _chartTickLabels(
+      maxValue: maxY,
+      steps: 5,
+      formatter: (value) => value.toStringAsFixed(0),
+    );
     return SizedBox(
       height: 220,
       child: Column(
@@ -4404,17 +4602,21 @@ class _ExplorerGroupedBarChart extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                const SizedBox(
+                SizedBox(
                   width: 22,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('8', style: TextStyle(fontSize: 9, color: Color(0xFF9AA3B8))),
-                      Text('6', style: TextStyle(fontSize: 9, color: Color(0xFF9AA3B8))),
-                      Text('4', style: TextStyle(fontSize: 9, color: Color(0xFF9AA3B8))),
-                      Text('2', style: TextStyle(fontSize: 9, color: Color(0xFF9AA3B8))),
-                      Text('0', style: TextStyle(fontSize: 9, color: Color(0xFF9AA3B8))),
-                    ],
+                    children: tickLabels
+                        .map(
+                          (label) => Text(
+                            label,
+                            style: const TextStyle(
+                              fontSize: 9,
+                              color: Color(0xFF9AA3B8),
+                            ),
+                          ),
+                        )
+                        .toList(),
                   ),
                 ),
                 Expanded(
@@ -4593,6 +4795,18 @@ class _ExplorerLinePainter extends CustomPainter {
   }
 }
 
+List<String> _chartTickLabels({
+  required double maxValue,
+  required int steps,
+  required String Function(double value) formatter,
+}) {
+  final safeMax = maxValue <= 0 ? 1.0 : maxValue;
+  return List<String>.generate(steps, (index) {
+    final ratio = (steps - 1 - index) / math.max(1, steps - 1);
+    return formatter(safeMax * ratio);
+  });
+}
+
 class _MiniMetric extends StatelessWidget {
   final String label;
   final String value;
@@ -4607,12 +4821,14 @@ class _MiniMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      constraints: const BoxConstraints(minHeight: 64),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
         color: const Color(0xFFF5F7FE),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
             width: 10,
@@ -4623,6 +4839,8 @@ class _MiniMetric extends StatelessWidget {
           Expanded(
             child: Text(
               label,
+              textAlign: TextAlign.left,
+              maxLines: 2,
               style: const TextStyle(fontSize: 11, color: Color(0xFF7B849A)),
             ),
           ),
@@ -4648,12 +4866,14 @@ class _StatChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      constraints: const BoxConstraints(minHeight: 64),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
         color: const Color(0xFFF5F7FE),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
             width: 9,
@@ -4664,6 +4884,7 @@ class _StatChip extends StatelessWidget {
           Expanded(
             child: Text(
               label,
+              maxLines: 2,
               style: const TextStyle(fontSize: 11, color: Color(0xFF69748B)),
             ),
           ),

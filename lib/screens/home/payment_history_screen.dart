@@ -63,13 +63,16 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
           }
 
           final vm = snapshot.data!;
-          _selectedExamId ??= vm.selectedExamId;
+          final effectiveSelectedExamId = vm.userExamIds.contains(_selectedExamId)
+              ? _selectedExamId
+              : vm.selectedExamId;
+          _selectedExamId = effectiveSelectedExamId;
 
           return SafeArea(
             child: Column(
               children: [
                 TopHeader(
-                  selectedExamId: _selectedExamId,
+                  selectedExamId: effectiveSelectedExamId,
                   userExamIds: vm.userExamIds,
                   onExamChanged: (examId) {
                     UserExamPreferenceService.savePreferredExamId(examId);
@@ -136,11 +139,11 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                               SizedBox(
                                 width: double.infinity,
                                 child: ElevatedButton(
-                                  onPressed: () {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => SubscriptionScreen(
-                                          initialExamId: _selectedExamId,
+                                      onPressed: () {
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (_) => SubscriptionScreen(
+                                          initialExamId: effectiveSelectedExamId,
                                         ),
                                       ),
                                     );

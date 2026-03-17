@@ -4,6 +4,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../examSummary/exam_summary_screen.dart';
+import '../../sections/section_bean.dart';
+import '../../sections/section_service.dart';
 import '../../services/result_data_service.dart';
 
 class SubjectInsightsScreen extends StatefulWidget {
@@ -244,6 +247,7 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
         ],
       ),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
             label,
@@ -260,12 +264,20 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            change,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: changeColor,
+          SizedBox(
+            height: 42,
+            child: Center(
+              child: Text(
+                change,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: changeColor,
+                ),
+              ),
             ),
           ),
         ],
@@ -345,16 +357,16 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
             ),
           ),
           const SizedBox(height: 2),
-          Text(
-            _metric == _InsightMetric.rank
-                ? 'Lower rank is better across your recent attempts'
-                : _metric == _InsightMetric.subjects
-                ? _subjectTrendSubtitle(vm)
-                : 'Tap a dot to view test details',
-            style: const TextStyle(fontSize: 10, color: Color(0xFF97A1BA)),
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
+           Text(
+             _metric == _InsightMetric.rank
+                 ? 'Lower rank is better across your recent attempts'
+                 : _metric == _InsightMetric.subjects
+                 ? _subjectTrendSubtitle(vm)
+                 : '',
+             style: const TextStyle(fontSize: 10, color: Color(0xFF97A1BA)),
+           ),
+           SizedBox(height: _metric == _InsightMetric.score ? 8 : 14),
+           SizedBox(
             height: 182,
             child: _InsightTrendChart(
               points: vm.points,
@@ -618,6 +630,8 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                             value: attempt.rankLabel,
                             subtitle: attempt.percentileLabel,
                             subtitleColor: const Color(0xFF7B89AE),
+                            progress: attempt.percentile / 100,
+                            progressColor: const Color(0xFF22B15D),
                           ),
                         ),
                       ],
@@ -632,12 +646,20 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Expanded(
-                      child: ListView.separated(
-                        itemCount: attempt.subjectBreakdown.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 14),
-                        itemBuilder: (context, index) {
-                          final subject = attempt.subjectBreakdown[index];
+                     Expanded(
+                        child: attempt.subjectBreakdown.isEmpty
+                            ? const Center(
+                                child: Text(
+                                  'No subject breakdown available for this test.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Color(0xFF7A849B)),
+                                ),
+                              )
+                            : ListView.separated(
+                         itemCount: attempt.subjectBreakdown.length,
+                         separatorBuilder: (_, __) => const SizedBox(height: 14),
+                         itemBuilder: (context, index) {
+                           final subject = attempt.subjectBreakdown[index];
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -651,10 +673,10 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                                         fontWeight: FontWeight.w700,
                                         color: Color(0xFF1B2E61),
                                       ),
-                                    ),
+                                   ),
                                   ),
                                   Text(
-                                    '${subject.value.toStringAsFixed(0)}/100',
+                                    '${subject.value.toStringAsFixed(0)}%',
                                     style: const TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w800,
@@ -664,23 +686,48 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                                 ],
                               ),
                               const SizedBox(height: 6),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(999),
-                                child: LinearProgressIndicator(
-                                  value: (subject.value / 100).clamp(0.0, 1.0),
-                                  minHeight: 8,
-                                  backgroundColor: const Color(0xFFE7ECF8),
-                                  color: subject.color,
-                                ),
-                              ),
-                            ],
-                          );
-                        },
+                               ClipRRect(
+                                 borderRadius: BorderRadius.circular(999),
+                                 child: LinearProgressIndicator(
+                                   value: (subject.value / 100).clamp(0.0, 1.0),
+                                   minHeight: 8,
+                                   backgroundColor: const Color(0xFFE7ECF8),
+                                   color: const Color(0xFF22B15D),
+                                 ),
+                               ),
+                             ],
+                           );
+                          },
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
+                     const SizedBox(height: 16),
+                     SizedBox(
+                       width: double.infinity,
+                       child: ElevatedButton(
+                         onPressed: () async {
+                           Navigator.of(sheetContext).pop();
+                           await _openExamResultScreen(attempt);
+                         },
+                         style: ElevatedButton.styleFrom(
+                           backgroundColor: const Color(0xFF1C2F67),
+                           foregroundColor: Colors.white,
+                           padding: const EdgeInsets.symmetric(vertical: 14),
+                           shape: RoundedRectangleBorder(
+                             borderRadius: BorderRadius.circular(16),
+                           ),
+                         ),
+                         child: const Text(
+                           'View Solution',
+                           style: TextStyle(
+                             fontSize: 15,
+                             fontWeight: FontWeight.w700,
+                           ),
+                         ),
+                       ),
+                     ),
+                   ],
+                 ),
+               ),
             ),
           ),
         );
@@ -693,6 +740,8 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     required String value,
     required String subtitle,
     required Color subtitleColor,
+    double? progress,
+    Color? progressColor,
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -725,6 +774,18 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
               color: subtitleColor,
             ),
           ),
+          if (progress != null) ...[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: progress.clamp(0.0, 1.0),
+                minHeight: 8,
+                backgroundColor: const Color(0xFFE1E8F8),
+                color: progressColor ?? const Color(0xFF22B15D),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -801,8 +862,8 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
       for (final qDoc in questions) {
         final question = qDoc.data();
         final subjectName = _subjectName(question, sectionNames);
-        final selected = answers[qDoc.id] ?? '';
-        final correct = (question['correctOption'] ?? '').toString();
+        final selected = _normalizeAnswerValue(answers[qDoc.id] ?? '');
+        final correct = _optionLetter(question['correctOption']);
         final attempted = selected.isNotEmpty;
         final isCorrect = attempted && selected == correct;
 
@@ -837,7 +898,6 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
             (subject) => _AttemptSubjectBreakdown(
               name: subject.name,
               value: subject.accuracy.clamp(0.0, 100.0),
-              color: _subjectColor(subject.name),
             ),
           )
           .toList();
@@ -886,6 +946,8 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
           focusSubject: subjects.isEmpty ? 'General' : subjects.last.name,
           subjectCount: subjects.length,
           subjectBreakdown: subjectBreakdown,
+          attemptData: data,
+          resultData: result,
         ),
       );
 
@@ -1157,6 +1219,28 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     return (_toDouble(result['score']) ?? 0).clamp(0.0, 100.0);
   }
 
+  Future<void> _openExamResultScreen(_AttemptInsight attempt) async {
+    final examId = (attempt.attemptData['examId'] ?? '').toString();
+    final testId = (attempt.attemptData['testId'] ?? '').toString();
+    final sections = examId.isEmpty || testId.isEmpty
+        ? <SectionBean>[]
+        : await SectionService().getSections(examId, testId);
+    if (!mounted) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ExamResultScreen(
+          questions: attempt.resultData['question'] ?? const [],
+          answers: attempt.resultData['answers'] ?? const <String, dynamic>{},
+          correct: _toInt(attempt.resultData['correct']) ?? 0,
+          section: sections,
+          incorrect: _toInt(attempt.resultData['incorrect']) ?? 0,
+          unanswered: _toInt(attempt.resultData['unanswered']) ?? 0,
+        ),
+      ),
+    );
+  }
+
   double? _secondsPerQuestion(
     Map<String, dynamic> attempt,
     Map<String, dynamic> result,
@@ -1212,6 +1296,41 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     }
 
     return 'General';
+  }
+
+  String _optionLetter(dynamic index) {
+    switch (index?.toString()) {
+      case '0':
+        return 'A';
+      case '1':
+        return 'B';
+      case '2':
+        return 'C';
+      case '3':
+        return 'D';
+      default:
+        return '-';
+    }
+  }
+
+  String _normalizeAnswerValue(dynamic value) {
+    final raw = (value ?? '').toString().trim().toUpperCase();
+    switch (raw) {
+      case '0':
+      case 'A':
+        return 'A';
+      case '1':
+      case 'B':
+        return 'B';
+      case '2':
+      case 'C':
+        return 'C';
+      case '3':
+      case 'D':
+        return 'D';
+      default:
+        return raw;
+    }
   }
 
   int? _toInt(dynamic value) => value is int
@@ -1397,6 +1516,8 @@ class _SubjectSeries {
 
 class _AttemptInsight {
   final String id;
+  final Map<String, dynamic> attemptData;
+  final Map<String, dynamic> resultData;
   final String testName;
   final DateTime date;
   final double score;
@@ -1414,6 +1535,8 @@ class _AttemptInsight {
 
   const _AttemptInsight({
     required this.id,
+    required this.attemptData,
+    required this.resultData,
     required this.testName,
     required this.date,
     required this.score,
@@ -1453,12 +1576,10 @@ class _AttemptInsight {
 class _AttemptSubjectBreakdown {
   final String name;
   final double value;
-  final Color color;
 
   const _AttemptSubjectBreakdown({
     required this.name,
     required this.value,
-    required this.color,
   });
 }
 
@@ -1528,6 +1649,18 @@ class _InsightTrendChart extends StatelessWidget {
       return const Center(child: Text('Need at least 2 tests to show a trend'));
     }
 
+    if (!_hasTrendData()) {
+      return Center(
+        child: Text(
+          metric == _InsightMetric.rank
+              ? 'Need at least 2 ranked tests to show rank trend'
+              : 'Not enough subject data to show a trend yet',
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Color(0xFF7A849B)),
+        ),
+      );
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         return CustomPaint(
@@ -1541,6 +1674,18 @@ class _InsightTrendChart extends StatelessWidget {
         );
       },
     );
+  }
+
+  bool _hasTrendData() {
+    switch (metric) {
+      case _InsightMetric.score:
+        return points.length >= 2;
+      case _InsightMetric.rank:
+        return points.where((point) => point.rank > 0).length >= 2;
+      case _InsightMetric.subjects:
+        final values = subjectSeries.expand((series) => series.values).whereType<double>();
+        return values.length >= 2;
+    }
   }
 }
 
@@ -1609,7 +1754,7 @@ class _InsightTrendPainter extends CustomPainter {
         minValue: minValue,
         maxValue: maxValue,
         invert: false,
-        formatter: (value) => value.toStringAsFixed(0),
+        formatter: (value) => '${value.toStringAsFixed(0)}%',
       );
       for (final series in subjectSeries) {
         _paintSeries(
@@ -1684,7 +1829,7 @@ class _InsightTrendPainter extends CustomPainter {
           minValue: minValue,
           maxValue: maxValue,
           invert: false,
-          formatter: (value) => value.toStringAsFixed(0),
+          formatter: (value) => '${value.toStringAsFixed(0)}%',
         );
       }
 
@@ -1901,27 +2046,20 @@ class _InsightTrendPainter extends CustomPainter {
   }
 
   List<double> _scoreTicks(double minValue, double maxValue) {
-    final roundedMin = ((minValue / 20).floor() * 20).toDouble();
-    final roundedMax = ((maxValue / 20).ceil() * 20).toDouble();
-    final ticks = <double>[];
-    for (double value = roundedMin; value <= roundedMax; value += 20) {
-      ticks.add(value);
-    }
-    return ticks.length >= 3
-        ? ticks
-        : [roundedMin, roundedMin + 20, roundedMin + 40];
+    return _evenTicks(minValue, maxValue, 5);
   }
 
   List<double> _subjectTicks(double minValue, double maxValue) {
-    final roundedMin = ((minValue / 10).floor() * 10).toDouble();
-    final roundedMax = ((maxValue / 10).ceil() * 10).toDouble();
-    final ticks = <double>[];
-    for (double value = roundedMin; value <= roundedMax; value += 10) {
-      ticks.add(value);
-    }
-    return ticks.length >= 4
-        ? ticks
-        : [roundedMin, roundedMin + 10, roundedMin + 20, roundedMin + 30];
+    return _evenTicks(minValue, maxValue, 5);
+  }
+
+  List<double> _evenTicks(double minValue, double maxValue, int count) {
+    if (count <= 1) return [minValue, maxValue];
+    final range = (maxValue - minValue).abs() < 1 ? 1.0 : (maxValue - minValue);
+    return List<double>.generate(
+      count,
+      (index) => minValue + (range * index / (count - 1)),
+    );
   }
 
   String _formatRankTick(double value) {

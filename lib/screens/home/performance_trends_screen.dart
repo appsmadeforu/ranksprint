@@ -8,7 +8,7 @@ import '../../services/result_data_service.dart';
 import '../../services/user_exam_preference_service.dart';
 import '../../widgets/top_header.dart';
 import 'main_navigation.dart';
-import 'test_history_screen.dart';
+import 'test_solution_screen.dart';
 
 class PerformanceTrendsScreen extends StatefulWidget {
   final String? initialExamId;
@@ -143,7 +143,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                               const SizedBox(height: 10),
                               _performanceInsights(vm),
                               const SizedBox(height: 10),
-                              _actionButtons(),
+                              _actionButtons(vm),
                             ],
                           ),
                         );
@@ -659,16 +659,26 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
     );
   }
 
-  Widget _actionButtons() {
+  Widget _actionButtons(_Vm vm) {
     return Row(
       children: [
         Expanded(
           child: OutlinedButton(
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const TestHistoryScreen()),
-              );
-            },
+            onPressed: vm.latestAttemptId == null ||
+                    vm.latestAttemptData == null ||
+                    vm.latestResultData == null
+                ? null
+                : () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => TestSolutionScreen(
+                          attemptId: vm.latestAttemptId!,
+                          attemptData: vm.latestAttemptData!,
+                          resultData: vm.latestResultData!,
+                        ),
+                      ),
+                    );
+                  },
             style: OutlinedButton.styleFrom(
               side: const BorderSide(color: Color(0xFFCBD5E1)),
               shape: RoundedRectangleBorder(
@@ -677,7 +687,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
               padding: const EdgeInsets.symmetric(vertical: 12),
             ),
             child: const Text(
-              'View All Tests',
+              'View Solution',
               style: TextStyle(
                 color: Color(0xFF111827),
                 fontWeight: FontWeight.w600,
@@ -889,8 +899,14 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
     final points = <_P>[];
     int totalMinutes = 0;
     double scoreSum = 0;
+    String? latestAttemptId;
+    Map<String, dynamic>? latestAttemptData;
+    Map<String, dynamic>? latestResultData;
     for (final a in attempts) {
       final data = a.data();
+      latestAttemptId = a.id;
+      latestAttemptData = data;
+      latestResultData = results[a.id];
       final score = _scorePct(data, results[a.id] ?? const <String, dynamic>{});
       points.add(_P(_attemptDate(data) ?? DateTime.now(), score));
       scoreSum += score;
@@ -959,6 +975,9 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
       ),
       weekly: weekly,
       insights: _insightLines(subjects, delta, weekly),
+      latestAttemptId: latestAttemptId,
+      latestAttemptData: latestAttemptData,
+      latestResultData: latestResultData,
     );
   }
 
@@ -1188,6 +1207,9 @@ class _Vm {
   final String focusArea;
   final List<_WeeklyStat> weekly;
   final List<String> insights;
+  final String? latestAttemptId;
+  final Map<String, dynamic>? latestAttemptData;
+  final Map<String, dynamic>? latestResultData;
 
   _Vm({
     required this.tests,
@@ -1210,6 +1232,9 @@ class _Vm {
     required this.focusArea,
     required this.weekly,
     required this.insights,
+    required this.latestAttemptId,
+    required this.latestAttemptData,
+    required this.latestResultData,
   });
 }
 

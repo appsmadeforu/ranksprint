@@ -23,6 +23,7 @@ class _TestsScreenState extends State<TestsScreen> {
   bool _examIsPremium = false;
   List<String> _examSubscriptionPlanIds = const [];
   Set<String> _activePlanIds = <String>{};
+  _TestListFilter _testListFilter = _TestListFilter.all;
 
   @override
   void initState() {
@@ -181,6 +182,51 @@ class _TestsScreenState extends State<TestsScreen> {
 
             const SizedBox(height: 16),
 
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _TestListFilter.values.map((filter) {
+                  final selected = _testListFilter == filter;
+                  return InkWell(
+                    onTap: () => setState(() => _testListFilter = filter),
+                    borderRadius: BorderRadius.circular(999),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 9,
+                      ),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? const Color(0xFF2F3E8F)
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: selected
+                              ? const Color(0xFF2F3E8F)
+                              : const Color(0xFFD8DEEA),
+                        ),
+                      ),
+                      child: Text(
+                        filter.label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: selected
+                              ? Colors.white
+                              : const Color(0xFF5B6478),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+
+            const SizedBox(height: 14),
+
             // =======================
             // TEST LIST
             // =======================
@@ -222,18 +268,28 @@ class _TestsScreenState extends State<TestsScreen> {
                       final tests = snapshot.data!.docs
                           .cast<QueryDocumentSnapshot<Map<String, dynamic>>>()
                           .where(_isTestVisible)
-                          .toList()
-                        ..sort(ContentAccessService.compareCreatedAtAsc);
+                          .toList();
 
-                      if (tests.isEmpty) {
-                        return const Center(child: Text("No tests available"));
+                      final filteredTests = _applyTestFilter(
+                        tests: tests,
+                        attemptsByTestId: attemptsByTestId,
+                      );
+
+                      if (filteredTests.isEmpty) {
+                        return Center(
+                          child: Text(
+                            _testListFilter == _TestListFilter.all
+                                ? "No tests available"
+                                : "No ${_testListFilter.emptyLabel} tests found",
+                          ),
+                        );
                       }
 
                       return ListView.builder(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: tests.length,
+                        itemCount: filteredTests.length,
                         itemBuilder: (context, index) {
-                          final testDoc = tests[index];
+                          final testDoc = filteredTests[index];
                           final usedAttempts =
                               attemptsByTestId[testDoc.id] ?? 0;
                           return _buildTestCard(testDoc, usedAttempts);
@@ -253,6 +309,33 @@ class _TestsScreenState extends State<TestsScreen> {
   bool _isTestVisible(QueryDocumentSnapshot<Map<String, dynamic>> test) {
     final data = test.data();
     return ContentAccessService.isVisibleNow(data);
+  }
+
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _applyTestFilter({
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> tests,
+    required Map<String, int> attemptsByTestId,
+  }) {
+    final items = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(tests);
+    switch (_testListFilter) {
+      case _TestListFilter.all:
+        items.sort(ContentAccessService.compareCreatedAtAsc);
+        return items;
+      case _TestListFilter.attempted:
+        final filtered = items
+            .where((test) => (attemptsByTestId[test.id] ?? 0) > 0)
+            .toList()
+          ..sort(ContentAccessService.compareCreatedAtAsc);
+        return filtered;
+      case _TestListFilter.notAttempted:
+        final filtered = items
+            .where((test) => (attemptsByTestId[test.id] ?? 0) == 0)
+            .toList()
+          ..sort(ContentAccessService.compareCreatedAtAsc);
+        return filtered;
+      case _TestListFilter.latest:
+        items.sort((a, b) => ContentAccessService.compareCreatedAtAsc(b, a));
+        return items;
+    }
   }
 
   Widget _buildTestCard(QueryDocumentSnapshot test, int usedAttempts) {
@@ -431,5 +514,29 @@ class _TestsScreenState extends State<TestsScreen> {
         ),
       ),
     );
+  }
+}
+
+enum _TestListFilter {
+  all('All'),
+  attempted('Attempted'),
+  notAttempted('Not Attempted'),
+  latest('Latest');
+
+  const _TestListFilter(this.label);
+
+  final String label;
+
+  String get emptyLabel {
+    switch (this) {
+      case _TestListFilter.all:
+        return 'available';
+      case _TestListFilter.attempted:
+        return 'attempted';
+      case _TestListFilter.notAttempted:
+        return 'not attempted';
+      case _TestListFilter.latest:
+        return 'latest';
+    }
   }
 }

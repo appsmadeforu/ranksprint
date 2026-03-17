@@ -39,7 +39,7 @@ class ExamNavigationDrawer extends StatelessWidget {
       grouped.putIfAbsent(sectionId, () => []);
       grouped[sectionId]!.add(question);
     }
-    SectionService sectionService  = SectionService();
+    SectionService sectionService = SectionService();
     SectionSplit sectionSplit = sectionService.getSectionsSplit(sections);
     final unlockedSections = sectionSplit.unlockedSections;
     final lockedSections = sectionSplit.lockedSections;
@@ -48,7 +48,6 @@ class ExamNavigationDrawer extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-
           /// ===============================
           /// 🔓 UNLOCKED SECTION SUMMARY
           /// ===============================
@@ -62,14 +61,11 @@ class ExamNavigationDrawer extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
-                  mainAxisAlignment:
-                  MainAxisAlignment.spaceBetween,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
                       "Unlocked Sections Remaining Time",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     Text(
                       formatTime(currentSectionTimeLeft!),
@@ -87,40 +83,41 @@ class ExamNavigationDrawer extends StatelessWidget {
           /// 🔓 UNLOCKED SECTIONS
           /// ===============================
           ...unlockedSections.map(
-                  (section) => _buildSection(
-                context,
-                section,
-                grouped,
-                !SectionService.isLock,
-                sections.length > 1,
-              )),
+            (section) => _buildSection(
+              context,
+              section,
+              grouped,
+              !SectionService.isLock,
+              sections.length > 1,
+            ),
+          ),
 
           /// ===============================
           /// 🔒 LOCKED SECTIONS
           /// ===============================
           ...lockedSections.map(
-                  (section) => _buildSection(
-                context,
-                section,
-                grouped,
-                SectionService.isLock,
-                sections.length > 1,
-              )),
+            (section) => _buildSection(
+              context,
+              section,
+              grouped,
+              SectionService.isLock,
+              sections.length > 1,
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildSection(
-      BuildContext context,
-      SectionBean section,
-      Map<String, List<Map<String, dynamic>>> grouped,
-      bool isLocked,
-      bool showDivider,
-      ) {
+    BuildContext context,
+    SectionBean section,
+    Map<String, List<Map<String, dynamic>>> grouped,
+    bool isLocked,
+    bool showDivider,
+  ) {
     final sectionId = section.id?.toString() ?? "";
-    final sectionQuestions =
-        grouped[sectionId] ?? <Map<String, dynamic>>[];
+    final sectionQuestions = grouped[sectionId] ?? <Map<String, dynamic>>[];
 
     final answeredCount = sectionQuestions
         .where((q) => answers.containsKey(q['__id']))
@@ -135,14 +132,11 @@ class ExamNavigationDrawer extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-
               /// Header
               Padding(
-                padding:
-                const EdgeInsets.fromLTRB(16, 16, 16, 6),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
                 child: Row(
-                  mainAxisAlignment:
-                  MainAxisAlignment.spaceBetween,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
                       child: Text(
@@ -164,9 +158,7 @@ class ExamNavigationDrawer extends StatelessWidget {
                             ),
                           ),
                         const SizedBox(width: 8),
-                        if (isLocked)
-                          const Icon(Icons.lock,
-                              color: Colors.red),
+                        if (isLocked) const Icon(Icons.lock, color: Colors.red),
                       ],
                     ),
                   ],
@@ -175,8 +167,7 @@ class ExamNavigationDrawer extends StatelessWidget {
 
               /// Answer Count
               Padding(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Text(
                   "Answered: $answeredCount / ${sectionQuestions.length}",
                   style: const TextStyle(fontSize: 13),
@@ -187,31 +178,23 @@ class ExamNavigationDrawer extends StatelessWidget {
 
               /// Grid
               Padding(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: GridView.builder(
                   shrinkWrap: true,
-                  physics:
-                  const NeverScrollableScrollPhysics(),
+                  physics: const NeverScrollableScrollPhysics(),
                   itemCount: sectionQuestions.length,
-                  gridDelegate:
-                  const SliverGridDelegateWithFixedCrossAxisCount(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 6,
                     crossAxisSpacing: 8,
                     mainAxisSpacing: 8,
                   ),
                   itemBuilder: (context, i) {
-                    final question =
-                    sectionQuestions[i];
-                    final qid =
-                        question['__id']?.toString() ?? "";
+                    final question = sectionQuestions[i];
+                    final qid = question['__id']?.toString() ?? "";
 
-                    final isVisited =
-                    visited.contains(qid);
-                    final isAnswered =
-                    answers.containsKey(qid);
-                    final isMarked =
-                    markedForReview.contains(qid);
+                    final isVisited = visited.contains(qid);
+                    final isAnswered = answers.containsKey(qid);
+                    final isMarked = markedForReview.contains(qid);
 
                     Color bg = const Color(0xFFEAEFF6);
                     Color textColor = Colors.black;
@@ -234,11 +217,9 @@ class ExamNavigationDrawer extends StatelessWidget {
 
                     return GestureDetector(
                       onTap: () {
-                        final globalIndex =
-                        questions.indexWhere(
-                                (q) =>
-                            q['__id'] ==
-                                qid);
+                        final globalIndex = questions.indexWhere(
+                          (q) => q['__id'] == qid,
+                        );
 
                         if (globalIndex != -1) {
                           onQuestionTap(globalIndex);
@@ -248,14 +229,12 @@ class ExamNavigationDrawer extends StatelessWidget {
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: bg,
-                          borderRadius:
-                          BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
                           "${i + 1}",
                           style: TextStyle(
-                            fontWeight:
-                            FontWeight.bold,
+                            fontWeight: FontWeight.bold,
                             color: textColor,
                           ),
                         ),
@@ -265,11 +244,11 @@ class ExamNavigationDrawer extends StatelessWidget {
                 ),
               ),
 
-               if (showDivider) const Divider(),
-             ],
-           ),
-         ),
-       ),
+              if (showDivider) const Divider(),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

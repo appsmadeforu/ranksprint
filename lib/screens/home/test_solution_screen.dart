@@ -1,10 +1,14 @@
+import 'dart:math' as math;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:ranksprint/sections/section_bean.dart';
 import 'package:ranksprint/sections/section_service.dart';
 import 'package:ranksprint/services/result_data_service.dart';
+import 'package:share_plus/share_plus.dart' as share_plus;
 
 import '../../examSummary/exam_summary_screen.dart';
+import 'tests_screen.dart';
 import '../../widgets/top_header.dart';
 
 class TestSolutionScreen extends StatefulWidget {
@@ -36,11 +40,12 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
 
   Future<_Vm> _loadVm() async {
     final attempt = widget.attemptData;
-    final result = await ResultDataService.resolveResultForAttempt(
+    final resolvedResult = await ResultDataService.resolveResultForAttempt(
       attemptId: widget.attemptId,
       attemptData: attempt,
       initialResultData: widget.resultData,
     );
+    final result = await _waitForLeaderboardMetrics(resolvedResult);
 
     final examId = (attempt['examId'] ?? '').toString();
     final testId = (attempt['testId'] ?? '').toString();
@@ -161,20 +166,27 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
     );
 
     final points = <_TrendPoint>[];
-    for (final attempt in attempts) {
+    for (int i = 0; i < attempts.length; i++) {
+      final attempt = attempts[i];
       final a = attempt.data();
       Map<String, dynamic> r =
           resultById[attempt.id] ?? const <String, dynamic>{};
-      final acc = _computeAccuracyPct(a, r);
+      final acc = _computeAttemptedAccuracyPct(a, r);
       final mins = _timeMinutes(a).toDouble();
-      points.add(_TrendPoint(timeMinutes: mins, accuracy: acc));
+      points.add(
+        _TrendPoint(
+          attemptNumber: i + 1,
+          timeMinutes: mins,
+          accuracy: acc,
+        ),
+      );
     }
 
     if (points.length <= 8) return points;
     return points.sublist(points.length - 8);
   }
 
-  double _computeAccuracyPct(
+  double _computeAttemptedAccuracyPct(
     Map<String, dynamic> attempt,
     Map<String, dynamic> result,
   ) {
@@ -184,11 +196,8 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
     );
     final correct = normalizedCounts['correct'] ?? 0;
     final incorrect = normalizedCounts['incorrect'] ?? 0;
-    final unanswered = normalizedCounts['unanswered'] ?? 0;
-    final total = (correct + incorrect + unanswered) > 0
-        ? (correct + incorrect + unanswered)
-        : 20;
-    return total == 0 ? 0 : (correct * 100.0 / total);
+    final attempted = correct + incorrect;
+    return attempted == 0 ? 0 : (correct * 100.0 / attempted);
   }
 
   String _sectionName(Map<String, dynamic> qData) {
@@ -211,7 +220,9 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
         .toString();
   }
 
-  List<_SectionStats> _orderedSectionStats(Map<String, _SectionStats> statsMap) {
+  List<_SectionStats> _orderedSectionStats(
+    Map<String, _SectionStats> statsMap,
+  ) {
     final ordered = <_SectionStats>[];
     final seen = <String>{};
 
@@ -262,97 +273,151 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF1F5F9),
-      body: SafeArea(
-        child: FutureBuilder<_Vm>(
-          future: _future,
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
+    return FutureBuilder<_Vm>(
+      future: _future,
+      builder: (context, snapshot) {
+        final vm = snapshot.data;
+        return PopScope(
+          canPop: vm == null || vm.examId.isEmpty,
+          onPopInvokedWithResult: (_, __) {
+            if (vm != null && vm.examId.isNotEmpty) {
+              _goToTestsScreen(vm.examId);
             }
-            final vm = snapshot.data!;
-            return Column(
-              children: [
-                TopHeader(
-                  selectedExamId: vm.examId.isEmpty ? null : vm.examId,
-                  userExamIds: vm.examId.isEmpty ? const [] : [vm.examId],
-                  onExamChanged: (_) {},
-                ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                    child: Column(
-                      children: [
-                        _topScore(vm),
-                        const SizedBox(height: 10),
-                        _performanceOverview(vm),
-                        const SizedBox(height: 10),
-                        _distributionGraph(vm),
-                        const SizedBox(height: 10),
-                        _sectionWise(vm),
-                        const SizedBox(height: 10),
-                        _accuracyComparison(vm),
-                        const SizedBox(height: 10),
-                        _timeAccuracyTrend(vm),
-                        const SizedBox(height: 14),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-
-                              Navigator.pushReplacement(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => ExamResultScreen(
-                                    questions: vm.resultData['question'],
-                                    answers: vm.resultData['answers'],
-                                    correct: vm.resultData['correct'],
-                                    section: sectionBeans,
-                                    incorrect: vm.resultData['incorrect'],
-                                    unanswered: vm.resultData['unanswered'],
-                                  ),
+          },
+          child: Scaffold(
+          backgroundColor: const Color(0xFFF1F5F9),
+          body: SafeArea(
+            child: !snapshot.hasData
+                ? const Center(child: CircularProgressIndicator())
+                : Column(
+                    children: [
+                      TopHeader(
+                        selectedExamId: vm!.examId.isEmpty ? null : vm.examId,
+                        userExamIds: vm.examId.isEmpty ? const [] : [vm.examId],
+                        onExamChanged: (_) {},
+                        showExamDropdown: false,
+                      ),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+                          child: Column(
+                            children: [
+                              _topScore(vm),
+                              const SizedBox(height: 10),
+                              _performanceOverview(vm),
+                              const SizedBox(height: 10),
+                              _distributionGraph(vm),
+                              const SizedBox(height: 10),
+                              _sectionWise(vm),
+                              const SizedBox(height: 10),
+                              _correctAnswersComparison(vm),
+                              const SizedBox(height: 10),
+                              _timeAccuracyTrend(vm),
+                              const SizedBox(height: 14),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: () => _shareResult(vm),
+                                  icon: const Icon(Icons.share, size: 16),
+                                  label: const Text('Share Result'),
                                 ),
-                              );
-                            },
-                            icon: const Icon(
-                              Icons.visibility,
-                              size: 16,
-                              color: Colors.white,
-                            ),
-                            label: const Text(
-                              'View Solutions',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1E3A8A),
-                            ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Share result not wired yet'),
-                                ),
-                              );
-                            },
-                            icon: const Icon(Icons.share, size: 16),
-                            label: const Text('Share Result'),
-                          ),
+                      ),
+                    ],
+                  ),
+          ),
+          bottomNavigationBar: !snapshot.hasData
+              ? null
+              : SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _openSolutions(vm!),
+                        icon: const Icon(
+                          Icons.visibility,
+                          size: 18,
+                          color: Colors.white,
                         ),
-                      ],
+                        label: const Text(
+                          'View Solution',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1E3A8A),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ],
-            );
-          },
+        ));
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> _waitForLeaderboardMetrics(
+    Map<String, dynamic> initialResult,
+  ) async {
+    if (_hasLeaderboardMetrics(initialResult)) {
+      return initialResult;
+    }
+
+    var latest = initialResult;
+    for (int i = 0; i < 6; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      try {
+        final snap = await FirebaseFirestore.instance
+            .collection('results')
+            .doc(widget.attemptId)
+            .get();
+        if (!snap.exists) {
+          continue;
+        }
+        latest = snap.data() ?? latest;
+        if (_hasLeaderboardMetrics(latest)) {
+          return latest;
+        }
+      } catch (_) {
+        break;
+      }
+    }
+
+    return latest;
+  }
+
+  bool _hasLeaderboardMetrics(Map<String, dynamic> result) {
+    final rank = _toInt(result['rank']) ?? 0;
+    final percentile = _toDouble(result['percentile']) ?? 0;
+    return rank > 0 || percentile > 0;
+  }
+
+  void _openSolutions(_Vm vm) {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ExamResultScreen(
+          questions: vm.resultData['question'],
+          answers: vm.resultData['answers'],
+          correct: vm.resultData['correct'],
+          section: sectionBeans,
+          incorrect: vm.resultData['incorrect'],
+          unanswered: vm.resultData['unanswered'],
+          returnToTestsExamId: vm.examId,
         ),
       ),
+    );
+  }
+
+  void _goToTestsScreen(String examId) {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => TestsScreen(selectedExam: examId)),
+      (route) => route.isFirst,
     );
   }
 
@@ -406,6 +471,28 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
               const SizedBox(width: 8),
               Expanded(child: _miniTile('${vm.timeMinutes} min', 'Time Taken')),
             ],
+          ),
+          const SizedBox(height: 14),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Percentile Progress',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.9),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              minHeight: 10,
+              value: (vm.percentile / 100).clamp(0, 1),
+              backgroundColor: Colors.white24,
+              color: const Color(0xFF22C55E),
+            ),
           ),
         ],
       ),
@@ -555,33 +642,33 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ),
-                     Text(
-                       s.attempted == 0
-                           ? '--'
-                           : '${s.accuracy.toStringAsFixed(0)}%',
-                       style: const TextStyle(
-                         color: Color(0xFF1D4ED8),
-                         fontSize: 12,
+                    Text(
+                      s.attempted == 0
+                          ? '--'
+                          : '${s.accuracy.toStringAsFixed(0)}%',
+                      style: const TextStyle(
+                        color: Color(0xFF1D4ED8),
+                        fontSize: 12,
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
-                 ClipRRect(
-                   borderRadius: BorderRadius.circular(10),
-                   child: LinearProgressIndicator(
-                     minHeight: 6,
-                     value: s.attempted == 0 ? 0 : s.accuracy / 100,
-                     backgroundColor: const Color(0xFFE5E7EB),
-                     color: const Color(0xFF1E3A8A),
-                   ),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: LinearProgressIndicator(
+                    minHeight: 6,
+                    value: s.attempted == 0 ? 0 : s.accuracy / 100,
+                    backgroundColor: const Color(0xFFE5E7EB),
+                    color: const Color(0xFF1E3A8A),
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                   '${s.correct} correct          ${s.incorrect} incorrect          ${s.skipped} skipped          ${s.attempted}/${s.total} attempted',
-                   style: const TextStyle(
-                     fontSize: 10,
-                     color: Color(0xFF6B7280),
+                  '${s.correct} correct          ${s.incorrect} incorrect          ${s.skipped} skipped          ${s.attempted}/${s.total} attempted',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Color(0xFF6B7280),
                   ),
                 ),
               ],
@@ -665,7 +752,9 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
                     borderRadius: BorderRadius.circular(999),
                     child: LinearProgressIndicator(
                       minHeight: 8,
-                      value: s.attempted == 0 ? 0 : (accuracy / 100).clamp(0, 1),
+                      value: s.attempted == 0
+                          ? 0
+                          : (accuracy / 100).clamp(0, 1),
                       backgroundColor: const Color(0xFFE5E7EB),
                       color: const Color(0xFF1E3A8A),
                     ),
@@ -684,10 +773,93 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
     );
   }
 
+  Widget _correctAnswersComparison(_Vm vm) {
+    final sections = vm.sections;
+    if (sections.isEmpty) {
+      return _card(
+        title: 'Subject Breakdown',
+        child: const Text(
+          'No subject data available yet.',
+          style: TextStyle(color: Color(0xFF6B7280)),
+        ),
+      );
+    }
+
+    return _card(
+      title: 'Subject Breakdown',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Correct answers in each subject, filled by percentage',
+            style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+          ),
+          const SizedBox(height: 14),
+          ...sections.map((s) {
+            final ratio = s.total == 0 ? 0.0 : s.correct / s.total;
+            final correctPct = ratio * 100;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 96,
+                    child: Text(
+                      s.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: TweenAnimationBuilder<double>(
+                        duration: const Duration(milliseconds: 450),
+                        curve: Curves.easeOutCubic,
+                        tween: Tween<double>(begin: 0, end: ratio.clamp(0, 1)),
+                        builder: (context, value, _) {
+                          return LinearProgressIndicator(
+                            minHeight: 14,
+                            value: value,
+                            backgroundColor: const Color(0xFFE5E7EB),
+                            color: const Color(0xFF16A34A),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  SizedBox(
+                    width: 94,
+                    child: Text(
+                      '${correctPct.toStringAsFixed(0)}% (${s.correct}/${s.total})',
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
   Widget _timeAccuracyTrend(_Vm vm) {
     if (vm.trend.length < 2) {
       return _card(
-        title: 'Time vs Accuracy Trend',
+        title: 'Attempt vs Accuracy Trend',
         child: const Text(
           'Need at least 2 attempts to show trend.',
           style: TextStyle(color: Color(0xFF6B7280)),
@@ -696,7 +868,7 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
     }
 
     return _card(
-      title: 'Time vs Accuracy Trend',
+      title: 'Attempt vs Accuracy Trend',
       child: SizedBox(height: 170, child: _LineTrendChart(points: vm.trend)),
     );
   }
@@ -719,6 +891,67 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _shareResult(_Vm vm) async {
+    try {
+      final box = context.findRenderObject() as RenderBox?;
+      final origin = box == null
+          ? null
+          : box.localToGlobal(Offset.zero) & box.size;
+
+      await share_plus.Share.share(
+        _buildShareMessage(vm),
+        subject: 'My RankSprint result',
+        sharePositionOrigin: origin,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not open the share sheet right now.'),
+        ),
+      );
+    }
+  }
+
+  String _buildShareMessage(_Vm vm) {
+    final bestSection = vm.sections.where((s) => s.attempted > 0).fold<
+      _SectionStats?
+    >(null, (best, section) {
+      if (best == null || section.accuracy > best.accuracy) {
+        return section;
+      }
+      return best;
+    });
+    final latestTrend = vm.trend.isEmpty ? null : vm.trend.last;
+
+    final buffer = StringBuffer()
+      ..writeln('I just completed a RankSprint test.')
+      ..writeln(
+        'Score: ${vm.correct}/${vm.total} (${vm.scorePct.toStringAsFixed(0)}%)',
+      )
+      ..writeln(
+        'Attempted accuracy: ${vm.attemptedAccuracy.toStringAsFixed(0)}%',
+      )
+      ..writeln(
+        'Rank: ${vm.rank} | Percentile: ${vm.percentile.toStringAsFixed(1)}',
+      )
+      ..writeln('Time taken: ${vm.timeMinutes} min');
+
+    if (bestSection != null) {
+      buffer.writeln(
+        'Strongest section: ${bestSection.name} (${bestSection.accuracy.toStringAsFixed(0)}% accuracy)',
+      );
+    }
+    if (latestTrend != null) {
+      buffer.writeln(
+        'Recent progress: ${latestTrend.accuracy.toStringAsFixed(0)}% accuracy on attempt ${latestTrend.attemptNumber}',
+      );
+    }
+
+    buffer.write('#RankSprint');
+    return buffer.toString();
   }
 }
 
@@ -768,10 +1001,15 @@ class _SectionStats {
 }
 
 class _TrendPoint {
+  final int attemptNumber;
   final double timeMinutes;
   final double accuracy;
 
-  const _TrendPoint({required this.timeMinutes, required this.accuracy});
+  const _TrendPoint({
+    required this.attemptNumber,
+    required this.timeMinutes,
+    required this.accuracy,
+  });
 }
 
 class _LineTrendChart extends StatelessWidget {
@@ -781,28 +1019,47 @@ class _LineTrendChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final minX = points
-        .map((p) => p.timeMinutes)
-        .reduce((a, b) => a < b ? a : b);
-    final maxX = points
-        .map((p) => p.timeMinutes)
-        .reduce((a, b) => a > b ? a : b);
-    final xRange = (maxX - minX).abs() < 1 ? 1.0 : (maxX - minX);
+    final minAttempt = points.first.attemptNumber;
+    final maxAttempt = points.last.attemptNumber;
+    final attemptRange = math.max(1, maxAttempt - minAttempt).toDouble();
 
     return CustomPaint(
-      painter: _LineTrendPainter(points: points, minX: minX, xRange: xRange),
+      painter: _LineTrendPainter(
+        points: points,
+        minAttempt: minAttempt,
+        attemptRange: attemptRange,
+      ),
       child: Padding(
-        padding: const EdgeInsets.only(left: 8, right: 8, top: 8, bottom: 22),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        padding: const EdgeInsets.only(left: 36, right: 8, top: 8, bottom: 22),
+        child: Stack(
           children: [
-            Text(
-              '${minX.toStringAsFixed(0)}m',
-              style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280)),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '100%',
+                style: TextStyle(fontSize: 10, color: Color(0xFF6B7280)),
+              ),
             ),
-            Text(
-              '${maxX.toStringAsFixed(0)}m',
-              style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280)),
+            const Align(
+              alignment: Alignment.bottomLeft,
+              child: Text(
+                '0%',
+                style: TextStyle(fontSize: 10, color: Color(0xFF6B7280)),
+              ),
+            ),
+            Align(
+              alignment: Alignment.bottomLeft,
+              child: Text(
+                'Attempt $minAttempt',
+                style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280)),
+              ),
+            ),
+            Align(
+              alignment: Alignment.bottomRight,
+              child: Text(
+                'Attempt $maxAttempt',
+                style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280)),
+              ),
             ),
           ],
         ),
@@ -813,20 +1070,20 @@ class _LineTrendChart extends StatelessWidget {
 
 class _LineTrendPainter extends CustomPainter {
   final List<_TrendPoint> points;
-  final double minX;
-  final double xRange;
+  final int minAttempt;
+  final double attemptRange;
 
   _LineTrendPainter({
     required this.points,
-    required this.minX,
-    required this.xRange,
+    required this.minAttempt,
+    required this.attemptRange,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final plotTop = 10.0;
     final plotBottom = size.height - 28.0;
-    final plotLeft = 8.0;
+    final plotLeft = 36.0;
     final plotRight = size.width - 8.0;
     final plotWidth = plotRight - plotLeft;
     final plotHeight = plotBottom - plotTop;
@@ -848,7 +1105,10 @@ class _LineTrendPainter extends CustomPainter {
 
     for (int i = 0; i < points.length; i++) {
       final p = points[i];
-      final x = plotLeft + ((p.timeMinutes - minX) / xRange) * plotWidth;
+      final x =
+          plotLeft +
+          (((p.attemptNumber - minAttempt) / attemptRange).clamp(0.0, 1.0) *
+              plotWidth);
       final y = plotBottom - ((p.accuracy.clamp(0, 100)) / 100.0) * plotHeight;
       if (i == 0) {
         path.moveTo(x, y);

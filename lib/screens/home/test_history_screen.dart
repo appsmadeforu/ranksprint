@@ -2,11 +2,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../examSummary/exam_summary_screen.dart';
+import '../../sections/section_bean.dart';
+import '../../sections/section_service.dart';
 import '../../services/result_data_service.dart';
 import '../../services/user_exam_preference_service.dart';
 import '../../widgets/top_header.dart';
 import 'performance_trends_screen.dart';
-import 'test_solution_screen.dart';
 import 'test_runner_screen.dart';
 
 class TestHistoryScreen extends StatefulWidget {
@@ -639,20 +641,29 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
     );
   }
 
-  void _openSolutionScreen(
-    String attemptId,
+  Future<void> _openSolutionScreen(
     Map<String, dynamic> data,
     Map<String, dynamic> result,
-  ) {
+  ) async {
+    final examId = (data['examId'] ?? '').toString();
+    final testId = (data['testId'] ?? '').toString();
+    final sections = examId.isEmpty || testId.isEmpty
+        ? <SectionBean>[]
+        : await SectionService().getSections(examId, testId);
+    if (!mounted) return;
+
     Navigator.of(context).push(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 320),
         reverseTransitionDuration: const Duration(milliseconds: 240),
         pageBuilder: (context, animation, secondaryAnimation) =>
-            TestSolutionScreen(
-              attemptId: attemptId,
-              attemptData: data,
-              resultData: result,
+            ExamResultScreen(
+              questions: result['question'] ?? const [],
+              answers: result['answers'] ?? const <String, dynamic>{},
+              correct: _toInt(result['correct']) ?? 0,
+              section: sections,
+              incorrect: _toInt(result['incorrect']) ?? 0,
+              unanswered: _toInt(result['unanswered']) ?? 0,
             ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           final curved = CurvedAnimation(
@@ -935,7 +946,7 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
                 const Spacer(),
                 GestureDetector(
                   onTap: () {
-                    _openSolutionScreen(doc.id, data, result);
+                    _openSolutionScreen(data, result);
                   },
                   child: const Text(
                     'View Solutions ->',
@@ -999,7 +1010,7 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
                             Expanded(
                               child: OutlinedButton.icon(
                                 onPressed: () =>
-                                    _openSolutionScreen(doc.id, data, result),
+                                    _openSolutionScreen(data, result),
                                 icon: const Icon(
                                   Icons.insights_outlined,
                                   size: 16,

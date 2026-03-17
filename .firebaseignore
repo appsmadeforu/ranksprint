@@ -1,0 +1,14 @@
+devtools_options.yaml
+.dart_tool
+build
+ios
+android
+linux
+macos
+web
+windows
+test
+assets
+Microsoft
+.idea
+.vscode

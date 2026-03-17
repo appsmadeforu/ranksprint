@@ -328,6 +328,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
       'rank': 0,
       'createdAt': Timestamp.now(),
     });
+    await _syncLeaderboardMetricsForTest();
 
     SectionService.lockedTime = 0;
     SectionService.unlockedSectionLength = 0;
@@ -366,6 +367,141 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
     return true;
   }
 
+  Future<void> _syncLeaderboardMetricsForTest() async {
+    final snap = await FirebaseFirestore.instance
+        .collection(ResultSchemaContract.resultCollection)
+        .where('examId', isEqualTo: widget.examId)
+        .where('testId', isEqualTo: widget.testId)
+        .get();
+
+    if (snap.docs.isEmpty) return;
+
+    final docs = snap.docs.toList()
+      ..sort((a, b) {
+        final aData = a.data();
+        final bData = b.data();
+
+        final scoreDiff =
+            _numValue(bData['score']).compareTo(_numValue(aData['score']));
+        if (scoreDiff != 0) return scoreDiff;
+
+        final correctDiff =
+            _intValue(bData['correct']).compareTo(_intValue(aData['correct']));
+        if (correctDiff != 0) return correctDiff;
+
+        final incorrectDiff =
+            _intValue(aData['incorrect']).compareTo(_intValue(bData['incorrect']));
+        if (incorrectDiff != 0) return incorrectDiff;
+
+        final createdAtDiff =
+            _timeMillis(aData['createdAt']).compareTo(_timeMillis(bData['createdAt']));
+        if (createdAtDiff != 0) return createdAtDiff;
+
+        return a.id.compareTo(b.id);
+      });
+
+    final total = docs.length;
+    var lastScore = double.nan;
+    var currentRank = 0;
+    var batch = FirebaseFirestore.instance.batch();
+    var opCount = 0;
+
+    for (int index = 0; index < docs.length; index++) {
+      final doc = docs[index];
+      final data = doc.data();
+      final score = _numValue(data['score']);
+      if (index == 0 || score != lastScore) {
+        currentRank = index + 1;
+        lastScore = score;
+      }
+
+      final percentile = _percentileForRank(currentRank, total);
+      final existingRank = _intValue(data['rank']);
+      final existingPercentile = _numValue(data['percentile']);
+      if (existingRank == currentRank &&
+          (existingPercentile - percentile).abs() < 0.001) {
+        continue;
+      }
+
+      batch.update(doc.reference, {
+        'rank': currentRank,
+        'percentile': percentile,
+        'leaderboardUpdatedAt': Timestamp.now(),
+      });
+      opCount++;
+
+      if (opCount >= 450) {
+        await batch.commit();
+        batch = FirebaseFirestore.instance.batch();
+        opCount = 0;
+      }
+    }
+
+    if (opCount > 0) {
+      await batch.commit();
+    }
+  }
+
+  double _percentileForRank(int rank, int total) {
+    if (total <= 1) return 100;
+    final value = ((total - rank) / (total - 1)) * 100;
+    return value.clamp(0.0, 100.0).toDouble();
+  }
+
+  double _numValue(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0.0;
+  }
+
+  int _intValue(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  int _timeMillis(dynamic value) {
+    if (value is Timestamp) return value.millisecondsSinceEpoch;
+    if (value is DateTime) return value.millisecondsSinceEpoch;
+    return 0;
+  }
+
+  bool _isFirstQuestionOfSection(int index) {
+    if (index <= 0 || index >= questions.length) {
+      return true;
+    }
+
+    final current = questions[index];
+    final previous = questions[index - 1];
+    return _questionSectionKey(current) != _questionSectionKey(previous);
+  }
+
+  String _questionSectionKey(Map<String, dynamic> question) {
+    return (question['sectionId'] ??
+            question['sectionName'] ??
+            question['section'] ??
+            question['subject'] ??
+            '')
+        .toString()
+        .trim()
+        .toLowerCase();
+  }
+
+  void _unlockSectionAndMoveNext() {
+    SectionService.isLock = false;
+    remainingSeconds = SectionService.lockedTime * 60;
+    _saveProgress();
+    final nextIndex = currentIndex + 1;
+    if (!mounted) return;
+    if (nextIndex < questions.length && _canOpenQuestion(nextIndex)) {
+      setState(() {
+        _markCurrentQuestionVisited();
+        currentIndex = nextIndex;
+      });
+    } else {
+      setState(() {});
+    }
+  }
+
   void _showSubmitSectionDialog() {
     showDialog(
       context: context,
@@ -389,9 +525,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
             ElevatedButton(
               onPressed: () {
                 Navigator.of(context).pop(); // Close dialog first
-                SectionService.isLock = false;
-                remainingSeconds = SectionService.lockedTime * 60;
-                _saveProgress();
+                _unlockSectionAndMoveNext();
               },
               child: const Text("Yes"),
             ),
@@ -424,9 +558,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
             ElevatedButton(
               onPressed: () {
                 Navigator.of(context).pop(); // Close dialog first
-                SectionService.isLock = false;
-                remainingSeconds = SectionService.lockedTime * 60;
-                _saveProgress();
+                _unlockSectionAndMoveNext();
                 if (!mounted) return;
                 Navigator.pop(context); // Call your method
               },
@@ -502,7 +634,11 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                     _buildCounter(notVisited, "Not Visited", Colors.grey),
                     _buildCounter(notAnswered, "Not Answered", Colors.red),
                     _buildCounter(answered, "Answered", Colors.green),
-                    _buildCounter(marked, "Marked", Colors.deepPurple),
+                    _buildCounter(
+                      marked,
+                      "Marked for Review",
+                      Colors.deepPurple,
+                    ),
                     _buildCounter(
                       answeredAndMarked,
                       "Answered & Marked",
@@ -562,10 +698,27 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
               child: const Text("No"),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.of(context).pop(); // Close dialog first
-                reported.add(qid);
-                _saveProgress();
+                final wasAlreadyReported = reported.contains(qid);
+                if (!wasAlreadyReported) {
+                  setState(() {
+                    reported.add(qid);
+                  });
+                }
+                await _saveProgress();
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      wasAlreadyReported
+                          ? 'Question is already reported.'
+                          : 'Question reported successfully.',
+                    ),
+                    backgroundColor: const Color(0xFFB91C1C),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
               },
               child: const Text("Yes"),
             ),
@@ -631,7 +784,6 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
         int notAnswered = 0;
         int marked = 0;
         int answeredAndMarked = 0;
-
         for (final q in questions) {
           final qid = q['__id'] as String;
 
@@ -1058,16 +1210,16 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                                     _showAddForReviewQuestionDialog(
                                                       qid,
                                                     );
-                                                    if (_canOpenQuestion(
-                                                      currentIndex + 1,
-                                                    )) {
-                                                      setState(() {
-                                                        _markCurrentQuestionVisited();
-                                                        currentIndex += 1;
-                                                      });
-                                                    }
                                                   },
-                                                  icon: const Icon(
+                                                  style: IconButton.styleFrom(
+                                                    backgroundColor: reported.contains(qid)
+                                                        ? const Color(0xFFFEE2E2)
+                                                        : const Color(0xFFF8FAFC),
+                                                    foregroundColor: reported.contains(qid)
+                                                        ? const Color(0xFFB91C1C)
+                                                        : const Color(0xFF64748B),
+                                                  ),
+                                                  icon: Icon(
                                                     Icons
                                                         .report_problem_outlined,
                                                   ),
@@ -1163,6 +1315,40 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                         // bottom actions
                         Row(
                           children: [
+                            if (!(currentIndex ==
+                                    SectionService.unlockedSectionLength &&
+                                SectionService.isLock)) ...[
+                              if (!_isFirstQuestionOfSection(currentIndex)) ...[
+                                OutlinedButton(
+                                  onPressed: currentIndex > 0
+                                      ? () {
+                                          setState(() {
+                                            currentIndex -= 1;
+                                          });
+                                        }
+                                      : null,
+                                  style: OutlinedButton.styleFrom(
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    side: const BorderSide(
+                                      color: Color(0xFFCBD5E1),
+                                    ),
+                                    minimumSize: const Size(58, 48),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 12,
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.arrow_back,
+                                    size: 18,
+                                    color: Color(0xFF475569),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                              ],
+                            ],
                             Expanded(
                               child: OutlinedButton(
                                 onPressed: () {
@@ -1201,20 +1387,32 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                     child: ElevatedButton(
                                       onPressed: _showSubmitSectionDialog,
                                       style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF1E40AF),
+                                        foregroundColor: Colors.white,
+                                        elevation: 0,
                                         shape: RoundedRectangleBorder(
                                           borderRadius: BorderRadius.circular(
                                             12,
                                           ),
                                         ),
-                                      ),
-                                      child: const Padding(
-                                        padding: EdgeInsets.symmetric(
+                                        padding: const EdgeInsets.symmetric(
                                           vertical: 14,
+                                          horizontal: 16,
                                         ),
-                                        child: Text(
-                                          'Submit Section',
-                                          style: TextStyle(fontSize: 16),
-                                        ),
+                                      ),
+                                      child: const Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.lock_open_rounded, size: 18),
+                                          SizedBox(width: 8),
+                                          Text(
+                                            'Submit Section',
+                                            style: TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   )
@@ -1254,13 +1452,15 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(12),
                                       ),
+                                      minimumSize: const Size(58, 48),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 12,
+                                      ),
                                     ),
                                     child: const Padding(
-                                      padding: EdgeInsets.symmetric(
-                                        vertical: 14,
-                                        horizontal: 18,
-                                      ),
-                                      child: Icon(Icons.arrow_forward),
+                                      padding: EdgeInsets.zero,
+                                      child: Icon(Icons.arrow_forward, size: 18),
                                     ),
                                   ),
                           ],
