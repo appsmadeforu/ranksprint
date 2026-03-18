@@ -544,9 +544,7 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                               onTap: () {
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
-                                    builder: (_) => const AnalyticsScreen(
-                                      initialTabIndex: 1,
-                                    ),
+                                    builder: (_) => const AnalyticsScreen(),
                                   ),
                                 );
                               },

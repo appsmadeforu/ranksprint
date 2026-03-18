@@ -149,8 +149,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                                 unselectedLabelColor: Color(0xFF67728A),
                                 dividerColor: Colors.transparent,
                                 tabs: [
-                                  Tab(text: 'Leaderboard'),
                                   Tab(text: 'Dashboard'),
+                                  Tab(text: 'Leaderboard'),
                                 ],
                               ),
                             ),
@@ -159,8 +159,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                           Expanded(
                             child: TabBarView(
                               children: [
-                                _buildLeaderboard(),
                                 _buildDashboard(),
+                                _buildLeaderboard(),
                               ],
                             ),
                           ),
@@ -2226,7 +2226,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        '${chapter.accuracy.toStringAsFixed(0)}%',
+                        '${chapter.proficiency.toStringAsFixed(0)}%',
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
@@ -2302,12 +2302,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     int secondsPerQuestionCount = 0;
     DateTime lastUpdated = DateTime.fromMillisecondsSinceEpoch(0);
 
-    final timeBuckets = <_TimeBucket>[
-      _TimeBucket(label: 'Fast', color: const Color(0xFF4B72F1)),
-      _TimeBucket(label: 'Ideal', color: const Color(0xFF31B56A)),
-      _TimeBucket(label: 'Slow', color: const Color(0xFFF2A126)),
-    ];
-
     for (int i = 0; i < attempts.length; i++) {
       final attempt = attempts[i].data();
       final result = resultMap[attempts[i].id] ?? const <String, dynamic>{};
@@ -2360,13 +2354,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         totalSecondsPerQuestion += secondsPerQuestion;
         secondsPerQuestionCount++;
         timeScoreTrend.add(math.max(0.0, 100 - secondsPerQuestion));
-        if (secondsPerQuestion <= 35) {
-          timeBuckets[0].count++;
-        } else if (secondsPerQuestion <= 75) {
-          timeBuckets[1].count++;
-        } else {
-          timeBuckets[2].count++;
-        }
       } else {
         timeScoreTrend.add(score);
       }
@@ -2402,7 +2389,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     final subjects = detail.subjects.values.toList()
       ..sort((a, b) => b.accuracy.compareTo(a.accuracy));
     final chapters = detail.chapters.values.toList()
-      ..sort((a, b) => a.accuracy.compareTo(b.accuracy));
+      ..sort((a, b) => a.proficiency.compareTo(b.proficiency));
     final chapterAttempts = detail.chapterAttempts;
 
     final avgLeaderboardScore = leaderboardRows.isEmpty
@@ -2442,21 +2429,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         : (totalCorrect * 100.0 / totalQuestions);
     final focusSubject = subjects.isEmpty ? 'General' : subjects.last.name;
 
-    final timeSliceTotal = timeBuckets.fold<int>(
-      0,
-      (sum, bucket) => sum + bucket.count,
-    );
-    final timeSlices = timeBuckets
-        .map(
-          (bucket) => _TimeSlice(
-            label: bucket.label,
-            value: timeSliceTotal == 0
-                ? 0
-                : (bucket.count * 100.0 / timeSliceTotal),
-            color: bucket.color,
-          ),
-        )
-        .toList();
+    final timeSlices = _timeSlicesForSubjects(subjects);
 
     final comparisonRows = <_ComparisonRow>[
       _ComparisonRow(
@@ -2492,13 +2465,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             return _Recommendation(
               title: chapter.name,
               subtitle:
-                  '${chapter.subject} - ${math.max(0, 100 - chapter.accuracy.round())}% focus potential',
+                  '${chapter.subject} - ${math.max(0, 100 - chapter.proficiency.round())}% focus potential',
               icon: Icons.auto_awesome,
             );
           }).toList();
     final fallbackGainPotential = weakChapters.fold<double>(
       0,
-      (sum, chapter) => sum + (100 - chapter.accuracy) * 0.15,
+      (sum, chapter) => sum + (100 - chapter.proficiency) * 0.15,
     );
     final dbRecommendations = await _loadDbRecommendations(
       userId: userId,
@@ -2682,7 +2655,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       final questions = _questionCache[cacheKey] ?? const [];
       final sectionNames = await _loadSectionNames(examId, testId);
       totalsByAttempt[attemptDoc.id] = questions.length;
-      final answers = _answersMap(attempt['answers']);
+      final answers = _answersMap(resultMap[attemptDoc.id]?['answers'] ?? attempt['answers']);
       final perQuestionSeconds =
           _secondsPerQuestion(
             attempt,
@@ -2701,8 +2674,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         final question = qDoc.data();
         final subjectName = _subjectName(question, sectionNames);
         final chapterName = _chapterName(question, subjectName);
-        final selected = answers[qDoc.id] ?? '';
-        final correct = (question['correctOption'] ?? '').toString();
+        final selected = _normalizeAnswerValue(answers[qDoc.id] ?? '');
+        final correct = _optionLetter(question['correctOption']);
         final isAttempted = selected.isNotEmpty;
         final isCorrect = isAttempted && selected == correct;
 
@@ -2742,6 +2715,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             chapter: metric.name,
             accuracy: metric.accuracy,
             avgMinutesPerQuestion: perQuestionSeconds / 60.0,
+            totalQuestions: metric.total,
             attempted: metric.attempted,
             correct: metric.correct,
             skipped: math.max(0, metric.total - metric.attempted),
@@ -2809,6 +2783,41 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       out[entry.key.toString()] = (entry.value ?? '').toString();
     }
     return out;
+  }
+
+  String _optionLetter(dynamic index) {
+    switch (index?.toString()) {
+      case '0':
+        return 'A';
+      case '1':
+        return 'B';
+      case '2':
+        return 'C';
+      case '3':
+        return 'D';
+      default:
+        return (index ?? '').toString().trim().toUpperCase();
+    }
+  }
+
+  String _normalizeAnswerValue(dynamic value) {
+    final raw = (value ?? '').toString().trim().toUpperCase();
+    switch (raw) {
+      case '0':
+      case 'A':
+        return 'A';
+      case '1':
+      case 'B':
+        return 'B';
+      case '2':
+      case 'C':
+        return 'C';
+      case '3':
+      case 'D':
+        return 'D';
+      default:
+        return raw;
+    }
   }
 
   String _subjectName(
@@ -2967,6 +2976,31 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     if (subjects.isEmpty) return 0;
     return subjects.map((subject) => subject.coverage).reduce((a, b) => a + b) /
         subjects.length;
+  }
+
+  List<_TimeSlice> _timeSlicesForSubjects(List<_SubjectMetric> subjects) {
+    const palette = <Color>[
+      Color(0xFF4B72F1),
+      Color(0xFF31B56A),
+      Color(0xFFF2A126),
+      Color(0xFFEB5757),
+    ];
+    final visibleSubjects = subjects.take(4).toList();
+    final totalSeconds = visibleSubjects.fold<double>(
+      0.0,
+      (runningTotal, subject) => runningTotal + subject.totalSeconds,
+    );
+    return visibleSubjects.asMap().entries.map((entry) {
+      final index = entry.key;
+      final subject = entry.value;
+      return _TimeSlice(
+        label: subject.shortName,
+        value: totalSeconds <= 0
+            ? 0.0
+            : (subject.totalSeconds * 100.0 / totalSeconds),
+        color: palette[index % palette.length],
+      );
+    }).toList();
   }
 
   double _testFrequency(
@@ -3226,9 +3260,10 @@ class _ChapterMetric {
   _ChapterMetric({required this.name, required this.subject});
 
   double get accuracy => total == 0 ? 0 : (correct * 100.0 / total);
+  double get proficiency => attempted == 0 ? 0 : (correct * 100.0 / attempted);
   Color get badgeColor {
-    if (accuracy >= 75) return const Color(0xFF31B56A);
-    if (accuracy >= 50) return const Color(0xFFF2A126);
+    if (proficiency >= 75) return const Color(0xFF31B56A);
+    if (proficiency >= 50) return const Color(0xFFF2A126);
     return const Color(0xFFEB5757);
   }
 
@@ -3243,6 +3278,7 @@ class _ChapterAttemptMetric {
   final String chapter;
   final double accuracy;
   final double avgMinutesPerQuestion;
+  final int totalQuestions;
   final int attempted;
   final int correct;
   final int skipped;
@@ -3254,6 +3290,7 @@ class _ChapterAttemptMetric {
     required this.chapter,
     required this.accuracy,
     required this.avgMinutesPerQuestion,
+    required this.totalQuestions,
     required this.attempted,
     required this.correct,
     required this.skipped,
@@ -3280,14 +3317,6 @@ class _SubjectAttemptMetric {
     required this.correct,
     required this.total,
   });
-}
-
-class _TimeBucket {
-  final String label;
-  final Color color;
-  int count = 0;
-
-  _TimeBucket({required this.label, required this.color});
 }
 
 class _TimeSlice {
@@ -3415,12 +3444,7 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
                   .map((item) => item.accuracy)
                   .reduce((a, b) => a + b) /
               filteredAttempts.length;
-    final avgTime = filteredAttempts.isEmpty
-        ? 0.0
-        : filteredAttempts
-                  .map((item) => item.avgMinutesPerQuestion)
-                  .reduce((a, b) => a + b) /
-              filteredAttempts.length;
+    final avgTime = _weightedAverageChapterTime(filteredAttempts);
     final avgAttempted = filteredAttempts.isEmpty
         ? 0.0
         : filteredAttempts
@@ -3783,6 +3807,18 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
     return items.sublist(items.length - _testRange);
   }
 
+  double _weightedAverageChapterTime(List<_ChapterAttemptMetric> items) {
+    if (items.isEmpty) return 0.0;
+    double totalMinutes = 0.0;
+    int totalQuestions = 0;
+    for (final item in items) {
+      totalMinutes += item.avgMinutesPerQuestion * item.totalQuestions;
+      totalQuestions += item.totalQuestions;
+    }
+    if (totalQuestions <= 0) return 0.0;
+    return totalMinutes / totalQuestions;
+  }
+
   Widget _explorerCard({
     String? title,
     Widget? footer,
@@ -3981,7 +4017,7 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
     final chapterHeatmap = widget.vm.chapters
         .where((chapter) => chapter.subject == subject)
         .toList()
-      ..sort((a, b) => b.accuracy.compareTo(a.accuracy));
+      ..sort((a, b) => b.proficiency.compareTo(a.proficiency));
     final chapterTimeBars = _chapterTimeSeries();
 
     return Scaffold(
@@ -4195,7 +4231,7 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
                           : _ExplorerBarChart(
                               bars: chapterTimeBars,
                               maxY: math.max(
-                                5.0,
+                                1.0,
                                 chapterTimeBars
                                         .map((item) => item.value)
                                         .fold<double>(0.0, math.max) +
@@ -4257,23 +4293,33 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
     final subject = _selectedSubject;
     if (subject == null) return const [];
     final allowedLabels = _subjectSeries().map((item) => item.label).toSet();
-    final timeByChapter = <String, List<double>>{};
+    final timeByChapter = <String, List<_ChapterAttemptMetric>>{};
     for (final item in widget.vm.chapterAttempts.where(
       (entry) => entry.subject == subject && allowedLabels.contains(entry.label),
     )) {
-      timeByChapter.putIfAbsent(item.chapter, () => <double>[]).add(
-        item.avgMinutesPerQuestion,
+      timeByChapter.putIfAbsent(item.chapter, () => <_ChapterAttemptMetric>[]).add(
+        item,
       );
     }
     final points = timeByChapter.entries.map((entry) {
-      final avg = entry.value.isEmpty
-          ? 0.0
-          : entry.value.reduce((a, b) => a + b) / entry.value.length;
+      final avg = _weightedAverageChapterTime(entry.value);
       final label = entry.key.length <= 8 ? entry.key : entry.key.substring(0, 8);
       return _ChartPoint(label, avg);
     }).toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     return points.take(6).toList();
+  }
+
+  double _weightedAverageChapterTime(List<_ChapterAttemptMetric> items) {
+    if (items.isEmpty) return 0.0;
+    double totalMinutes = 0.0;
+    int totalQuestions = 0;
+    for (final item in items) {
+      totalMinutes += item.avgMinutesPerQuestion * item.totalQuestions;
+      totalQuestions += item.totalQuestions;
+    }
+    if (totalQuestions <= 0) return 0.0;
+    return totalMinutes / totalQuestions;
   }
 
   Widget _subjectCard({
@@ -4415,7 +4461,7 @@ class _HeatmapChip extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Text(
-            '${chapter.accuracy.toStringAsFixed(0)}%',
+            '${chapter.proficiency.toStringAsFixed(0)}%',
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w800,
@@ -4550,9 +4596,18 @@ class _ExplorerBarChart extends StatelessWidget {
                 return Column(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
+                    Text(
+                      bar.value.toStringAsFixed(1),
+                      style: const TextStyle(
+                        fontSize: 9,
+                        color: Color(0xFF6C748A),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
                     Container(
                       width: 22,
-                      height: 120 * heightFactor,
+                      height: math.max(3.0, 120 * heightFactor),
                       decoration: BoxDecoration(
                         color: barColor,
                         borderRadius: BorderRadius.circular(6),
