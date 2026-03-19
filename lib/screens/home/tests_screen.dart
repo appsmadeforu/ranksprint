@@ -231,7 +231,7 @@ class _TestsScreenState extends State<TestsScreen> {
             // TEST LIST
             // =======================
             Expanded(
-              child: StreamBuilder<QuerySnapshot>(
+              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: FirebaseFirestore.instance
                     .collection('testAttempts')
                     .where(
@@ -239,24 +239,21 @@ class _TestsScreenState extends State<TestsScreen> {
                       isEqualTo: FirebaseAuth.instance.currentUser?.uid,
                     )
                     .where('examId', isEqualTo: selectedExamId)
+                    .where('status', isEqualTo: 'completed')
                     .snapshots(),
                 builder: (context, attemptsSnap) {
                   final Map<String, int> attemptsByTestId = {};
                   if (attemptsSnap.hasData) {
                     for (final d in attemptsSnap.data!.docs) {
-                      final data = d.data() as Map<String, dynamic>;
+                      final data = d.data();
                       final testId = (data['testId'] ?? '').toString();
                       if (testId.isEmpty) continue;
-                      // Count only submitted attempts so in-progress starts do not inflate limits.
-                      final isCompleted =
-                          (data['status'] ?? '').toString() == 'completed';
-                      if (!isCompleted) continue;
                       attemptsByTestId[testId] =
                           (attemptsByTestId[testId] ?? 0) + 1;
                     }
                   }
 
-                  return StreamBuilder<QuerySnapshot>(
+                  return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                     stream: ContentAccessService.publishedTestsQuery(
                       selectedExamId!,
                     ).snapshots(),

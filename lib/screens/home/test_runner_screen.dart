@@ -44,6 +44,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
   int remainingSeconds = 0;
 
   bool loading = false;
+  bool _isSubmittingAttempt = false;
   List<SectionBean> sectionsBeans = [];
   int violationCount = 0;
 
@@ -277,71 +278,75 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
   }
 
   Future<void> _submitAttempt() async {
-    if (attemptId == null) return;
+    if (attemptId == null || _isSubmittingAttempt) return;
+
+    setState(() {
+      _isSubmittingAttempt = true;
+    });
 
     _timer?.cancel();
 
-    final attemptRef = FirebaseFirestore.instance
-        .collection(ResultSchemaContract.attemptCollection)
-        .doc(attemptId);
-    await attemptRef.update({
-      'status': 'completed',
-      'submittedAt': Timestamp.now(),
-      'answers': answers,
-    });
+    try {
+      final attemptRef = FirebaseFirestore.instance
+          .collection(ResultSchemaContract.attemptCollection)
+          .doc(attemptId);
+      await attemptRef.update({
+        'status': 'completed',
+        'submittedAt': Timestamp.now(),
+        'answers': answers,
+      });
 
-    // compute a simple score for placeholder results
-    int correct = 0;
-    int answered = 0;
-    int total = questions.length;
-    for (final q in questions) {
-      final qid = q['__id'] as String;
-      final selected = answers[qid];
-      if (selected != null && selected.isNotEmpty) {
-        answered += 1;
-        if (q['correctOption'] != null &&
-            ExamResultScreenState.optionLetter(q['correctOption']) ==
-                selected) {
-          correct += 1;
+      // compute a simple score for placeholder results
+      int correct = 0;
+      int answered = 0;
+      int total = questions.length;
+      for (final q in questions) {
+        final qid = q['__id'] as String;
+        final selected = answers[qid];
+        if (selected != null && selected.isNotEmpty) {
+          answered += 1;
+          if (q['correctOption'] != null &&
+              ExamResultScreenState.optionLetter(q['correctOption']) ==
+                  selected) {
+            correct += 1;
+          }
         }
       }
-    }
 
-    final score = correct; // simple 1 point per correct for placeholder
+      final score = correct; // simple 1 point per correct for placeholder
 
-    // Keep result doc id equal to attempt id so analytics/history can resolve
-    // the finalized result without timestamp guessing.
-    final resRef = FirebaseFirestore.instance
-        .collection(ResultSchemaContract.resultCollection)
-        .doc(attemptId);
-    await resRef.set({
-      'userId': FirebaseAuth.instance.currentUser?.uid,
-      'examId': widget.examId,
-      'testId': widget.testId,
-      'score': score,
-      'correct': correct,
-      'incorrect': answered - correct,
-      'unanswered': total - answered,
-      'answers': answers,
-      'question': questions,
-      'percentile': 0,
-      'rank': 0,
-      'createdAt': Timestamp.now(),
-    });
-    await _syncLeaderboardMetricsForTest();
+      // Keep result doc id equal to attempt id so analytics/history can resolve
+      // the finalized result without timestamp guessing.
+      final resRef = FirebaseFirestore.instance
+          .collection(ResultSchemaContract.resultCollection)
+          .doc(attemptId);
+      await resRef.set({
+        'userId': FirebaseAuth.instance.currentUser?.uid,
+        'examId': widget.examId,
+        'testId': widget.testId,
+        'score': score,
+        'correct': correct,
+        'incorrect': answered - correct,
+        'unanswered': total - answered,
+        'answers': answers,
+        'question': questions,
+        'percentile': 0,
+        'rank': 0,
+        'createdAt': Timestamp.now(),
+      });
+      await _syncLeaderboardMetricsForTest();
 
-    SectionService.lockedTime = 0;
-    SectionService.unlockedSectionLength = 0;
-    SectionService.isLock = true;
-    SectionService.unlockedTime = 0;
-    SectionService.totalQuestionLength = 0;
-    Map<String, dynamic> attemptData = (await attemptRef.get()).data()!;
-    final Map<String, dynamic> resultData = (await resRef.get()).data()!;
+      SectionService.lockedTime = 0;
+      SectionService.unlockedSectionLength = 0;
+      SectionService.isLock = true;
+      SectionService.unlockedTime = 0;
+      SectionService.totalQuestionLength = 0;
+      Map<String, dynamic> attemptData = (await attemptRef.get()).data()!;
+      final Map<String, dynamic> resultData = (await resRef.get()).data()!;
 
-    if (mounted) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context);
-      Navigator.pushReplacement(
-        context,
+      Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (_) => TestSolutionScreen(
             attemptId: attemptId!,
@@ -349,8 +354,123 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
             resultData: resultData,
           ),
         ),
+        (route) => route.isFirst,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isSubmittingAttempt = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Unable to submit the test right now. Please try again.',
+          ),
+        ),
       );
     }
+  }
+
+  Future<void> _confirmAndSubmitTest() async {
+    if (_isSubmittingAttempt) return;
+
+    int notVisited = 0;
+    int answered = 0;
+    int notAnswered = 0;
+    int marked = 0;
+    int answeredAndMarked = 0;
+
+    for (final q in questions) {
+      final qid = q['__id'] as String;
+      final isVisited = visited.contains(qid);
+      final isAnswered = answers.containsKey(qid);
+      final isMarked = markedForReview.contains(qid);
+
+      if (!isVisited) {
+        notVisited++;
+      } else if (!isAnswered) {
+        notAnswered++;
+      }
+
+      if (isAnswered) answered++;
+      if (isMarked && !isAnswered) marked++;
+      if (isMarked && isAnswered) answeredAndMarked++;
+    }
+
+    final shouldSubmit = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text("Submit Test"),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "${examName ?? ''} - ${testName ?? ''}",
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  "Questions Overview",
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    _buildCounter(notVisited, "Not Visited", Colors.grey),
+                    _buildCounter(notAnswered, "Not Answered", Colors.red),
+                    _buildCounter(answered, "Answered", Colors.green),
+                    _buildCounter(
+                      marked,
+                      "Marked for Review",
+                      Colors.deepPurple,
+                    ),
+                    _buildCounter(
+                      answeredAndMarked,
+                      "Answered & Marked",
+                      Colors.blue,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  "Are you sure you want to submit the test?",
+                  style: TextStyle(fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text("No"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text("Yes"),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldSubmit != true) return;
+    SectionService.isLock = false;
+    await _submitAttempt();
   }
 
   bool _canOpenQuestion(int index) {
@@ -381,20 +501,24 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
         final aData = a.data();
         final bData = b.data();
 
-        final scoreDiff =
-            _numValue(bData['score']).compareTo(_numValue(aData['score']));
+        final scoreDiff = _numValue(
+          bData['score'],
+        ).compareTo(_numValue(aData['score']));
         if (scoreDiff != 0) return scoreDiff;
 
-        final correctDiff =
-            _intValue(bData['correct']).compareTo(_intValue(aData['correct']));
+        final correctDiff = _intValue(
+          bData['correct'],
+        ).compareTo(_intValue(aData['correct']));
         if (correctDiff != 0) return correctDiff;
 
-        final incorrectDiff =
-            _intValue(aData['incorrect']).compareTo(_intValue(bData['incorrect']));
+        final incorrectDiff = _intValue(
+          aData['incorrect'],
+        ).compareTo(_intValue(bData['incorrect']));
         if (incorrectDiff != 0) return incorrectDiff;
 
-        final createdAtDiff =
-            _timeMillis(aData['createdAt']).compareTo(_timeMillis(bData['createdAt']));
+        final createdAtDiff = _timeMillis(
+          aData['createdAt'],
+        ).compareTo(_timeMillis(bData['createdAt']));
         if (createdAtDiff != 0) return createdAtDiff;
 
         return a.id.compareTo(b.id);
@@ -571,112 +695,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
   }
 
   void _showSubmitTestDialog() {
-    int notVisited = 0;
-    int answered = 0;
-    int notAnswered = 0;
-    int marked = 0;
-    int answeredAndMarked = 0;
-
-    for (final q in questions) {
-      final qid = q['__id'] as String;
-
-      final isVisited = visited.contains(qid);
-      final isAnswered = answers.containsKey(qid);
-      final isMarked = markedForReview.contains(qid);
-
-      if (!isVisited) {
-        notVisited++;
-      } else if (!isAnswered) {
-        notAnswered++;
-      }
-
-      if (isAnswered) answered++;
-      if (isMarked && !isAnswered) marked++;
-      if (isMarked && isAnswered) answeredAndMarked++;
-    }
-
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-
-          title: const Text("Submit Test"),
-
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "${examName ?? ''} - ${testName ?? ''}",
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                const Text(
-                  "Questions Overview",
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                ),
-
-                const SizedBox(height: 12),
-
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    _buildCounter(notVisited, "Not Visited", Colors.grey),
-                    _buildCounter(notAnswered, "Not Answered", Colors.red),
-                    _buildCounter(answered, "Answered", Colors.green),
-                    _buildCounter(
-                      marked,
-                      "Marked for Review",
-                      Colors.deepPurple,
-                    ),
-                    _buildCounter(
-                      answeredAndMarked,
-                      "Answered & Marked",
-                      Colors.blue,
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 16),
-
-                const Text(
-                  "This will finish and submit the test.",
-                  style: TextStyle(fontSize: 14),
-                ),
-              ],
-            ),
-          ),
-
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: const Text("No"),
-            ),
-
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                SectionService.isLock = false;
-                _submitAttempt();
-              },
-              child: const Text("Yes"),
-            ),
-          ],
-        );
-      },
-    );
+    _confirmAndSubmitTest();
   }
 
   void _showAddForReviewQuestionDialog(String qid) {
@@ -760,7 +779,9 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
   }
 
   void _markCurrentQuestionVisited() {
-    if (questions.isEmpty || currentIndex < 0 || currentIndex >= questions.length) {
+    if (questions.isEmpty ||
+        currentIndex < 0 ||
+        currentIndex >= questions.length) {
       return;
     }
     final qid = questions[currentIndex]['__id']?.toString();
@@ -856,10 +877,12 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                             ),
                           ),
                           ElevatedButton.icon(
-                            onPressed: () async {
-                              Navigator.pop(context);
-                              await _submitAttempt();
-                            },
+                            onPressed: _isSubmittingAttempt
+                                ? null
+                                : () async {
+                                    Navigator.pop(context);
+                                    await _confirmAndSubmitTest();
+                                  },
                             icon: const Icon(Icons.check_circle),
                             label: const Text("Finish"),
                             style: ElevatedButton.styleFrom(
@@ -1036,396 +1059,394 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
     final hasAttempt = attemptId != null;
 
     return PopScope(
-      canPop: false,
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF5F6FA),
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    InkWell(
-                      onTap: _openPalette,
-                      child: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(Icons.menu, color: Color(0xFF2F6FEB)),
-                      ),
-                    ),
-                    if (hasAttempt)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          _formatTime(remainingSeconds),
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF2F6FEB),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-
-                if (!hasAttempt)
-                  Expanded(
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+      canPop: !_isSubmittingAttempt,
+      child: Stack(
+        children: [
+          AbsorbPointer(
+            absorbing: _isSubmittingAttempt,
+            child: Scaffold(
+              backgroundColor: const Color(0xFFF5F6FA),
+              body: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          /// AI Animation
-                          SizedBox(
-                            height: 220,
-                            child: Lottie.network(
-                              "https://assets2.lottiefiles.com/packages/lf20_x62chJ.json",
-                              repeat: true,
+                          InkWell(
+                            onTap: _openPalette,
+                            child: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.menu,
+                                color: Color(0xFF2F6FEB),
+                              ),
                             ),
                           ),
-
-                          const SizedBox(height: 20),
-
-                          /// Title
-                          const Text(
-                            "AI Exam Engine",
-                            style: TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF2F6FEB),
-                            ),
-                          ),
-
-                          const SizedBox(height: 8),
-
-                          /// Subtitle
-                          const Text(
-                            "Preparing your questions\nAnalyzing difficulty & timer",
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 15,
-                              color: Colors.grey,
-                              height: 1.5,
-                            ),
-                          ),
-                          const SizedBox(height: 30),
-                          const CircularProgressIndicator(),
-                          const SizedBox(height: 30),
-                          const Text(
-                            "Your Test starting in a moment...",
-                            style: TextStyle(fontSize: 13, color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                else if (questions.isEmpty)
-                  const Expanded(child: Center(child: Text('No questions')))
-                else
-                  // Question card and options
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(
-                          child: SingleChildScrollView(
-                            child: Builder(
-                              builder: (context) {
-                                final currentQuestion = questions[currentIndex];
-                                final questionText =
-                                    (currentQuestion['questionText'] ?? '')
-                                        .toString();
-                                final questionImages = _questionImageUrls(
-                                  currentQuestion,
-                                );
-                                final opts =
-                                    (currentQuestion['options'] as List? ??
-                                            const [])
-                                        .cast<Map<String, dynamic>>();
-                                final qid = currentQuestion['__id'] as String;
-
-                                return Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    Card(
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(16.0),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment
-                                                      .spaceBetween,
-                                              children: [
-                                                InkWell(
-                                                  onTap: () =>
-                                                      _clearAnswer(qid),
-                                                  borderRadius:
-                                                      BorderRadius.circular(20),
-                                                  child: Container(
-                                                    padding:
-                                                        const EdgeInsets.symmetric(
-                                                          horizontal: 12,
-                                                          vertical: 6,
-                                                        ),
-                                                    decoration: BoxDecoration(
-                                                      color: const Color(
-                                                        0xFFEFF8FF,
-                                                      ),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            20,
-                                                          ),
-                                                    ),
-                                                    child: const Text(
-                                                      'Clear Answer',
-                                                      style: TextStyle(
-                                                        color: Color(
-                                                          0xFF2F6FEB,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                                IconButton(
-                                                  onPressed: () {
-                                                    _showAddForReviewQuestionDialog(
-                                                      qid,
-                                                    );
-                                                  },
-                                                  style: IconButton.styleFrom(
-                                                    backgroundColor: reported.contains(qid)
-                                                        ? const Color(0xFFFEE2E2)
-                                                        : const Color(0xFFF8FAFC),
-                                                    foregroundColor: reported.contains(qid)
-                                                        ? const Color(0xFFB91C1C)
-                                                        : const Color(0xFF64748B),
-                                                  ),
-                                                  icon: Icon(
-                                                    Icons
-                                                        .report_problem_outlined,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            const SizedBox(height: 8),
-                                            if (questionText.trim().isEmpty &&
-                                                questionImages.isNotEmpty)
-                                              Padding(
-                                                padding: const EdgeInsets.only(
-                                                  bottom: 8,
-                                                ),
-                                                child: Text(
-                                                  'Q${currentIndex + 1}.',
-                                                  style: const TextStyle(
-                                                    fontSize: 18,
-                                                    fontWeight: FontWeight.w600,
-                                                    height: 1.4,
-                                                  ),
-                                                ),
-                                              ),
-                                            HtmlHelper.renderContent(
-                                              html: questionText.trim().isEmpty
-                                                  ? null
-                                                  : _questionHtmlWithInlineNumber(
-                                                      currentIndex + 1,
-                                                      questionText,
-                                                    ),
-                                              imageUrls: questionImages,
-                                              style: const TextStyle(
-                                                fontSize: 18,
-                                                height: 1.4,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    ListView.separated(
-                                      shrinkWrap: true,
-                                      physics:
-                                          const NeverScrollableScrollPhysics(),
-                                      itemCount: opts.length,
-                                      separatorBuilder: (context, i) =>
-                                          const SizedBox(height: 8),
-                                      itemBuilder: (context, i) {
-                                        final opt = opts[i];
-                                        final optId =
-                                            opt['id']?.toString() ??
-                                            String.fromCharCode(65 + i);
-                                        final optText = opt['text'] ?? '';
-                                        final selected = answers[qid];
-                                        final isSelected = selected == optId;
-
-                                        return Card(
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              0,
-                                            ),
-                                          ),
-                                          child: ListTile(
-                                            leading: CircleAvatar(
-                                              backgroundColor: const Color(
-                                                0xFFEAEFF6,
-                                              ),
-                                              child: Text(optId),
-                                            ),
-                                            title: HtmlHelper.renderContent(
-                                              html: optText.toString(),
-                                              imageUrls: _optionImageUrls(opt),
-                                              style: const TextStyle(
-                                                fontSize: 16,
-                                              ),
-                                            ),
-                                            onTap: () =>
-                                                _selectOption(qid, optId),
-                                            tileColor: isSelected
-                                                ? const Color(0x6796C196)
-                                                : null,
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        // bottom actions
-                        Row(
-                          children: [
-                            if (!(currentIndex ==
-                                    SectionService.unlockedSectionLength &&
-                                SectionService.isLock)) ...[
-                              if (!_isFirstQuestionOfSection(currentIndex)) ...[
-                                OutlinedButton(
-                                  onPressed: currentIndex > 0
-                                      ? () {
-                                          setState(() {
-                                            currentIndex -= 1;
-                                          });
-                                        }
-                                      : null,
-                                  style: OutlinedButton.styleFrom(
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    side: const BorderSide(
-                                      color: Color(0xFFCBD5E1),
-                                    ),
-                                    minimumSize: const Size(58, 48),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 14,
-                                      vertical: 12,
-                                    ),
-                                  ),
-                                  child: const Icon(
-                                    Icons.arrow_back,
-                                    size: 18,
-                                    color: Color(0xFF475569),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                              ],
-                            ],
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: () {
-                                  final qid =
-                                      questions[currentIndex]['__id'] as String;
-                                  _toggleReview(qid);
-                                  if (_canOpenQuestion(currentIndex + 1)) {
-                                    setState(() {
-                                      _markCurrentQuestionVisited();
-                                      currentIndex += 1;
-                                    });
-                                  }
-                                },
-                                style: OutlinedButton.styleFrom(
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  side: const BorderSide(
-                                    color: Color(0xFF2F6FEB),
-                                  ),
-                                ),
-                                child: const Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 14),
-                                  child: Text(
-                                    'Review Later',
-                                    style: TextStyle(color: Color(0xFF2F6FEB)),
-                                  ),
+                          if (hasAttempt)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                _formatTime(remainingSeconds),
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF2F6FEB),
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            currentIndex ==
-                                        SectionService.unlockedSectionLength &&
-                                    SectionService.isLock
-                                ? Expanded(
-                                    child: ElevatedButton(
-                                      onPressed: _showSubmitSectionDialog,
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF1E40AF),
-                                        foregroundColor: Colors.white,
-                                        elevation: 0,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 14,
-                                          horizontal: 16,
-                                        ),
-                                      ),
-                                      child: const Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      if (!hasAttempt)
+                        Expanded(
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                /// AI Animation
+                                SizedBox(
+                                  height: 220,
+                                  child: Lottie.network(
+                                    "https://assets2.lottiefiles.com/packages/lf20_x62chJ.json",
+                                    repeat: true,
+                                  ),
+                                ),
+
+                                const SizedBox(height: 20),
+
+                                /// Title
+                                const Text(
+                                  "AI Exam Engine",
+                                  style: TextStyle(
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF2F6FEB),
+                                  ),
+                                ),
+
+                                const SizedBox(height: 8),
+
+                                /// Subtitle
+                                const Text(
+                                  "Preparing your questions\nAnalyzing difficulty & timer",
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    color: Colors.grey,
+                                    height: 1.5,
+                                  ),
+                                ),
+                                const SizedBox(height: 30),
+                                const CircularProgressIndicator(),
+                                const SizedBox(height: 30),
+                                const Text(
+                                  "Your Test starting in a moment...",
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      else if (questions.isEmpty)
+                        const Expanded(
+                          child: Center(child: Text('No questions')),
+                        )
+                      else
+                        // Question card and options
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                child: SingleChildScrollView(
+                                  child: Builder(
+                                    builder: (context) {
+                                      final currentQuestion =
+                                          questions[currentIndex];
+                                      final questionText =
+                                          (currentQuestion['questionText'] ??
+                                                  '')
+                                              .toString();
+                                      final questionImages = _questionImageUrls(
+                                        currentQuestion,
+                                      );
+                                      final opts =
+                                          (currentQuestion['options']
+                                                      as List? ??
+                                                  const [])
+                                              .cast<Map<String, dynamic>>();
+                                      final qid =
+                                          currentQuestion['__id'] as String;
+
+                                      return Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
                                         children: [
-                                          Icon(Icons.lock_open_rounded, size: 18),
-                                          SizedBox(width: 8),
-                                          Text(
-                                            'Submit Section',
-                                            style: TextStyle(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w700,
+                                          Card(
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                            child: Padding(
+                                              padding: const EdgeInsets.all(
+                                                16.0,
+                                              ),
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment
+                                                            .spaceBetween,
+                                                    children: [
+                                                      InkWell(
+                                                        onTap: () =>
+                                                            _clearAnswer(qid),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              20,
+                                                            ),
+                                                        child: Container(
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 12,
+                                                                vertical: 6,
+                                                              ),
+                                                          decoration: BoxDecoration(
+                                                            color: const Color(
+                                                              0xFFEFF8FF,
+                                                            ),
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  20,
+                                                                ),
+                                                          ),
+                                                          child: const Text(
+                                                            'Clear Answer',
+                                                            style: TextStyle(
+                                                              color: Color(
+                                                                0xFF2F6FEB,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      IconButton(
+                                                        onPressed: () {
+                                                          _showAddForReviewQuestionDialog(
+                                                            qid,
+                                                          );
+                                                        },
+                                                        style: IconButton.styleFrom(
+                                                          backgroundColor:
+                                                              reported.contains(
+                                                                qid,
+                                                              )
+                                                              ? const Color(
+                                                                  0xFFFEE2E2,
+                                                                )
+                                                              : const Color(
+                                                                  0xFFF8FAFC,
+                                                                ),
+                                                          foregroundColor:
+                                                              reported.contains(
+                                                                qid,
+                                                              )
+                                                              ? const Color(
+                                                                  0xFFB91C1C,
+                                                                )
+                                                              : const Color(
+                                                                  0xFF64748B,
+                                                                ),
+                                                        ),
+                                                        icon: Icon(
+                                                          Icons
+                                                              .report_problem_outlined,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 8),
+                                                  if (questionText
+                                                          .trim()
+                                                          .isEmpty &&
+                                                      questionImages.isNotEmpty)
+                                                    Padding(
+                                                      padding:
+                                                          const EdgeInsets.only(
+                                                            bottom: 8,
+                                                          ),
+                                                      child: Text(
+                                                        'Q${currentIndex + 1}.',
+                                                        style: const TextStyle(
+                                                          fontSize: 18,
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                          height: 1.4,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  HtmlHelper.renderContent(
+                                                    html:
+                                                        questionText
+                                                            .trim()
+                                                            .isEmpty
+                                                        ? null
+                                                        : _questionHtmlWithInlineNumber(
+                                                            currentIndex + 1,
+                                                            questionText,
+                                                          ),
+                                                    imageUrls: questionImages,
+                                                    style: const TextStyle(
+                                                      fontSize: 18,
+                                                      height: 1.4,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
                                           ),
+                                          const SizedBox(height: 12),
+                                          ListView.separated(
+                                            shrinkWrap: true,
+                                            physics:
+                                                const NeverScrollableScrollPhysics(),
+                                            itemCount: opts.length,
+                                            separatorBuilder: (context, i) =>
+                                                const SizedBox(height: 8),
+                                            itemBuilder: (context, i) {
+                                              final opt = opts[i];
+                                              final optId =
+                                                  opt['id']?.toString() ??
+                                                  String.fromCharCode(65 + i);
+                                              final optText = opt['text'] ?? '';
+                                              final selected = answers[qid];
+                                              final isSelected =
+                                                  selected == optId;
+
+                                              return Card(
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(0),
+                                                ),
+                                                child: ListTile(
+                                                  leading: CircleAvatar(
+                                                    backgroundColor:
+                                                        const Color(0xFFEAEFF6),
+                                                    child: Text(optId),
+                                                  ),
+                                                  title:
+                                                      HtmlHelper.renderContent(
+                                                        html: optText
+                                                            .toString(),
+                                                        imageUrls:
+                                                            _optionImageUrls(
+                                                              opt,
+                                                            ),
+                                                        style: const TextStyle(
+                                                          fontSize: 16,
+                                                        ),
+                                                      ),
+                                                  onTap: () =>
+                                                      _selectOption(qid, optId),
+                                                  tileColor: isSelected
+                                                      ? const Color(0x6796C196)
+                                                      : null,
+                                                ),
+                                              );
+                                            },
+                                          ),
                                         ],
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              // bottom actions
+                              Row(
+                                children: [
+                                  if (!(currentIndex ==
+                                          SectionService
+                                              .unlockedSectionLength &&
+                                      SectionService.isLock)) ...[
+                                    if (!_isFirstQuestionOfSection(
+                                      currentIndex,
+                                    )) ...[
+                                      OutlinedButton(
+                                        onPressed: currentIndex > 0
+                                            ? () {
+                                                setState(() {
+                                                  currentIndex -= 1;
+                                                });
+                                              }
+                                            : null,
+                                        style: OutlinedButton.styleFrom(
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                          side: const BorderSide(
+                                            color: Color(0xFFCBD5E1),
+                                          ),
+                                          minimumSize: const Size(58, 48),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 14,
+                                            vertical: 12,
+                                          ),
+                                        ),
+                                        child: const Icon(
+                                          Icons.arrow_back,
+                                          size: 18,
+                                          color: Color(0xFF475569),
+                                        ),
                                       ),
-                                    ),
-                                  )
-                                : currentIndex ==
-                                      SectionService.totalQuestionLength
-                                ? Expanded(
-                                    child: ElevatedButton(
-                                      onPressed: _showSubmitTestDialog,
-                                      style: ElevatedButton.styleFrom(
+                                      const SizedBox(width: 12),
+                                    ],
+                                  ],
+                                  Expanded(
+                                    child: OutlinedButton(
+                                      onPressed: () {
+                                        final qid =
+                                            questions[currentIndex]['__id']
+                                                as String;
+                                        _toggleReview(qid);
+                                        if (_canOpenQuestion(
+                                          currentIndex + 1,
+                                        )) {
+                                          setState(() {
+                                            _markCurrentQuestionVisited();
+                                            currentIndex += 1;
+                                          });
+                                        }
+                                      },
+                                      style: OutlinedButton.styleFrom(
                                         shape: RoundedRectangleBorder(
                                           borderRadius: BorderRadius.circular(
                                             12,
                                           ),
+                                        ),
+                                        side: const BorderSide(
+                                          color: Color(0xFF2F6FEB),
                                         ),
                                       ),
                                       child: const Padding(
@@ -1433,45 +1454,145 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                           vertical: 14,
                                         ),
                                         child: Text(
-                                          'Submit Test',
-                                          style: TextStyle(fontSize: 16),
+                                          'Review Later',
+                                          style: TextStyle(
+                                            color: Color(0xFF2F6FEB),
+                                          ),
                                         ),
                                       ),
                                     ),
-                                  )
-                                : ElevatedButton(
-                                    onPressed: () {
-                                      if (_canOpenQuestion(currentIndex + 1)) {
-                                        setState(() {
-                                          _markCurrentQuestionVisited();
-                                          currentIndex += 1;
-                                        });
-                                      }
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      minimumSize: const Size(58, 48),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 12,
-                                      ),
-                                    ),
-                                    child: const Padding(
-                                      padding: EdgeInsets.zero,
-                                      child: Icon(Icons.arrow_forward, size: 18),
-                                    ),
                                   ),
-                          ],
+                                  const SizedBox(width: 12),
+                                  currentIndex ==
+                                              SectionService
+                                                  .unlockedSectionLength &&
+                                          SectionService.isLock
+                                      ? Expanded(
+                                          child: ElevatedButton(
+                                            onPressed: _showSubmitSectionDialog,
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: const Color(
+                                                0xFF1E40AF,
+                                              ),
+                                              foregroundColor: Colors.white,
+                                              elevation: 0,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    vertical: 14,
+                                                    horizontal: 16,
+                                                  ),
+                                            ),
+                                            child: const Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                Icon(
+                                                  Icons.lock_open_rounded,
+                                                  size: 18,
+                                                ),
+                                                SizedBox(width: 8),
+                                                Text(
+                                                  'Submit Section',
+                                                  style: TextStyle(
+                                                    fontSize: 15,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        )
+                                      : currentIndex ==
+                                            SectionService.totalQuestionLength
+                                      ? Expanded(
+                                          child: ElevatedButton(
+                                            onPressed: _showSubmitTestDialog,
+                                            style: ElevatedButton.styleFrom(
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                              ),
+                                            ),
+                                            child: const Padding(
+                                              padding: EdgeInsets.symmetric(
+                                                vertical: 14,
+                                              ),
+                                              child: Text(
+                                                'Submit Test',
+                                                style: TextStyle(fontSize: 16),
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                      : ElevatedButton(
+                                          onPressed: () {
+                                            if (_canOpenQuestion(
+                                              currentIndex + 1,
+                                            )) {
+                                              setState(() {
+                                                _markCurrentQuestionVisited();
+                                                currentIndex += 1;
+                                              });
+                                            }
+                                          },
+                                          style: ElevatedButton.styleFrom(
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                            minimumSize: const Size(58, 48),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 14,
+                                              vertical: 12,
+                                            ),
+                                          ),
+                                          child: const Padding(
+                                            padding: EdgeInsets.zero,
+                                            child: Icon(
+                                              Icons.arrow_forward,
+                                              size: 18,
+                                            ),
+                                          ),
+                                        ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
-                      ],
-                    ),
+                    ],
                   ),
-              ],
+                ),
+              ),
             ),
           ),
-        ),
+          if (_isSubmittingAttempt)
+            const Positioned.fill(
+              child: ColoredBox(
+                color: Color(0x99000000),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text(
+                        'Submitting your test...',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
