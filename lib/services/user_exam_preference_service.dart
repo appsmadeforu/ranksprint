@@ -8,6 +8,7 @@ class UserExamPreferenceService {
   static const String _field = 'lastSelectedExamId';
   static final ValueNotifier<String?> preferredExamNotifier =
       ValueNotifier<String?>(null);
+  static String? _cachedUserId;
 
   static void syncPreferredExamId(String? examId) {
     if (preferredExamNotifier.value == examId) return;
@@ -20,6 +21,16 @@ class UserExamPreferenceService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || availableExamIds.isEmpty) {
       return availableExamIds.isEmpty ? null : availableExamIds.first;
+    }
+
+    if (_cachedUserId != user.uid) {
+      _cachedUserId = user.uid;
+      preferredExamNotifier.value = null;
+    }
+
+    final inMemoryPreferred = preferredExamNotifier.value;
+    if (inMemoryPreferred != null && availableExamIds.contains(inMemoryPreferred)) {
+      return inMemoryPreferred;
     }
 
     try {
@@ -45,6 +56,7 @@ class UserExamPreferenceService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || examId.isEmpty) return;
 
+    _cachedUserId = user.uid;
     syncPreferredExamId(examId);
 
     try {

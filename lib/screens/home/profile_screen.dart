@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'help_faq_screen.dart';
 
 import 'privacy_policy_screen.dart';
@@ -8,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'subscription_screen.dart';
 import 'payment_history_screen.dart';
+import '../../services/subscription_access_service.dart';
 import '../../services/user_exam_preference_service.dart';
 import '../../widgets/top_header.dart';
 import 'edit_profile_screen.dart';
@@ -33,12 +35,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _forceLogoutAndGoToLogin(BuildContext context) async {
-    try {
-      await GoogleSignIn().signOut().timeout(const Duration(seconds: 3));
-      await GoogleSignIn().disconnect().timeout(const Duration(seconds: 3));
-    } catch (_) {
-      // Ignore Google session cleanup errors on devices without stable GMS.
+    if (!kIsWeb) {
+      try {
+        await GoogleSignIn().signOut().timeout(const Duration(seconds: 3));
+        await GoogleSignIn().disconnect().timeout(const Duration(seconds: 3));
+      } catch (_) {
+        // Ignore Google session cleanup errors on devices without stable GMS.
+      }
     }
+    SubscriptionAccessService.clearCache();
     await FirebaseAuth.instance.signOut();
     await _clearAppCache();
     if (!mounted) return;
@@ -175,6 +180,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _logout(BuildContext context) async {
+    SubscriptionAccessService.clearCache();
     await FirebaseAuth.instance.signOut();
   }
 
@@ -367,7 +373,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 TopHeader(
                   selectedExamId: effectiveSelectedExamId,
                   userExamIds: selectedExams,
-                  onExamChanged: (examId) {
+                  onExamChanged: (examId) async {
+                    await UserExamPreferenceService.savePreferredExamId(examId);
+                    if (!mounted) return;
                     setState(() {
                       selectedExamId = examId;
                     });

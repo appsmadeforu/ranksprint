@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -26,59 +27,93 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_phoneController.text.trim().isEmpty) return;
 
     setState(() => _loading = true);
+    final phoneNumber = "+91${_phoneController.text.trim()}";
 
-    await _auth.verifyPhoneNumber(
-      phoneNumber: "+91${_phoneController.text.trim()}",
-      verificationCompleted: (PhoneAuthCredential credential) async {
-        await _auth.signInWithCredential(credential);
-
-        final user = FirebaseAuth.instance.currentUser;
-        if (user != null) {
-          final userDoc = FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid);
-
-          final snapshot = await userDoc.get();
-
-          if (!snapshot.exists) {
-            await userDoc.set({
-              'email': user.email ?? '',
-              'selectedExams': [],
-              'activePlanIds': [],
-              'subscriptionIds': [],
-              'createdAt': Timestamp.now(),
-            });
-          }
-        }
-      },
-      verificationFailed: (FirebaseAuthException e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(e.message ?? "Verification Failed")),
-          );
-        }
-        if (mounted) setState(() => _loading = false);
-      },
-      codeSent: (String verificationId, int? resendToken) {
-        if (mounted) {
-          final phone = "+91${_phoneController.text.trim()}";
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => OtpScreen(
-                verificationId: verificationId,
-                phoneNumber: phone,
-                resendToken: resendToken,
-              ),
+    try {
+      if (kIsWeb) {
+        final confirmationResult = await _auth.signInWithPhoneNumber(
+          phoneNumber,
+        );
+        if (!mounted) return;
+        setState(() => _loading = false);
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OtpScreen(
+              phoneNumber: phoneNumber,
+              confirmationResult: confirmationResult,
             ),
-          );
-        }
-        if (mounted) setState(() => _loading = false);
-      },
-      codeAutoRetrievalTimeout: (String verificationId) {
-        if (mounted) setState(() => _loading = false);
-      },
-    );
+          ),
+        );
+        return;
+      }
+
+      await _auth.verifyPhoneNumber(
+        phoneNumber: phoneNumber,
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          await _auth.signInWithCredential(credential);
+
+          final user = FirebaseAuth.instance.currentUser;
+          if (user != null) {
+            final userDoc = FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid);
+
+            final snapshot = await userDoc.get();
+
+            if (!snapshot.exists) {
+              await userDoc.set({
+                'email': user.email ?? '',
+                'selectedExams': [],
+                'activePlanIds': [],
+                'subscriptionIds': [],
+                'createdAt': Timestamp.now(),
+              });
+            }
+          }
+        },
+        verificationFailed: (FirebaseAuthException e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(e.message ?? "Verification Failed")),
+            );
+          }
+          if (mounted) setState(() => _loading = false);
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          if (mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => OtpScreen(
+                  verificationId: verificationId,
+                  phoneNumber: phoneNumber,
+                  resendToken: resendToken,
+                ),
+              ),
+            );
+          }
+          if (mounted) setState(() => _loading = false);
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {
+          if (mounted) setState(() => _loading = false);
+        },
+      );
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message ?? "Verification Failed")),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Verification Failed")),
+        );
+      }
+    }
   }
 
   // =========================
@@ -89,22 +124,30 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       setState(() => _loading = true);
 
-      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+      late final UserCredential userCredential;
+      if (kIsWeb) {
+        final provider = GoogleAuthProvider();
+        provider.addScope('email');
+        provider.addScope('profile');
+        userCredential = await _auth.signInWithPopup(provider);
+      } else {
+        final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
 
-      if (googleUser == null) {
-        setState(() => _loading = false);
-        return;
+        if (googleUser == null) {
+          setState(() => _loading = false);
+          return;
+        }
+
+        final GoogleSignInAuthentication googleAuth =
+            await googleUser.authentication;
+
+        final credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+
+        userCredential = await _auth.signInWithCredential(credential);
       }
-
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
-
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      final userCredential = await _auth.signInWithCredential(credential);
 
       final user = userCredential.user;
 
@@ -137,7 +180,18 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (mounted) setState(() => _loading = false);
-    } catch (e) {
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(
+          SnackBar(
+            content: Text(e.message ?? "Google Sign-In failed"),
+          ),
+        );
+      }
+    } catch (_) {
       if (mounted) {
         setState(() => _loading = false);
         ScaffoldMessenger.of(

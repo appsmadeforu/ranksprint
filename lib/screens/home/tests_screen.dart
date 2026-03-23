@@ -143,7 +143,9 @@ class _TestsScreenState extends State<TestsScreen> {
             TopHeader(
               selectedExamId: selectedExamId,
               userExamIds: userExamIds,
-              onExamChanged: (value) {
+              onExamChanged: (value) async {
+                await UserExamPreferenceService.savePreferredExamId(value);
+                if (!mounted) return;
                 setState(() {
                   selectedExamId = value;
                 });

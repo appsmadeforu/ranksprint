@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:video_player/video_player.dart';
 
 import 'auth_wrapper.dart';
@@ -18,6 +19,10 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
+    if (kIsWeb) {
+      _showApp = true;
+      return;
+    }
     _videoController = VideoPlayerController.asset('assets/splash_screen.mp4');
     _initializeVideoFuture = _initializeVideo();
   }
@@ -31,7 +36,12 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _initializeVideo() async {
     try {
-      await _videoController!.initialize();
+      await _videoController!.initialize().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          throw Exception('Splash video initialization timed out');
+        },
+      );
       _videoController!
         ..setLooping(false)
         ..addListener(_handlePlaybackState);
@@ -79,7 +89,9 @@ class _SplashScreenState extends State<SplashScreen> {
           if (snapshot.hasError ||
               _videoController == null ||
               !_videoController!.value.isInitialized) {
-            return const SizedBox.expand();
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
           }
 
           final controller = _videoController!;

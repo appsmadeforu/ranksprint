@@ -107,7 +107,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             TopHeader(
               selectedExamId: selectedExamId,
               userExamIds: userExamIds,
-              onExamChanged: (examId) {
+              onExamChanged: (examId) async {
+                await UserExamPreferenceService.savePreferredExamId(examId);
+                if (!mounted) return;
                 setState(() {
                   selectedExamId = examId;
                 });

@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,11 +6,11 @@ import '../../services/content_access_service.dart';
 import '../../services/subscription_access_service.dart';
 import '../../services/user_exam_preference_service.dart';
 import '../../widgets/top_header.dart';
+import 'analytics_screen.dart';
+import 'profile_screen.dart';
 import 'pyq_chapters_screen.dart';
 import 'subscription_screen.dart';
 import 'tests_screen.dart';
-import 'analytics_screen.dart';
-import 'profile_screen.dart';
 
 class PyqScreen extends StatefulWidget {
   const PyqScreen({super.key});
@@ -102,7 +101,7 @@ class _PyqScreenState extends State<PyqScreen> {
     });
   }
 
-  Stream<QuerySnapshot> _getPyqs(String examId) {
+  Stream<QuerySnapshot<Map<String, dynamic>>> _getPyqs(String examId) {
     return ContentAccessService.publishedPyqsQuery(examId).snapshots();
   }
 
@@ -141,17 +140,18 @@ class _PyqScreenState extends State<PyqScreen> {
             TopHeader(
               selectedExamId: effectiveSelectedExamId,
               userExamIds: userExamIds,
-              onExamChanged: (id) {
+              onExamChanged: (id) async {
+                await UserExamPreferenceService.savePreferredExamId(id);
+                if (!mounted) return;
                 setState(() => selectedExamId = id);
                 _loadExamAccess(id);
               },
             ),
             const SizedBox(height: 8),
-
             Expanded(
               child: effectiveSelectedExamId == null
                   ? const Center(child: Text("No exam selected"))
-                  : StreamBuilder<QuerySnapshot>(
+                  : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                       stream: _getPyqs(effectiveSelectedExamId),
                       builder: (context, snapshot) {
                         if (!snapshot.hasData) {
@@ -160,14 +160,10 @@ class _PyqScreenState extends State<PyqScreen> {
                           );
                         }
 
-                        final docs =
-                            snapshot.data!.docs
-                                .cast<
-                                  QueryDocumentSnapshot<Map<String, dynamic>>
-                                >()
-                                .where(_isPublishedPyq)
-                                .toList()
-                              ..sort(ContentAccessService.compareCreatedAtAsc);
+                        final docs = snapshot.data!.docs
+                            .where(_isPublishedPyq)
+                            .toList()
+                          ..sort(ContentAccessService.compareCreatedAtAsc);
 
                         if (docs.isEmpty) {
                           return const Center(child: Text("No PYQs available"));
@@ -184,203 +180,167 @@ class _PyqScreenState extends State<PyqScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                              const SizedBox(height: 12),
-                              const Text(
-                                "Previous Year Questions",
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              const Text(
-                                "Access exam papers organized by subject and chapter",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-
+                                    const SizedBox(height: 12),
+                                    const Text(
+                                      "Previous Year Questions",
+                                      style: TextStyle(
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    const Text(
+                                      "Access exam papers organized by subject and chapter",
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 20),
                                     ListView.builder(
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                itemCount: docs.length,
-                                itemBuilder: (context, index) {
-                                  final doc = docs[index];
-                                  final title = doc['name'] ?? doc.id;
-                                  final data =
-                                      doc.data() as Map<String, dynamic>? ?? {};
-                                  final access =
-                                      ContentAccessService.resolveAccess(
-                                        itemData: data,
-                                        examPlanIds: _examSubscriptionPlanIds,
-                                        activePlanIds: _activePlanIds,
-                                      );
-                                  final requiredPlanIds =
-                                      access.requiredPlanIds;
-                                  final isLocked = access.isLocked;
+                                      shrinkWrap: true,
+                                      physics:
+                                          const NeverScrollableScrollPhysics(),
+                                      itemCount: docs.length,
+                                      itemBuilder: (context, index) {
+                                        final doc = docs[index];
+                                        final title = doc['name'] ?? doc.id;
+                                        final data = doc.data();
+                                        final access =
+                                            ContentAccessService.resolveAccess(
+                                              itemData: data,
+                                              examPlanIds:
+                                                  _examSubscriptionPlanIds,
+                                              activePlanIds: _activePlanIds,
+                                            );
+                                        final requiredPlanIds =
+                                            access.requiredPlanIds;
+                                        final isLocked = access.isLocked;
+                                        final paperCount =
+                                            data['paperCount'] ??
+                                            data['count'] ??
+                                            data['chaptersCount'] ??
+                                            0;
 
-                                  return FutureBuilder<
-                                    QuerySnapshot<Map<String, dynamic>>
-                                  >(
-                                    future:
-                                        ContentAccessService.publishedPyqChaptersQuery(
-                                          examId: selectedExamId!,
-                                          subjectId: doc.id,
-                                        ).get(),
-                                    builder: (context, chapterSnap) {
-                                      final paperCount = chapterSnap.hasData
-                                          ? chapterSnap.data!.docs
-                                                .where(_isPublishedPyq)
-                                                .length
-                                          : 0;
-
-                                      return Container(
-                                        margin: const EdgeInsets.only(
-                                          bottom: 16,
-                                        ),
-                                        child: Stack(
-                                          children: [
-                                            Material(
+                                        return Container(
+                                          margin: const EdgeInsets.only(
+                                            bottom: 16,
+                                          ),
+                                          child: Material(
+                                            borderRadius:
+                                                BorderRadius.circular(18),
+                                            color: Colors.white,
+                                            elevation: 3,
+                                            child: InkWell(
                                               borderRadius:
                                                   BorderRadius.circular(18),
-                                              color: Colors.white,
-                                              elevation: 3,
-                                              child: InkWell(
-                                                borderRadius:
-                                                    BorderRadius.circular(18),
-                                                splashColor: const Color(
-                                                  0xFF2F6FEB,
-                                                ).withValues(alpha: 0.1),
-                                                onTap: isLocked
-                                                    ? () => _openSubscription(
+                                              splashColor: const Color(
+                                                0xFF2F6FEB,
+                                              ).withValues(alpha: 0.1),
+                                              onTap: isLocked
+                                                  ? () => _openSubscription(
                                                         requiredPlanIds:
                                                             requiredPlanIds,
-                                                        itemLabel: title
-                                                            .toString(),
+                                                        itemLabel:
+                                                            title.toString(),
                                                         itemType: 'pyq',
                                                       )
-                                                    : () {
-                                                        Navigator.push(
-                                                          context,
-                                                          MaterialPageRoute(
-                                                            builder: (_) =>
-                                                                PyqChaptersScreen(
-                                                                  examId:
-                                                                      selectedExamId!,
-                                                                  subjectId:
-                                                                      doc.id,
-                                                                  subjectName:
-                                                                      title,
+                                                  : () {
+                                                      Navigator.push(
+                                                        context,
+                                                        MaterialPageRoute(
+                                                          builder: (_) =>
+                                                              PyqChaptersScreen(
+                                                                examId:
+                                                                    effectiveSelectedExamId,
+                                                                subjectId:
+                                                                    doc.id,
+                                                                subjectName:
+                                                                    title,
+                                                              ),
+                                                        ),
+                                                      );
+                                                    },
+                                              child: Padding(
+                                                padding:
+                                                    const EdgeInsets.all(18),
+                                                child: Row(
+                                                  children: [
+                                                    Container(
+                                                      width: 52,
+                                                      height: 52,
+                                                      decoration: BoxDecoration(
+                                                        color: const Color(
+                                                          0xFFEFF3FF,
+                                                        ),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              14,
+                                                            ),
+                                                      ),
+                                                      child: Icon(
+                                                        isLocked
+                                                            ? Icons.lock_outline
+                                                            : Icons.menu_book,
+                                                        color: const Color(
+                                                          0xFF2F6FEB,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 16),
+                                                    Expanded(
+                                                      child: Column(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .start,
+                                                        children: [
+                                                          Text(
+                                                            title,
+                                                            style:
+                                                                const TextStyle(
+                                                                  fontSize: 16,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w600,
                                                                 ),
                                                           ),
-                                                        );
-                                                      },
-                                                child: Padding(
-                                                  padding: const EdgeInsets.all(
-                                                    18,
-                                                  ),
-                                                  child: Row(
-                                                    children: [
-                                                      Container(
-                                                        width: 52,
-                                                        height: 52,
-                                                        decoration: BoxDecoration(
-                                                          color: const Color(
-                                                            0xFFEFF3FF,
+                                                          const SizedBox(
+                                                            height: 4,
                                                           ),
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                14,
-                                                              ),
-                                                        ),
-                                                        child: const Icon(
-                                                          Icons.menu_book,
-                                                          color: Color(
-                                                            0xFF2F6FEB,
+                                                          Text(
+                                                            "$paperCount papers available",
+                                                            style:
+                                                                const TextStyle(
+                                                                  fontSize: 13,
+                                                                  color: Colors
+                                                                      .grey,
+                                                                ),
                                                           ),
-                                                        ),
+                                                        ],
                                                       ),
-                                                      const SizedBox(width: 16),
-                                                      Expanded(
-                                                        child: Column(
-                                                          crossAxisAlignment:
-                                                              CrossAxisAlignment
-                                                                  .start,
-                                                          children: [
-                                                            Text(
-                                                              title,
-                                                              style: const TextStyle(
-                                                                fontSize: 16,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w600,
-                                                              ),
-                                                            ),
-                                                            const SizedBox(
-                                                              height: 4,
-                                                            ),
-                                                            Text(
-                                                              "$paperCount papers available",
-                                                              style:
-                                                                  const TextStyle(
-                                                                    fontSize:
-                                                                        13,
-                                                                    color: Colors
-                                                                        .grey,
-                                                                  ),
-                                                            ),
-                                                          ],
-                                                        ),
+                                                    ),
+                                                    Text(
+                                                      isLocked
+                                                          ? 'Unlock'
+                                                          : 'Open',
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                        color: isLocked
+                                                            ? const Color(
+                                                                0xFFF37A1C,
+                                                              )
+                                                            : Colors.grey,
                                                       ),
-                                                      const Icon(
-                                                        Icons.chevron_right,
-                                                        color: Colors.grey,
-                                                      ),
-                                                    ],
-                                                  ),
+                                                    ),
+                                                  ],
                                                 ),
                                               ),
                                             ),
-
-                                            if (isLocked)
-                                              Positioned.fill(
-                                                child: ClipRRect(
-                                                  borderRadius:
-                                                      BorderRadius.circular(18),
-                                                  child: BackdropFilter(
-                                                    filter: ImageFilter.blur(
-                                                      sigmaX: 4,
-                                                      sigmaY: 4,
-                                                    ),
-                                                    child: Container(
-                                                      color: Colors.white
-                                                          .withValues(
-                                                            alpha: 0.6,
-                                                          ),
-                                                      alignment:
-                                                          Alignment.center,
-                                                      child: const Text(
-                                                        "Unlock with Subscription →",
-                                                        style: TextStyle(
-                                                          color: Color(
-                                                            0xFFF37A1C,
-                                                          ),
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                          ],
-                                        ),
-                                      );
-                                    },
-                                  );
-                                },
+                                          ),
+                                        );
+                                      },
                                     ),
                                   ],
                                 ),
@@ -394,7 +354,6 @@ class _PyqScreenState extends State<PyqScreen> {
           ],
         ),
       ),
-
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: 1,
         onTap: (index) {

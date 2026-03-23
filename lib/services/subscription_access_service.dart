@@ -3,10 +3,16 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 class SubscriptionAccessService {
   const SubscriptionAccessService._();
+  static String? _cachedUserId;
+  static Set<String>? _cachedActivePlanIds;
 
   static Future<Set<String>> getCurrentUserActivePlanIds() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return <String>{};
+
+    if (_cachedUserId == user.uid && _cachedActivePlanIds != null) {
+      return _cachedActivePlanIds!;
+    }
 
     final userDoc = await FirebaseFirestore.instance
         .collection('users')
@@ -17,22 +23,33 @@ class SubscriptionAccessService {
       userDoc.data()?['activePlanIds'] ?? const [],
     ).where((id) => id.isNotEmpty);
     if (inlineActivePlanIds.isNotEmpty) {
-      return inlineActivePlanIds.toSet();
+      _cachedUserId = user.uid;
+      _cachedActivePlanIds = inlineActivePlanIds.toSet();
+      return _cachedActivePlanIds!;
     }
 
     final subscriptionIds = List<String>.from(
       userDoc.data()?['subscriptionIds'] ?? const [],
     );
 
-    if (subscriptionIds.isEmpty) return <String>{};
+    if (subscriptionIds.isEmpty) {
+      _cachedUserId = user.uid;
+      _cachedActivePlanIds = <String>{};
+      return _cachedActivePlanIds!;
+    }
 
     final activePlanIds = <String>{};
 
-    for (final subscriptionId in subscriptionIds) {
-      final subscriptionDoc = await FirebaseFirestore.instance
-          .collection('subscriptions')
-          .doc(subscriptionId)
-          .get();
+    final subscriptionDocs = await Future.wait(
+      subscriptionIds.map(
+        (subscriptionId) => FirebaseFirestore.instance
+            .collection('subscriptions')
+            .doc(subscriptionId)
+            .get(),
+      ),
+    );
+
+    for (final subscriptionDoc in subscriptionDocs) {
 
       if (!subscriptionDoc.exists) continue;
 
@@ -45,7 +62,14 @@ class SubscriptionAccessService {
       }
     }
 
+    _cachedUserId = user.uid;
+    _cachedActivePlanIds = activePlanIds;
     return activePlanIds;
+  }
+
+  static void clearCache() {
+    _cachedUserId = null;
+    _cachedActivePlanIds = null;
   }
 
   static List<String> readPlanIds(Map<String, dynamic>? data) {

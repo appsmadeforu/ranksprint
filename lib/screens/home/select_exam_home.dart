@@ -90,6 +90,7 @@ class _SelectExamHomeState extends State<SelectExamHome> {
           'Add a goal description to stay focused.',
     );
     DateTime? selectedDate = goal?.targetDate;
+    bool isSaving = false;
 
     final saved = await showDialog<bool>(
       context: context,
@@ -157,11 +158,19 @@ class _SelectExamHomeState extends State<SelectExamHome> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  onPressed: isSaving
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(false),
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  onPressed: () async {
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          setDialogState(() {
+                            isSaving = true;
+                          });
+                          try {
                     final normalizedSelectedDate = selectedDate == null
                         ? null
                         : DateTime(
@@ -177,25 +186,51 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                           content: Text('Goal target date cannot be in the past.'),
                         ),
                       );
+                      setDialogState(() {
+                        isSaving = false;
+                      });
                       return;
                     }
-                    await FirebaseFirestore.instance
-                        .collection('users')
-                        .doc(userId)
-                        .set({
-                          'currentGoal': {
-                            'title': titleController.text.trim(),
-                            'description': descriptionController.text.trim(),
-                            'targetDate': normalizedSelectedDate == null
-                                ? null
-                                : Timestamp.fromDate(normalizedSelectedDate),
-                            'examId': activeExam?.examId,
-                            'updatedAt': FieldValue.serverTimestamp(),
-                          },
-                        }, SetOptions(merge: true));
-                    if (!dialogContext.mounted) return;
-                    Navigator.pop(dialogContext, true);
-                  },
+                          await FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(userId)
+                              .set({
+                                'currentGoal': {
+                                  'title': titleController.text.trim(),
+                                  'description': descriptionController.text.trim(),
+                                  'targetDate': normalizedSelectedDate == null
+                                      ? null
+                                      : Timestamp.fromDate(normalizedSelectedDate),
+                                  'examId': activeExam?.examId,
+                                  'updatedAt': FieldValue.serverTimestamp(),
+                                },
+                              }, SetOptions(merge: true));
+                          if (!dialogContext.mounted) return;
+                          Navigator.pop(dialogContext, true);
+                        } on FirebaseException catch (e) {
+                          if (!dialogContext.mounted) return;
+                          ScaffoldMessenger.of(dialogContext).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                e.message ?? 'Unable to save goal right now.',
+                              ),
+                            ),
+                          );
+                          setDialogState(() {
+                            isSaving = false;
+                          });
+                        } catch (_) {
+                          if (!dialogContext.mounted) return;
+                          ScaffoldMessenger.of(dialogContext).showSnackBar(
+                            const SnackBar(
+                              content: Text('Unable to save goal right now.'),
+                            ),
+                          );
+                          setDialogState(() {
+                            isSaving = false;
+                          });
+                        }
+                        },
                   child: const Text('Save'),
                 ),
               ],
@@ -392,7 +427,10 @@ class _SelectExamHomeState extends State<SelectExamHome> {
             ),
     );
 
-    final goalData = userData['currentGoal'] as Map<String, dynamic>?;
+    final rawGoalData = userData['currentGoal'];
+    final goalData = rawGoalData is Map
+        ? Map<String, dynamic>.from(rawGoalData)
+        : null;
     final currentGoal = _GoalVm.fromMap(goalData, fallbackExam: activeExam);
 
     return _HomeVm(
@@ -419,7 +457,10 @@ class _SelectExamHomeState extends State<SelectExamHome> {
     final selectedExams = List<String>.from(
       userData['selectedExams'] ?? const [],
     );
-    final currentGoal = userData['currentGoal'] as Map<String, dynamic>?;
+    final rawCurrentGoal = userData['currentGoal'];
+    final currentGoal = rawCurrentGoal is Map
+        ? Map<String, dynamic>.from(rawCurrentGoal)
+        : null;
     final signature =
         '${(userData['name'] ?? '').toString()}|${selectedExams.join(',')}|'
         '${(currentGoal?['title'] ?? '').toString()}|'
