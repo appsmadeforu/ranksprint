@@ -39,6 +39,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
   Set<String> markedForReview = {};
   Set<String> visited = {};
   Set<String> reported = {};
+  Map<String, String> reportedComments = {};
 
   Timer? _timer;
   int remainingSeconds = 0;
@@ -71,20 +72,37 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
         showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            title: const Text("Test Submitted"),
-            content: const Text(
-              "You left the exam screen. The test has been submitted automatically.",
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  _submitAttempt();
-                },
-                child: const Text("OK"),
+          builder: (dialogContext) {
+            var isSubmitting = false;
+            return StatefulBuilder(
+              builder: (context, setDialogState) => AlertDialog(
+                title: const Text("Test Submitted"),
+                content: Text(
+                  isSubmitting
+                      ? "Submitting your test. Please wait..."
+                      : "You left the exam screen. The test will now be submitted automatically.",
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: isSubmitting
+                        ? null
+                        : () async {
+                            setDialogState(() => isSubmitting = true);
+                            Navigator.of(dialogContext).pop();
+                            await _submitAttempt();
+                          },
+                    child: isSubmitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text("OK"),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       } else {
         _showWarning();
@@ -161,6 +179,8 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
       'startedAt': Timestamp.now(),
       'status': 'in_progress',
       'answers': {},
+      'reported': <String>[],
+      'reportedComments': <String, String>{},
     };
     await ref.set(attemptData);
 
@@ -240,6 +260,8 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
       answers = {};
       markedForReview = {};
       visited = {};
+      reported = {};
+      reportedComments = {};
     });
 
     _timer?.cancel();
@@ -269,6 +291,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
       'answers': answers,
       'markedForReview': markedForReview.toList(),
       'reported': reported.toList(),
+      'reportedComments': reportedComments,
       'visited': visited.toList(),
       'lastSavedAt': Timestamp.now(),
     });
@@ -699,49 +722,123 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
   }
 
   void _showAddForReviewQuestionDialog(String qid) {
+    final existingComment = reportedComments[qid]?.trim() ?? '';
+    final controller = TextEditingController(text: existingComment);
+    var errorText = '';
+    final isEditing = reported.contains(qid);
+
     showDialog(
       context: context,
       barrierDismissible: true, // allows closing by tapping outside
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text("Report Question"),
-          content: const Text("Are you sure you want to report this question?"),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(); // Close dialog (Do nothing)
-              },
-              child: const Text("No"),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.of(context).pop(); // Close dialog first
-                final wasAlreadyReported = reported.contains(qid);
-                if (!wasAlreadyReported) {
-                  setState(() {
-                    reported.add(qid);
-                  });
-                }
-                await _saveProgress();
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      wasAlreadyReported
-                          ? 'Question is already reported.'
-                          : 'Question reported successfully.',
-                    ),
-                    backgroundColor: const Color(0xFFB91C1C),
-                    behavior: SnackBarBehavior.floating,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (_, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Row(
+                children: [
+                  Expanded(
+                    child: Text(isEditing ? "Edit Report" : "Report Question"),
                   ),
-                );
-              },
-              child: const Text("Yes"),
-            ),
-          ],
+                  if (isEditing)
+                    IconButton(
+                      tooltip: 'Undo report',
+                      onPressed: () async {
+                        Navigator.of(dialogContext).pop();
+                        setState(() {
+                          reported.remove(qid);
+                          reportedComments.remove(qid);
+                        });
+                        await _saveProgress();
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(this.context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Report removed successfully.'),
+                            backgroundColor: Color(0xFF15803D),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      },
+                      icon: const Icon(
+                        Icons.undo_rounded,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isEditing
+                        ? "Update what is wrong with this question."
+                        : "Tell us what is wrong with this question.",
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    maxLines: 4,
+                    minLines: 3,
+                    textInputAction: TextInputAction.done,
+                    decoration: InputDecoration(
+                      hintText:
+                          'Example: option B is correct, but the marked answer says C.',
+                      errorText: errorText.isEmpty ? null : errorText,
+                      border: const OutlineInputBorder(),
+                    ),
+                    onChanged: (_) {
+                      if (errorText.isNotEmpty) {
+                        setDialogState(() => errorText = '');
+                      }
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                  },
+                  child: const Text("Cancel"),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    final comment = controller.text.trim();
+                    if (comment.isEmpty) {
+                      setDialogState(() {
+                        errorText = 'Please describe what is wrong with the question.';
+                      });
+                      return;
+                    }
+
+                    Navigator.of(dialogContext).pop();
+                    setState(() {
+                      reported.add(qid);
+                      reportedComments[qid] = comment;
+                    });
+                    await _saveProgress();
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(this.context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          isEditing
+                              ? 'Report updated successfully.'
+                              : 'Question reported successfully.',
+                        ),
+                        backgroundColor: const Color(0xFF15803D),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                  child: Text(isEditing ? "Update" : "Report"),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -1570,24 +1667,86 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
             ),
           ),
           if (_isSubmittingAttempt)
-            const Positioned.fill(
+            Positioned.fill(
               child: ColoredBox(
                 color: Color(0x99000000),
                 child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 16),
-                      Text(
-                        'Submitting your test...',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                  child: Container(
+                    width: 280,
+                    margin: const EdgeInsets.symmetric(horizontal: 24),
+                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xFFE3E8F5)),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x180E1A33),
+                          blurRadius: 18,
+                          offset: Offset(0, 8),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 34,
+                              height: 34,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEFF3FF),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Padding(
+                                padding: EdgeInsets.all(7),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.4,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Color(0xFF2F3E8F),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                'Submitting your test',
+                                style: TextStyle(
+                                  color: Color(0xFF172554),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  decoration: TextDecoration.none,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(999),
+                          child: const LinearProgressIndicator(
+                            minHeight: 8,
+                            backgroundColor: Color(0xFFE6ECFA),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Color(0xFF2F3E8F),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Saving answers, calculating score, and preparing your result screen.',
+                          style: TextStyle(
+                            color: Color(0xFF6B7280),
+                            fontSize: 12,
+                            height: 1.4,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),

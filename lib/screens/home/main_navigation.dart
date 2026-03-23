@@ -17,6 +17,7 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   late int _index;
   late final List<bool> _visited;
+  bool _hasScheduledPreload = false;
 
   @override
   void initState() {
@@ -24,6 +25,20 @@ class _MainNavigationState extends State<MainNavigation> {
     _index = widget.initialIndex;
     _visited = List<bool>.filled(5, false);
     _visited[_index] = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _preloadRemainingTabs();
+    });
+  }
+
+  void _preloadRemainingTabs() {
+    if (!mounted || _hasScheduledPreload) return;
+    _hasScheduledPreload = true;
+    if (_visited.every((visited) => visited)) return;
+    setState(() {
+      for (var i = 0; i < _visited.length; i++) {
+        _visited[i] = true;
+      }
+    });
   }
 
   void navigateToSubscription() {
@@ -36,14 +51,18 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _index,
-        children: List<Widget>.generate(5, (index) {
-          if (!_visited[index]) {
-            return const SizedBox.shrink();
-          }
-          return _buildScreen(index);
-        }),
+      backgroundColor: const Color(0xFFF5F6FA),
+      body: Container(
+        color: const Color(0xFFF5F6FA),
+        child: IndexedStack(
+          index: _index,
+          children: List<Widget>.generate(5, (index) {
+            if (!_visited[index]) {
+              return const SizedBox.shrink();
+            }
+            return _buildScreen(index);
+          }),
+        ),
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _index,
@@ -51,6 +70,8 @@ class _MainNavigationState extends State<MainNavigation> {
           _index = value;
           _visited[value] = true;
         }),
+        backgroundColor: const Color(0xFFF5F6FA),
+        elevation: 0,
         selectedItemColor: const Color(0xFF2F3E8F),
         unselectedItemColor: Colors.grey,
         type: BottomNavigationBarType.fixed,

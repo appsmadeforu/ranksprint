@@ -28,6 +28,7 @@ class TopHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final currentUser = FirebaseAuth.instance.currentUser;
     return Container(
       height: 55,
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -85,119 +86,136 @@ class TopHeader extends StatelessWidget {
                     Flexible(
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 220),
-                        child: FutureBuilder<QuerySnapshot>(
-                          future: ContentAccessService.activeExamsQuery().get(),
-                          builder: (context, snapshot) {
-                            if (!snapshot.hasData) {
-                              return const SizedBox();
-                            }
+                        child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                          stream: currentUser == null
+                              ? null
+                              : FirebaseFirestore.instance
+                                    .collection('users')
+                                    .doc(currentUser.uid)
+                                    .snapshots(),
+                          builder: (context, userSnap) {
+                            final liveUserExamIds =
+                                userSnap.data?.data()?['selectedExams'] is List
+                                ? List<String>.from(
+                                    userSnap.data?.data()?['selectedExams'] ??
+                                        const [],
+                                  )
+                                : userExamIds;
 
-                            final exams = snapshot.data!.docs;
-                            final unlockedExamIds = exams
-                                .where((exam) => userExamIds.contains(exam.id))
-                                .map((exam) => exam.id)
-                                .toList();
-                            final validSelectedExamId =
-                                unlockedExamIds.contains(selectedExamId)
-                                ? selectedExamId
-                                : (unlockedExamIds.isNotEmpty
-                                      ? unlockedExamIds.first
-                                      : null);
+                            return FutureBuilder<QuerySnapshot>(
+                              future: ContentAccessService.activeExamsQuery().get(),
+                              builder: (context, snapshot) {
+                                if (!snapshot.hasData) {
+                                  return const SizedBox();
+                                }
 
-                            return Container(
-                              height: 40,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF8FAFF),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: const Color(0xFFDCE4F5),
-                                ),
-                              ),
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<String>(
-                                  value: validSelectedExamId,
-                                  isExpanded: true,
-                                  icon: const Icon(
-                                    Icons.keyboard_arrow_down_rounded,
-                                    color: Color(0xFF64748B),
+                                final exams = snapshot.data!.docs;
+                                final unlockedExamIds = exams
+                                    .where((exam) => liveUserExamIds.contains(exam.id))
+                                    .map((exam) => exam.id)
+                                    .toList();
+                                final validSelectedExamId =
+                                    unlockedExamIds.contains(selectedExamId)
+                                    ? selectedExamId
+                                    : (unlockedExamIds.isNotEmpty
+                                          ? unlockedExamIds.first
+                                          : null);
+
+                                return Container(
+                                  height: 40,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
                                   ),
-                                  borderRadius: BorderRadius.circular(16),
-                                  dropdownColor: Colors.white,
-                                  style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF1F2937),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF8FAFF),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: const Color(0xFFDCE4F5),
+                                    ),
                                   ),
-                                  selectedItemBuilder: (context) {
-                                    return exams.map((exam) {
-                                      final label = (exam['name'] ?? exam.id)
-                                          .toString();
-                                      return Align(
-                                        alignment: Alignment.centerLeft,
-                                        child: Text(
-                                          label,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w700,
-                                            color: Color(0xFF1F2937),
-                                          ),
-                                        ),
-                                      );
-                                    }).toList();
-                                  },
-                                  items: exams.map((exam) {
-                                    final isUnlocked = userExamIds.contains(
-                                      exam.id,
-                                    );
-                                    final label = (exam['name'] ?? exam.id)
-                                        .toString();
-                                    return DropdownMenuItem<String>(
-                                      value: exam.id,
-                                      enabled: isUnlocked,
-                                      child: Row(
-                                        children: [
-                                          Expanded(
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: validSelectedExamId,
+                                      isExpanded: true,
+                                      icon: const Icon(
+                                        Icons.keyboard_arrow_down_rounded,
+                                        color: Color(0xFF64748B),
+                                      ),
+                                      borderRadius: BorderRadius.circular(16),
+                                      dropdownColor: Colors.white,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF1F2937),
+                                      ),
+                                      selectedItemBuilder: (context) {
+                                        return exams.map((exam) {
+                                          final label = (exam['name'] ?? exam.id)
+                                              .toString();
+                                          return Align(
+                                            alignment: Alignment.centerLeft,
                                             child: Text(
                                               label,
+                                              maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w600,
-                                                color: isUnlocked
-                                                    ? const Color(0xFF1F2937)
-                                                    : const Color(0xFF9CA3AF),
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w700,
+                                                color: Color(0xFF1F2937),
                                               ),
                                             ),
+                                          );
+                                        }).toList();
+                                      },
+                                      items: exams.map((exam) {
+                                        final isUnlocked = liveUserExamIds
+                                            .contains(exam.id);
+                                        final label = (exam['name'] ?? exam.id)
+                                            .toString();
+                                        return DropdownMenuItem<String>(
+                                          value: exam.id,
+                                          enabled: isUnlocked,
+                                          child: Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  label,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: isUnlocked
+                                                        ? const Color(0xFF1F2937)
+                                                        : const Color(0xFF9CA3AF),
+                                                  ),
+                                                ),
+                                              ),
+                                              if (!isUnlocked)
+                                                const Padding(
+                                                  padding: EdgeInsets.only(left: 8),
+                                                  child: Icon(
+                                                    Icons.lock_outline_rounded,
+                                                    size: 16,
+                                                    color: Color(0xFF9CA3AF),
+                                                  ),
+                                                ),
+                                            ],
                                           ),
-                                          if (!isUnlocked)
-                                            const Padding(
-                                              padding: EdgeInsets.only(left: 8),
-                                              child: Icon(
-                                                Icons.lock_outline_rounded,
-                                                size: 16,
-                                                color: Color(0xFF9CA3AF),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    );
-                                  }).toList(),
-                                  onChanged: (value) {
-                                    if (value != null &&
-                                        userExamIds.contains(value)) {
-                                      UserExamPreferenceService.savePreferredExamId(
-                                        value,
-                                      );
-                                      onExamChanged(value);
-                                    }
-                                  },
-                                ),
-                              ),
+                                        );
+                                      }).toList(),
+                                      onChanged: (value) {
+                                        if (value != null &&
+                                            liveUserExamIds.contains(value)) {
+                                          UserExamPreferenceService.savePreferredExamId(
+                                            value,
+                                          );
+                                          onExamChanged(value);
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                );
+                              },
                             );
                           },
                         ),

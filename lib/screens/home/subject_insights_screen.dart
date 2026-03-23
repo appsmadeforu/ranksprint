@@ -25,8 +25,26 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
   final Map<String, Map<String, String>> _sectionNameCache =
       <String, Map<String, String>>{};
   final Map<String, String> _testNameCache = <String, String>{};
-  _InsightMetric _metric = _InsightMetric.score;
+  final ValueNotifier<_InsightMetric> _metricNotifier = ValueNotifier(
+    _InsightMetric.score,
+  );
+  late final PageController _metricPageController;
   double? _competitionAverageCache;
+
+  @override
+  void initState() {
+    super.initState();
+    _metricPageController = PageController(
+      initialPage: _InsightMetric.score.index,
+    );
+  }
+
+  @override
+  void dispose() {
+    _metricPageController.dispose();
+    _metricNotifier.dispose();
+    super.dispose();
+  }
 
   Query<Map<String, dynamic>> _attemptsQuery(String userId) {
     return FirebaseFirestore.instance
@@ -145,9 +163,18 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                   ],
                 ),
                 const SizedBox(height: 14),
-                _metricTabs(),
-                const SizedBox(height: 14),
-                _trendCard(vm),
+                ValueListenableBuilder<_InsightMetric>(
+                  valueListenable: _metricNotifier,
+                  builder: (context, metric, child) {
+                    return Column(
+                      children: [
+                        _metricTabs(metric),
+                        const SizedBox(height: 14),
+                        _trendCard(vm, metric),
+                      ],
+                    );
+                  },
+                ),
                 const SizedBox(height: 14),
                 const Text(
                   'All Tests',
@@ -285,7 +312,7 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     );
   }
 
-  Widget _metricTabs() {
+  Widget _metricTabs(_InsightMetric selectedMetric) {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
@@ -295,10 +322,10 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
       ),
       child: Row(
         children: _InsightMetric.values.map((metric) {
-          final selected = metric == _metric;
+          final selected = metric == selectedMetric;
           return Expanded(
             child: InkWell(
-              onTap: () => setState(() => _metric = metric),
+              onTap: () => _animateToMetric(metric),
               borderRadius: BorderRadius.circular(12),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
@@ -326,7 +353,7 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     );
   }
 
-  Widget _trendCard(_SubjectInsightsVm vm) {
+  Widget _trendCard(_SubjectInsightsVm vm, _InsightMetric metric) {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
       decoration: BoxDecoration(
@@ -344,51 +371,93 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            _metric == _InsightMetric.rank
-                ? 'Rank Trend'
-                : _metric == _InsightMetric.subjects
-                ? _subjectTrendTitle(vm)
-                : 'Score Trend',
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF1D2D5B),
+          SizedBox(
+            height: 264,
+            child: PageView.builder(
+              controller: _metricPageController,
+              onPageChanged: _handleMetricPageChanged,
+              itemCount: _InsightMetric.values.length,
+              itemBuilder: (context, index) {
+                final pageMetric = _InsightMetric.values[index];
+                return AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  child: _trendCardPage(vm, pageMetric),
+                );
+              },
             ),
-          ),
-          const SizedBox(height: 2),
-           Text(
-             _metric == _InsightMetric.rank
-                 ? 'Lower rank is better across your recent attempts'
-                 : _metric == _InsightMetric.subjects
-                 ? _subjectTrendSubtitle(vm)
-                 : '',
-             style: const TextStyle(fontSize: 10, color: Color(0xFF97A1BA)),
-           ),
-           SizedBox(height: _metric == _InsightMetric.score ? 8 : 14),
-           SizedBox(
-            height: 182,
-            child: _InsightTrendChart(
-              points: vm.points,
-              metric: _metric,
-              comparisonValue: vm.comparisonValue(_metric),
-              subjectSeries: vm.subjectSeries,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 14,
-            runSpacing: 8,
-            alignment: WrapAlignment.center,
-            children: _buildLegendItems(vm),
           ),
         ],
       ),
     );
   }
 
-  List<Widget> _buildLegendItems(_SubjectInsightsVm vm) {
-    if (_metric == _InsightMetric.subjects) {
+  Widget _trendCardPage(_SubjectInsightsVm vm, _InsightMetric metric) {
+    return Column(
+      key: ValueKey(metric),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          metric == _InsightMetric.rank
+              ? 'Rank Trend'
+              : metric == _InsightMetric.subjects
+              ? _subjectTrendTitle(vm)
+              : 'Score Trend',
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF1D2D5B),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          metric == _InsightMetric.rank
+              ? 'Lower rank is better across your recent attempts'
+              : metric == _InsightMetric.subjects
+              ? _subjectTrendSubtitle(vm)
+              : '',
+          style: const TextStyle(fontSize: 10, color: Color(0xFF97A1BA)),
+        ),
+        SizedBox(height: metric == _InsightMetric.score ? 8 : 12),
+        Expanded(
+          child: _InsightTrendChart(
+            points: vm.points,
+            metric: metric,
+            comparisonValue: vm.comparisonValue(metric),
+            subjectSeries: vm.subjectSeries,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 12,
+          runSpacing: 6,
+          alignment: WrapAlignment.center,
+          children: _buildLegendItems(vm, metric),
+        ),
+      ],
+    );
+  }
+
+  void _animateToMetric(_InsightMetric metric) {
+    _metricNotifier.value = metric;
+    if (!_metricPageController.hasClients) return;
+    _metricPageController.animateToPage(
+      metric.index,
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _handleMetricPageChanged(int index) {
+    final metric = _InsightMetric.values[index];
+    if (_metricNotifier.value == metric) return;
+    _metricNotifier.value = metric;
+  }
+
+  List<Widget> _buildLegendItems(
+    _SubjectInsightsVm vm,
+    _InsightMetric metric,
+  ) {
+    if (metric == _InsightMetric.subjects) {
       return vm.subjectSeries
           .map((series) => _LegendDot(color: series.color, label: series.name))
           .toList();
@@ -396,14 +465,14 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
 
     return [
       _LegendDot(
-        color: _metric == _InsightMetric.rank
+        color: metric == _InsightMetric.rank
             ? const Color(0xFF8B5CFF)
             : const Color(0xFF253C8B),
-        label: _metric == _InsightMetric.rank ? 'Your Rank' : 'Your Score',
+        label: metric == _InsightMetric.rank ? 'Your Rank' : 'Your Score',
       ),
       _LegendDot(
         color: const Color(0xFF6C88FF),
-        label: _metric == _InsightMetric.rank ? 'Best Rank' : 'Competition Avg',
+        label: metric == _InsightMetric.rank ? 'Best Rank' : 'Competition Avg',
         hollow: true,
       ),
     ];
@@ -838,122 +907,76 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     final overallSubjects = <String, _SubjectMetric>{};
     final points = <_InsightPoint>[];
     final attemptCards = <_AttemptInsight>[];
+    final computedAttempts = await Future.wait(
+      attempts.asMap().entries.map(
+        (entry) => _buildAttemptInsight(
+          entry.key,
+          entry.value,
+          resultMap[entry.value.id] ?? const <String, dynamic>{},
+        ),
+      ),
+    );
+
     double previousScore = 0;
     double previousSubjectAverage = 0;
     int previousRank = 0;
 
-    for (int index = 0; index < attempts.length; index++) {
-      final doc = attempts[index];
-      final data = doc.data();
-      final result = resultMap[doc.id] ?? const <String, dynamic>{};
-      final localSubjects = <String, _SubjectMetric>{};
-      final examId = (data['examId'] ?? '').toString();
-      final testId = (data['testId'] ?? '').toString();
-      final questions = await _loadQuestions(
-        examId,
-        testId,
-      );
-      final sectionNames = await _loadSectionNames(examId, testId);
-      final answers = _answersMap(data['answers']);
-      final perQuestionSeconds =
-          _secondsPerQuestion(data, result, math.max(questions.length, 1)) ??
-          0.0;
-
-      for (final qDoc in questions) {
-        final question = qDoc.data();
-        final subjectName = _subjectName(question, sectionNames);
-        final selected = _normalizeAnswerValue(answers[qDoc.id] ?? '');
-        final correct = _optionLetter(question['correctOption']);
-        final attempted = selected.isNotEmpty;
-        final isCorrect = attempted && selected == correct;
-
+    for (final computed in computedAttempts) {
+      for (final subject in computed.subjects) {
         final globalMetric = overallSubjects.putIfAbsent(
-          subjectName,
-          () => _SubjectMetric(subjectName),
+          subject.name,
+          () => _SubjectMetric(subject.name),
         );
-        final localMetric = localSubjects.putIfAbsent(
-          subjectName,
-          () => _SubjectMetric(subjectName),
-        );
-
-        for (final metric in [globalMetric, localMetric]) {
-          metric.total++;
-          if (attempted) metric.attempted++;
-          if (isCorrect) metric.correct++;
-          metric.totalSeconds += perQuestionSeconds;
-        }
+        globalMetric.total += subject.total;
+        globalMetric.attempted += subject.attempted;
+        globalMetric.correct += subject.correct;
+        globalMetric.totalSeconds += subject.totalSeconds;
       }
-
-      final date = _attemptDate(data) ?? DateTime.now();
-      final score = _scoreValue(data, result);
-      final scoreOutOf = _scoreOutOf(data, result, questions);
-      final accuracyPercent = _accuracyPercent(data, result);
-      final rank = _toInt(result['rank']) ?? _toInt(data['rank']) ?? 0;
-      final percentile = (_toDouble(result['percentile']) ?? accuracyPercent)
-          .clamp(0.0, 100.0);
-      final subjects = localSubjects.values.toList()
-        ..sort((a, b) => b.accuracy.compareTo(a.accuracy));
-      final subjectBreakdown = subjects
-          .map(
-            (subject) => _AttemptSubjectBreakdown(
-              name: subject.name,
-              value: subject.accuracy.clamp(0.0, 100.0),
-            ),
-          )
-          .toList();
-      final subjectScores = <String, double>{
-        for (final subject in subjects) subject.name: subject.accuracy,
-      };
-      final subjectAverage = subjects.isEmpty
-          ? 0.0
-          : subjects.map((item) => item.accuracy).reduce((a, b) => a + b) /
-                subjects.length;
-      final testName = await _testName(
-        (data['examId'] ?? '').toString(),
-        (data['testId'] ?? '').toString(),
-        fallbackIndex: index + 1,
-      );
 
       points.add(
         _InsightPoint(
-          label: 'T${index + 1}',
-          date: date,
-          score: score,
-          rank: rank,
-          subjectAverage: subjectAverage,
-          coverage: subjects.length.toDouble(),
-          subjectScores: subjectScores,
+          label: 'T${computed.index + 1}',
+          date: computed.date,
+          score: computed.score,
+          rank: computed.rank,
+          subjectAverage: computed.subjectAverage,
+          coverage: computed.subjects.length.toDouble(),
+          subjectScores: computed.subjectScores,
         ),
       );
       attemptCards.add(
         _AttemptInsight(
-          id: doc.id,
-          testName: testName,
-          date: date,
-          score: score,
-          scoreOutOf: scoreOutOf,
-          scoreDelta: index == 0 ? 0 : score - previousScore,
-          rank: rank,
-          rankDelta: index == 0 || rank == 0 || previousRank == 0
+          id: computed.id,
+          testName: computed.testName,
+          date: computed.date,
+          score: computed.score,
+          scoreOutOf: computed.scoreOutOf,
+          scoreDelta: computed.index == 0 ? 0 : computed.score - previousScore,
+          rank: computed.rank,
+          rankDelta: computed.index == 0 || computed.rank == 0 || previousRank == 0
               ? 0
-              : rank - previousRank,
-          percentile: percentile,
-          subjectAverage: subjectAverage,
-          subjectDelta: index == 0
+              : computed.rank - previousRank,
+          percentile: computed.percentile,
+          subjectAverage: computed.subjectAverage,
+          subjectDelta: computed.index == 0
               ? 0
-              : subjectAverage - previousSubjectAverage,
-          bestSubject: subjects.isEmpty ? 'General' : subjects.first.name,
-          focusSubject: subjects.isEmpty ? 'General' : subjects.last.name,
-          subjectCount: subjects.length,
-          subjectBreakdown: subjectBreakdown,
-          attemptData: data,
-          resultData: result,
+              : computed.subjectAverage - previousSubjectAverage,
+          bestSubject: computed.subjects.isEmpty
+              ? 'General'
+              : computed.subjects.first.name,
+          focusSubject: computed.subjects.isEmpty
+              ? 'General'
+              : computed.subjects.last.name,
+          subjectCount: computed.subjects.length,
+          subjectBreakdown: computed.subjectBreakdown,
+          attemptData: computed.attemptData,
+          resultData: computed.resultData,
         ),
       );
 
-      previousScore = score;
-      previousRank = rank == 0 ? previousRank : rank;
-      previousSubjectAverage = subjectAverage;
+      previousScore = computed.score;
+      previousRank = computed.rank == 0 ? previousRank : computed.rank;
+      previousSubjectAverage = computed.subjectAverage;
     }
 
     final topSubjects = overallSubjects.values.toList()
@@ -1219,6 +1242,90 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     return (_toDouble(result['score']) ?? 0).clamp(0.0, 100.0);
   }
 
+  Future<_ComputedAttemptInsight> _buildAttemptInsight(
+    int index,
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    Map<String, dynamic> result,
+  ) async {
+    final data = doc.data();
+    final examId = (data['examId'] ?? '').toString();
+    final testId = (data['testId'] ?? '').toString();
+    final futures = await Future.wait<dynamic>([
+      _loadQuestions(examId, testId),
+      _loadSectionNames(examId, testId),
+      _testName(examId, testId, fallbackIndex: index + 1),
+    ]);
+    final questions =
+        futures[0] as List<QueryDocumentSnapshot<Map<String, dynamic>>>;
+    final sectionNames = futures[1] as Map<String, String>;
+    final testName = futures[2] as String;
+
+    final localSubjects = <String, _SubjectMetric>{};
+    final answers = _answersMap(data['answers']);
+    final perQuestionSeconds =
+        _secondsPerQuestion(data, result, math.max(questions.length, 1)) ?? 0.0;
+
+    for (final qDoc in questions) {
+      final question = qDoc.data();
+      final subjectName = _subjectName(question, sectionNames);
+      final selected = _normalizeAnswerValue(answers[qDoc.id] ?? '');
+      final correct = _optionLetter(question['correctOption']);
+      final attempted = selected.isNotEmpty;
+      final isCorrect = attempted && selected == correct;
+
+      final localMetric = localSubjects.putIfAbsent(
+        subjectName,
+        () => _SubjectMetric(subjectName),
+      );
+      localMetric.total++;
+      if (attempted) localMetric.attempted++;
+      if (isCorrect) localMetric.correct++;
+      localMetric.totalSeconds += perQuestionSeconds;
+    }
+
+    final subjects = localSubjects.values.toList()
+      ..sort((a, b) => b.accuracy.compareTo(a.accuracy));
+    final subjectBreakdown = subjects
+        .map(
+          (subject) => _AttemptSubjectBreakdown(
+            name: subject.name,
+            value: subject.accuracy.clamp(0.0, 100.0),
+          ),
+        )
+        .toList();
+    final subjectScores = <String, double>{
+      for (final subject in subjects) subject.name: subject.accuracy,
+    };
+    final subjectAverage = subjects.isEmpty
+        ? 0.0
+        : subjects.map((item) => item.accuracy).reduce((a, b) => a + b) /
+              subjects.length;
+    final date = _attemptDate(data) ?? DateTime.now();
+    final score = _scoreValue(data, result);
+    final scoreOutOf = _scoreOutOf(data, result, questions);
+    final accuracyPercent = _accuracyPercent(data, result);
+    final rank = _toInt(result['rank']) ?? _toInt(data['rank']) ?? 0;
+    final percentile =
+        (_toDouble(result['percentile']) ?? accuracyPercent).clamp(0.0, 100.0);
+
+    return _ComputedAttemptInsight(
+      index: index,
+      id: doc.id,
+      attemptData: data,
+      resultData: result,
+      testName: testName,
+      date: date,
+      score: score,
+      scoreOutOf: scoreOutOf,
+      rank: rank,
+      percentile: percentile,
+      subjects: subjects,
+      subjectBreakdown: subjectBreakdown,
+      subjectScores: subjectScores,
+      subjectAverage: subjectAverage,
+    );
+  }
+
   Future<void> _openExamResultScreen(_AttemptInsight attempt) async {
     final examId = (attempt.attemptData['examId'] ?? '').toString();
     final testId = (attempt.attemptData['testId'] ?? '').toString();
@@ -1349,55 +1456,6 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     return null;
   }
 
-  String _headlinePrimary(_SubjectInsightsVm vm) {
-    switch (_metric) {
-      case _InsightMetric.score:
-        return vm.latestScore.toStringAsFixed(0);
-      case _InsightMetric.rank:
-        return vm.latestRank <= 0 ? '-' : '#${vm.latestRank}';
-      case _InsightMetric.subjects:
-        return vm.latestSubjectAverage.toStringAsFixed(0);
-    }
-  }
-
-  String _headlineBest(_SubjectInsightsVm vm) {
-    switch (_metric) {
-      case _InsightMetric.score:
-        return vm.bestScore.toStringAsFixed(0);
-      case _InsightMetric.rank:
-        return vm.bestRank <= 0 ? '-' : '#${vm.bestRank}';
-      case _InsightMetric.subjects:
-        return vm.bestSubjectAverage.toStringAsFixed(0);
-    }
-  }
-
-  String _headlineChange(_SubjectInsightsVm vm) {
-    switch (_metric) {
-      case _InsightMetric.score:
-        return vm.scoreGrowth == 0
-            ? 'steady'
-            : '${vm.scoreGrowth >= 0 ? '+' : ''}${vm.scoreGrowth.toStringAsFixed(0)} pts';
-      case _InsightMetric.rank:
-        return vm.rankGrowth == 0
-            ? 'steady'
-            : '${vm.rankGrowth >= 0 ? '+' : ''}${vm.rankGrowth.toStringAsFixed(0)} ranks';
-      case _InsightMetric.subjects:
-        return vm.subjectGrowth == 0
-            ? 'steady'
-            : '${vm.subjectGrowth >= 0 ? '+' : ''}${vm.subjectGrowth.toStringAsFixed(0)} avg';
-    }
-  }
-
-  bool _isPositiveTrend(_SubjectInsightsVm vm) {
-    switch (_metric) {
-      case _InsightMetric.score:
-        return vm.scoreGrowth >= 0;
-      case _InsightMetric.rank:
-        return vm.rankGrowth >= 0;
-      case _InsightMetric.subjects:
-        return vm.subjectGrowth >= 0;
-    }
-  }
 }
 
 enum _InsightMetric {
@@ -1583,6 +1641,40 @@ class _AttemptSubjectBreakdown {
   });
 }
 
+class _ComputedAttemptInsight {
+  final int index;
+  final String id;
+  final Map<String, dynamic> attemptData;
+  final Map<String, dynamic> resultData;
+  final String testName;
+  final DateTime date;
+  final double score;
+  final double scoreOutOf;
+  final int rank;
+  final double percentile;
+  final List<_SubjectMetric> subjects;
+  final List<_AttemptSubjectBreakdown> subjectBreakdown;
+  final Map<String, double> subjectScores;
+  final double subjectAverage;
+
+  const _ComputedAttemptInsight({
+    required this.index,
+    required this.id,
+    required this.attemptData,
+    required this.resultData,
+    required this.testName,
+    required this.date,
+    required this.score,
+    required this.scoreOutOf,
+    required this.rank,
+    required this.percentile,
+    required this.subjects,
+    required this.subjectBreakdown,
+    required this.subjectScores,
+    required this.subjectAverage,
+  });
+}
+
 class _SubjectMetric {
   final String name;
   int total = 0;
@@ -1704,10 +1796,10 @@ class _InsightTrendPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    const leftPad = 28.0;
+    final leftPad = metric == _InsightMetric.rank ? 40.0 : 28.0;
     const rightPad = 12.0;
     const topPad = 10.0;
-    const bottomPad = 20.0;
+    final bottomPad = metric == _InsightMetric.rank ? 34.0 : 20.0;
     final chartRect = Rect.fromLTWH(
       leftPad,
       topPad,
@@ -2002,19 +2094,29 @@ class _InsightTrendPainter extends CustomPainter {
     required String Function(double value) formatter,
   }) {
     if (ticks.isEmpty) return;
+    double? lastPaintedY;
+    String? lastPaintedLabel;
     for (final tick in ticks) {
       final y = _yForValue(
         tick,
         chartRect,
         minValue: minValue,
-        maxValue: maxValue,
-        invert: invert,
+          maxValue: maxValue,
+          invert: invert,
       );
+      final label = formatter(tick);
+      if (lastPaintedY != null &&
+          (y - lastPaintedY!).abs() < 14 &&
+          lastPaintedLabel == label) {
+        continue;
+      }
       final painter = TextPainter(
-        text: TextSpan(text: formatter(tick), style: style),
+        text: TextSpan(text: label, style: style),
         textDirection: TextDirection.ltr,
       )..layout();
       painter.paint(canvas, Offset(0, y - (painter.height / 2)));
+      lastPaintedY = y;
+      lastPaintedLabel = label;
     }
   }
 
@@ -2034,15 +2136,11 @@ class _InsightTrendPainter extends CustomPainter {
 
   List<double> _rankTicks(double minValue, double maxValue) {
     if (minValue <= 0 || maxValue <= 0) {
-      return const [500, 1500, 2500, 3500];
+      return const [1, 3500];
     }
-    final start = ((minValue / 500).floor() * 500).toDouble();
-    final end = ((maxValue / 500).ceil() * 500).toDouble();
-    final span = end - start;
-    if (span <= 1500) {
-      return List<double>.generate(4, (index) => start + (index * 500.0));
-    }
-    return List<double>.generate(4, (index) => start + (span * index / 3));
+    final start = math.max(1, minValue).toDouble();
+    final end = math.max(start + 1, maxValue).toDouble();
+    return [start, end];
   }
 
   List<double> _scoreTicks(double minValue, double maxValue) {
@@ -2063,8 +2161,19 @@ class _InsightTrendPainter extends CustomPainter {
   }
 
   String _formatRankTick(double value) {
+    if (value <= 1) {
+      return 'Best';
+    }
+    if (value < 1000) {
+      return '#${value.toStringAsFixed(0)}';
+    }
     if (value >= 1000) {
-      return '#${(value / 1000).toStringAsFixed(1)}k';
+      final compact = value / 1000;
+      final whole = compact.roundToDouble();
+      final useWhole = (compact - whole).abs() < 0.05;
+      return useWhole
+          ? '#${whole.toStringAsFixed(0)}k'
+          : '#${compact.toStringAsFixed(1)}k';
     }
     return '#${value.toStringAsFixed(0)}';
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -109,9 +110,9 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (_) {
       if (mounted) {
         setState(() => _loading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Verification Failed")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Verification Failed")));
       }
     }
   }
@@ -183,12 +184,8 @@ class _LoginScreenState extends State<LoginScreen> {
     } on FirebaseAuthException catch (e) {
       if (mounted) {
         setState(() => _loading = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(
-          SnackBar(
-            content: Text(e.message ?? "Google Sign-In failed"),
-          ),
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message ?? "Google Sign-In failed")),
         );
       }
     } catch (_) {
@@ -225,124 +222,125 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                                SizedBox(
-                                  width: 250,
-                                  child: Image.asset(
-                                    "assets/icons/app_icon.png",
-                                    fit: BoxFit.contain,
-                                  ),
-                                ),
+                        SizedBox(
+                          width: 250,
+                          child: Image.asset(
+                            "assets/icons/app_icon.png",
+                            fit: BoxFit.contain,
+                          ),
+                        ),
 
-                                TextField(
-                                  controller: _phoneController,
-                                  keyboardType: TextInputType.phone,
-                                  decoration: InputDecoration(
-                                    hintText: "Enter Mobile Number",
-                                    filled: true,
-                                    fillColor: Colors.grey[200],
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      borderSide: BorderSide.none,
+                        TextField(
+                          controller: _phoneController,
+                          keyboardType: TextInputType.phone,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(10),
+                          ],
+                          maxLength: 10,
+                          decoration: InputDecoration(
+                            hintText: "Enter Mobile Number",
+                            counterText: "",
+                            filled: true,
+                            fillColor: Colors.grey[200],
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 10),
+
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            onPressed: _loading ? null : _sendOtp,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF1F3A8A),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: _loading
+                                ? const CircularProgressIndicator(
+                                    color: Colors.white,
+                                  )
+                                : const Text(
+                                    "Send OTP",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 30),
+
+                        const Row(
+                          children: [
+                            Expanded(child: Divider()),
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 8),
+                              child: Text("OR"),
+                            ),
+                            Expanded(child: Divider()),
+                          ],
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: OutlinedButton(
+                            onPressed: _loading ? null : _signInWithGoogle,
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              side: BorderSide(color: Colors.grey),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Image.asset(
+                                  "assets/images/google.png",
+                                  height: 22,
                                 ),
-
-                                const SizedBox(height: 10),
-
-                                SizedBox(
-                                  width: double.infinity,
-                                  height: 50,
-                                  child: ElevatedButton(
-                                    onPressed: _loading ? null : _sendOtp,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF1F3A8A),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                    ),
-                                    child: _loading
-                                        ? const CircularProgressIndicator(
-                                            color: Colors.white,
-                                          )
-                                        : const Text(
-                                            "Send OTP",
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
+                                const SizedBox(width: 12),
+                                const Text(
+                                  "Continue with Google",
+                                  style: TextStyle(
+                                    color: Colors.black87,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w500,
                                   ),
                                 ),
+                              ],
+                            ),
+                          ),
+                        ),
 
-                                const SizedBox(height: 30),
+                        const SizedBox(height: 30),
 
-                                const Row(
-                                  children: [
-                                    Expanded(child: Divider()),
-                                    Padding(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                      ),
-                                      child: Text("OR"),
-                                    ),
-                                    Expanded(child: Divider()),
-                                  ],
-                                ),
-
-                                const SizedBox(height: 20),
-
-                                SizedBox(
-                                  width: double.infinity,
-                                  height: 50,
-                                  child: OutlinedButton(
-                                    onPressed: _loading
-                                        ? null
-                                        : _signInWithGoogle,
-                                    style: OutlinedButton.styleFrom(
-                                      backgroundColor: Colors.white,
-                                      side: BorderSide(color: Colors.grey),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Image.asset(
-                                          "assets/images/google.png",
-                                          height: 22,
-                                        ),
-                                        const SizedBox(width: 12),
-                                        const Text(
-                                          "Continue with Google",
-                                          style: TextStyle(
-                                            color: Colors.black87,
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-
-                                const SizedBox(height: 30),
-
-                                Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFFF3E0),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: Colors.orange),
-                                  ),
-                                  child: const Text(
-                                    "Single Device Policy\n"
-                                    "Your account can only be active on one device at a time. "
-                                    "Logging in on a new device will automatically log you out from other devices.",
-                                    style: TextStyle(fontSize: 12),
-                                  ),
-                                ),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF3E0),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.orange),
+                          ),
+                          child: const Text(
+                            "Single Device Policy\n"
+                            "Your account can only be active on one device at a time. "
+                            "Logging in on a new device will automatically log you out from other devices.",
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
                       ],
                     ),
                   ),

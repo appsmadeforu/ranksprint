@@ -78,6 +78,8 @@ class _SelectExamHomeState extends State<SelectExamHome> {
     required _GoalVm? goal,
     required _ExamCardVm? activeExam,
   }) async {
+    final parentContext = context;
+    final messenger = ScaffoldMessenger.of(parentContext);
     final today = DateTime.now();
     final todayDateOnly = DateTime(today.year, today.month, today.day);
     final titleController = TextEditingController(
@@ -122,30 +124,34 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                     ),
                     const SizedBox(height: 14),
                     OutlinedButton.icon(
-                      onPressed: () async {
-                        final pickerInitialDate = selectedDate == null
-                            ? todayDateOnly.add(const Duration(days: 30))
-                            : DateTime(
-                                selectedDate!.year,
-                                selectedDate!.month,
-                                selectedDate!.day,
+                      onPressed: isSaving
+                          ? null
+                          : () async {
+                              final pickerInitialDate = selectedDate == null
+                                  ? todayDateOnly.add(const Duration(days: 30))
+                                  : DateTime(
+                                      selectedDate!.year,
+                                      selectedDate!.month,
+                                      selectedDate!.day,
+                                    );
+                              final safeInitialDate = pickerInitialDate.isBefore(
+                                    todayDateOnly,
+                                  )
+                                  ? todayDateOnly
+                                  : pickerInitialDate;
+                              final picked = await showDatePicker(
+                                context: parentContext,
+                                initialDate: safeInitialDate,
+                                firstDate: todayDateOnly,
+                                lastDate: DateTime(2100),
                               );
-                        final safeInitialDate = pickerInitialDate.isBefore(todayDateOnly)
-                            ? todayDateOnly
-                            : pickerInitialDate;
-                        final picked = await showDatePicker(
-                          context: dialogContext,
-                          initialDate: safeInitialDate,
-                          firstDate: todayDateOnly,
-                          lastDate: DateTime(2100),
-                        );
-                        if (!dialogContext.mounted) return;
-                        if (picked != null) {
-                          setDialogState(() {
-                            selectedDate = picked;
-                          });
-                        }
-                      },
+                              if (!dialogContext.mounted) return;
+                              if (picked != null) {
+                                setDialogState(() {
+                                  selectedDate = picked;
+                                });
+                              }
+                            },
                       icon: const Icon(Icons.calendar_today_rounded, size: 18),
                       label: Text(
                         selectedDate == null
@@ -171,65 +177,67 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                             isSaving = true;
                           });
                           try {
-                    final normalizedSelectedDate = selectedDate == null
-                        ? null
-                        : DateTime(
-                            selectedDate!.year,
-                            selectedDate!.month,
-                            selectedDate!.day,
-                          );
-                    if (normalizedSelectedDate != null &&
-                        normalizedSelectedDate.isBefore(todayDateOnly)) {
-                      if (!dialogContext.mounted) return;
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
-                        const SnackBar(
-                          content: Text('Goal target date cannot be in the past.'),
-                        ),
-                      );
-                      setDialogState(() {
-                        isSaving = false;
-                      });
-                      return;
-                    }
-                          await FirebaseFirestore.instance
-                              .collection('users')
-                              .doc(userId)
+                            final normalizedSelectedDate = selectedDate == null
+                                ? null
+                                : DateTime(
+                                    selectedDate!.year,
+                                    selectedDate!.month,
+                                    selectedDate!.day,
+                                  );
+                            if (normalizedSelectedDate != null &&
+                                normalizedSelectedDate.isBefore(todayDateOnly)) {
+                              if (!dialogContext.mounted) return;
+                              messenger.showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Goal target date cannot be in the past.',
+                                  ),
+                                ),
+                              );
+                              setDialogState(() {
+                                isSaving = false;
+                              });
+                              return;
+                            }
+                           await FirebaseFirestore.instance
+                               .collection('users')
+                               .doc(userId)
                               .set({
                                 'currentGoal': {
                                   'title': titleController.text.trim(),
-                                  'description': descriptionController.text.trim(),
-                                  'targetDate': normalizedSelectedDate == null
-                                      ? null
-                                      : Timestamp.fromDate(normalizedSelectedDate),
-                                  'examId': activeExam?.examId,
-                                  'updatedAt': FieldValue.serverTimestamp(),
-                                },
-                              }, SetOptions(merge: true));
-                          if (!dialogContext.mounted) return;
-                          Navigator.pop(dialogContext, true);
-                        } on FirebaseException catch (e) {
-                          if (!dialogContext.mounted) return;
-                          ScaffoldMessenger.of(dialogContext).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                e.message ?? 'Unable to save goal right now.',
+                                   'description': descriptionController.text.trim(),
+                                   'targetDate': normalizedSelectedDate == null
+                                       ? null
+                                       : Timestamp.fromDate(normalizedSelectedDate),
+                                   'examId': activeExam?.examId,
+                                   'updatedAt': FieldValue.serverTimestamp(),
+                                  },
+                                }, SetOptions(merge: true));
+                           if (!dialogContext.mounted) return;
+                           Navigator.of(dialogContext).pop(true);
+                         } on FirebaseException catch (e) {
+                           if (!dialogContext.mounted) return;
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  e.message ?? 'Unable to save goal right now.',
+                                ),
                               ),
-                            ),
-                          );
-                          setDialogState(() {
-                            isSaving = false;
-                          });
-                        } catch (_) {
-                          if (!dialogContext.mounted) return;
-                          ScaffoldMessenger.of(dialogContext).showSnackBar(
-                            const SnackBar(
-                              content: Text('Unable to save goal right now.'),
-                            ),
-                          );
-                          setDialogState(() {
-                            isSaving = false;
-                          });
-                        }
+                            );
+                            setDialogState(() {
+                              isSaving = false;
+                            });
+                          } catch (_) {
+                            if (!dialogContext.mounted) return;
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('Unable to save goal right now.'),
+                              ),
+                            );
+                            setDialogState(() {
+                              isSaving = false;
+                            });
+                          }
                         },
                   child: const Text('Save'),
                 ),

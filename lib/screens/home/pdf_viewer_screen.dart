@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
-import 'package:url_launcher/url_launcher.dart';
+
+import 'pdf_web_viewer_stub.dart'
+    if (dart.library.html) 'pdf_web_viewer.dart';
 
 class PdfViewerScreen extends StatefulWidget {
   final String pdfUrl;
@@ -26,20 +28,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   @override
   void initState() {
     super.initState();
-    _currentIndex = widget.currentIndex;
-  }
-
-  Future<void> _downloadPdf() async {
-    final url = widget.pdfUrls[_currentIndex];
-    if (await canLaunchUrl(Uri.parse(url))) {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Could not open PDF')));
-      }
-    }
+    _currentIndex = widget.currentIndex >= 0 ? widget.currentIndex : 0;
   }
 
   void _previousPdf() {
@@ -64,25 +53,13 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.download),
-            onPressed: _downloadPdf,
-            tooltip: 'Download PDF',
-          ),
-          IconButton(
             icon: const Icon(Icons.close),
             onPressed: () => Navigator.pop(context),
             tooltip: 'Back',
           ),
         ],
       ),
-      body: SfPdfViewer.network(
-        widget.pdfUrls[_currentIndex],
-        onDocumentLoadFailed: (PdfDocumentLoadFailedDetails details) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error loading PDF: ${details.error}')),
-          );
-        },
-      ),
+      body: _buildPdfBody(),
       bottomNavigationBar: BottomAppBar(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -112,6 +89,22 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildPdfBody() {
+    final url = widget.pdfUrls[_currentIndex];
+    if (isWebPdfViewerSupported) {
+      return buildWebPdfViewer(url);
+    }
+
+    return SfPdfViewer.network(
+      url,
+      onDocumentLoadFailed: (PdfDocumentLoadFailedDetails details) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading PDF: ${details.error}')),
+        );
+      },
     );
   }
 }

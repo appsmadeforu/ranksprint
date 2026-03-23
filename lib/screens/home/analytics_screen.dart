@@ -32,10 +32,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
   final Map<String, Map<String, String>> _sectionNameCache =
       <String, Map<String, String>>{};
-  _DashboardTrendMode _trendMode = _DashboardTrendMode.avg;
-  _SubjectViewMode _subjectViewMode = _SubjectViewMode.score;
+  final ValueNotifier<_DashboardTrendMode> _trendModeNotifier = ValueNotifier(
+    _DashboardTrendMode.avg,
+  );
+  final ValueNotifier<_SubjectViewMode> _subjectViewModeNotifier =
+      ValueNotifier(_SubjectViewMode.score);
+  final ValueNotifier<int> _heroPageIndexNotifier = ValueNotifier(0);
   final PageController _heroPageController = PageController();
-  int _heroPageIndex = 0;
   late final AnimationController _liveBlinkController;
 
   @override
@@ -76,6 +79,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     UserExamPreferenceService.preferredExamNotifier.removeListener(
       _handlePreferredExamChanged,
     );
+    _trendModeNotifier.dispose();
+    _subjectViewModeNotifier.dispose();
+    _heroPageIndexNotifier.dispose();
     _leaderboardSearchController.dispose();
     _heroPageController.dispose();
     _liveBlinkController.dispose();
@@ -516,7 +522,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             }
 
             final vm = vmSnap.data!;
-            final displayPoints = _displayTrendPoints(vm.trendPoints);
 
             return RefreshIndicator(
               onRefresh: () async {
@@ -528,7 +533,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                 children: [
                   _dashboardHero(vm),
                   const SizedBox(height: 14),
-                  _performanceTrendCard(vm, displayPoints),
+                  _performanceTrendCard(vm),
                   const SizedBox(height: 14),
                   _subjectWiseCard(vm),
                   const SizedBox(height: 14),
@@ -632,14 +637,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
               ),
             ),
             GestureDetector(
-              onTap: () {
-                final nextPage = (_heroPageIndex + 1) % 3;
-                _heroPageController.animateToPage(
-                  nextPage,
-                  duration: const Duration(milliseconds: 260),
-                  curve: Curves.easeOut,
-                );
-              },
+              onTap: _goToNextHeroPage,
               child: const Text(
                 'Swipe ->',
                 style: TextStyle(
@@ -656,38 +654,56 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           height: 308,
           child: PageView(
             controller: _heroPageController,
-            onPageChanged: (index) {
-              setState(() {
-                _heroPageIndex = index;
-              });
-            },
-             children: [
-               _readinessHeroCard(vm),
-               _accuracySpeedHeroCard(vm),
-               _rankProjectionHeroCard(vm),
-             ],
-           ),
+            onPageChanged: _handleHeroPageChanged,
+              children: [
+                _readinessHeroCard(vm),
+                _accuracySpeedHeroCard(vm),
+                _rankProjectionHeroCard(vm),
+              ],
+            ),
+          ),
+         const SizedBox(height: 10),
+         ValueListenableBuilder<int>(
+           valueListenable: _heroPageIndexNotifier,
+           builder: (context, heroPageIndex, child) {
+             return Row(
+               mainAxisAlignment: MainAxisAlignment.center,
+               children: List.generate(3, (index) {
+                 final selected = index == heroPageIndex;
+                 return AnimatedContainer(
+                   duration: const Duration(milliseconds: 180),
+                   margin: const EdgeInsets.symmetric(horizontal: 4),
+                   width: selected ? 18 : 6,
+                   height: 6,
+                   decoration: BoxDecoration(
+                     color: selected
+                         ? const Color(0xFF2E4BCB)
+                         : const Color(0xFFC8D1EA),
+                     borderRadius: BorderRadius.circular(999),
+                   ),
+                 );
+               }),
+             );
+           },
          ),
-        const SizedBox(height: 10),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(3, (index) {
-            final selected = index == _heroPageIndex;
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              width: selected ? 18 : 6,
-              height: 6,
-              decoration: BoxDecoration(
-                color: selected
-                    ? const Color(0xFF2E4BCB)
-                    : const Color(0xFFC8D1EA),
-                borderRadius: BorderRadius.circular(999),
-              ),
-            );
-          }),
-        ),
       ],
+    );
+  }
+
+  void _handleHeroPageChanged(int index) {
+    if (_heroPageIndexNotifier.value == index) return;
+    _heroPageIndexNotifier.value = index;
+  }
+
+  void _goToNextHeroPage() {
+    if (!_heroPageController.hasClients) return;
+    final position = _heroPageController.position;
+    if (position.isScrollingNotifier.value) return;
+    final nextPage = (_heroPageIndexNotifier.value + 1) % 3;
+    _heroPageController.animateToPage(
+      nextPage,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOut,
     );
   }
 
@@ -1248,83 +1264,86 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     return parts.join();
   }
 
-  Widget _performanceTrendCard(
-    _DashboardVm vm,
-    List<_TrendPoint> displayPoints,
-  ) {
-    return _dashboardSection(
-      title: 'Performance Trend',
-      subtitle:
-          'Last ${vm.testsTaken} tests - score out of 100 - platform average from live results',
-      trailing: _segmentedPill<_DashboardTrendMode>(
-        value: _trendMode,
-        options: const {
-          _DashboardTrendMode.avg: 'AVG',
-          _DashboardTrendMode.max: 'MAX',
-        },
-        onChanged: (mode) => setState(() => _trendMode = mode),
-      ),
-      child: Column(
-        children: [
-          SizedBox(
-            height: 190,
-            child: displayPoints.length < 2
-                ? const Center(
-                    child: Text('Need at least 2 attempts to show trend'),
-                  )
-                : _TrendChart(
-                    points: displayPoints,
-                    platformAvg: vm.platformAvg,
-                  ),
+  Widget _performanceTrendCard(_DashboardVm vm) {
+    return ValueListenableBuilder<_DashboardTrendMode>(
+      valueListenable: _trendModeNotifier,
+      builder: (context, trendMode, child) {
+        final displayPoints = _displayTrendPoints(vm.trendPoints, trendMode);
+        return _dashboardSection(
+          title: 'Performance Trend',
+          subtitle:
+              'Last ${vm.testsTaken} tests - score out of 100 - competitors average from live results',
+          trailing: _segmentedPill<_DashboardTrendMode>(
+            value: trendMode,
+            options: const {
+              _DashboardTrendMode.avg: 'AVG',
+              _DashboardTrendMode.max: 'MAX',
+            },
+            onChanged: (mode) => _trendModeNotifier.value = mode,
           ),
-          const SizedBox(height: 12),
-          Row(
+          child: Column(
             children: [
-              const Expanded(
-                child: _StatChip(label: 'You', dotColor: Color(0xFF315CF7)),
+              SizedBox(
+                height: 190,
+                child: displayPoints.length < 2
+                    ? const Center(
+                        child: Text('Need at least 2 attempts to show trend'),
+                      )
+                    : _TrendChart(
+                        points: displayPoints,
+                        platformAvg: vm.platformAvg,
+                      ),
               ),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: _StatChip(
-                  label: 'Platform Avg',
-                  dotColor: Color(0xFF9EA4B2),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Expanded(
+                    child: _StatChip(label: 'You', dotColor: Color(0xFF315CF7)),
+                  ),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: _StatChip(
+                      label: 'Competitors Avg',
+                      dotColor: Color(0xFF9EA4B2),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _MiniMetric(
+                      label: 'Best',
+                      value: '${vm.maxScore.round()}',
+                      color: const Color(0xFF1B45D0),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          SubjectInsightsScreen(examId: selectedExamId ?? ''),
+                    ),
+                  );
+                },
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF2D4FCA),
+                  side: const BorderSide(color: Color(0xFFD9DFF0)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  minimumSize: const Size.fromHeight(44),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _MiniMetric(
-                  label: 'Best',
-                  value: '${vm.maxScore.round()}',
-                  color: const Color(0xFF1B45D0),
+                child: const Text(
+                  'View Full Performance',
+                  style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          OutlinedButton(
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) =>
-                      SubjectInsightsScreen(examId: selectedExamId ?? ''),
-                ),
-              );
-            },
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF2D4FCA),
-              side: const BorderSide(color: Color(0xFFD9DFF0)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              minimumSize: const Size.fromHeight(44),
-            ),
-            child: const Text(
-              'View Full Performance',
-              style: TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -1332,132 +1351,141 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     return _dashboardSection(
       title: 'Subject Wise Performance',
       subtitle: 'Your score, accuracy, and average time by subject',
-      child: Column(
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: _segmentedPill<_SubjectViewMode>(
-              value: _subjectViewMode,
-              options: const {
-                _SubjectViewMode.score: 'Score',
-                _SubjectViewMode.accuracy: 'Accuracy',
-                _SubjectViewMode.time: 'Time',
-              },
-              onChanged: (mode) => setState(() => _subjectViewMode = mode),
-            ),
-          ),
-          const SizedBox(height: 14),
-          if (vm.subjects.isEmpty)
-            const Text('No subject data available')
-          else
-            Column(
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: vm.subjects.take(4).map((subject) {
-                    final maxValue = _subjectMaxValue(vm.subjects);
-                    final value = _subjectMetricValue(subject);
-                    final normalizedHeight = maxValue <= 0
-                        ? 0.0
-                        : 120 * (value / maxValue);
-                    final height = value <= 0
-                        ? 0.0
-                        : normalizedHeight.clamp(10.0, 120.0);
-                    return Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        child: Column(
-                          children: [
-                            Text(
-                              _subjectMetricLabel(subject),
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Container(
-                              height: 126,
-                              alignment: Alignment.bottomCenter,
-                              child: Container(
-                                height: height,
-                                decoration: BoxDecoration(
-                                  color: _subjectColor(subject.name),
-                                  borderRadius: BorderRadius.circular(14),
+      child: ValueListenableBuilder<_SubjectViewMode>(
+        valueListenable: _subjectViewModeNotifier,
+        builder: (context, subjectViewMode, child) {
+          return Column(
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _segmentedPill<_SubjectViewMode>(
+                  value: subjectViewMode,
+                  options: const {
+                    _SubjectViewMode.score: 'Score',
+                    _SubjectViewMode.accuracy: 'Accuracy',
+                    _SubjectViewMode.time: 'Time',
+                  },
+                  onChanged: (mode) => _subjectViewModeNotifier.value = mode,
+                  expand: true,
+                ),
+              ),
+              const SizedBox(height: 14),
+              if (vm.subjects.isEmpty)
+                const Text('No subject data available')
+              else
+                Column(
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: vm.subjects.take(4).map((subject) {
+                        final maxValue = _subjectMaxValue(
+                          vm.subjects,
+                          subjectViewMode,
+                        );
+                        final value = _subjectMetricValue(subject, subjectViewMode);
+                        final normalizedHeight = maxValue <= 0
+                            ? 0.0
+                            : 120 * (value / maxValue);
+                        final height = value <= 0
+                            ? 0.0
+                            : normalizedHeight.clamp(10.0, 120.0);
+                        return Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            child: Column(
+                              children: [
+                                Text(
+                                  _subjectMetricLabel(subject, subjectViewMode),
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(height: 10),
+                                Container(
+                                  height: 126,
+                                  alignment: Alignment.bottomCenter,
+                                  child: Container(
+                                    height: height,
+                                    decoration: BoxDecoration(
+                                      color: _subjectColor(subject.name),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  subject.shortName,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    color: Color(0xFF6C748A),
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 10),
-                            Text(
-                              subject.shortName,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: Color(0xFF6C748A),
-                              ),
-                            ),
-                          ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: vm.subjects.take(4).map((subject) {
+                          return _LegendDot(
+                            color: _subjectColor(subject.name),
+                            label: subject.name,
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF7E8),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFF4C95D)),
+                      ),
+                      child: Text(
+                        'A weak accuracy dip was detected in ${vm.focusSubject}.',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF8A5A11),
                         ),
                       ),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 10),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    children: vm.subjects.take(4).map((subject) {
-                      return _LegendDot(
-                        color: _subjectColor(subject.name),
-                        label: subject.name,
-                      );
-                    }).toList(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF7E8),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFF4C95D)),
-                  ),
-                  child: Text(
-                    'A weak accuracy dip was detected in ${vm.focusSubject}.',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF8A5A11),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => _SubjectExplorerScreen(vm: vm),
+                    const SizedBox(height: 12),
+                    OutlinedButton(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => _SubjectExplorerScreen(vm: vm),
+                          ),
+                        );
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF2D4FCA),
+                        side: const BorderSide(color: Color(0xFFD9DFF0)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        minimumSize: const Size.fromHeight(44),
                       ),
-                    );
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF2D4FCA),
-                    side: const BorderSide(color: Color(0xFFD9DFF0)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                      child: const Text(
+                        'View Subject Insights',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
                     ),
-                    minimumSize: const Size.fromHeight(44),
-                  ),
-                  child: const Text(
-                    'View Subject Insights',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
+                  ],
                 ),
-              ],
-            ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -2021,21 +2049,24 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     required T value,
     required Map<T, String> options,
     required ValueChanged<T> onChanged,
+    bool expand = false,
   }) {
     return Container(
+      width: expand ? double.infinity : null,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: const Color(0xFFF1F4FA),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
         children: options.entries.map((entry) {
           final selected = entry.key == value;
-          return GestureDetector(
+          final segment = GestureDetector(
             onTap: () => onChanged(entry.key),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
+              alignment: Alignment.center,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(
                 color: selected ? const Color(0xFF2A48C8) : Colors.transparent,
@@ -2043,6 +2074,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
               ),
               child: Text(
                 entry.value,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
@@ -2051,6 +2083,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
               ),
             ),
           );
+          if (!expand) return segment;
+          return Expanded(child: segment);
         }).toList(),
       ),
     );
@@ -2140,8 +2174,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     );
   }
 
-  double _subjectMetricValue(_SubjectMetric subject) {
-    switch (_subjectViewMode) {
+  double _subjectMetricValue(
+    _SubjectMetric subject,
+    _SubjectViewMode subjectViewMode,
+  ) {
+    switch (subjectViewMode) {
       case _SubjectViewMode.score:
         return subject.score;
       case _SubjectViewMode.accuracy:
@@ -2151,17 +2188,26 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     }
   }
 
-  double _subjectMaxValue(List<_SubjectMetric> subjects) {
+  double _subjectMaxValue(
+    List<_SubjectMetric> subjects,
+    _SubjectViewMode subjectViewMode,
+  ) {
     if (subjects.isEmpty) return 1;
     var maxValue = 0.0;
     for (final subject in subjects.take(4)) {
-      maxValue = math.max(maxValue, _subjectMetricValue(subject));
+      maxValue = math.max(
+        maxValue,
+        _subjectMetricValue(subject, subjectViewMode),
+      );
     }
     return maxValue <= 0 ? 1 : maxValue;
   }
 
-  String _subjectMetricLabel(_SubjectMetric subject) {
-    switch (_subjectViewMode) {
+  String _subjectMetricLabel(
+    _SubjectMetric subject,
+    _SubjectViewMode subjectViewMode,
+  ) {
+    switch (subjectViewMode) {
       case _SubjectViewMode.score:
         return subject.score.toStringAsFixed(0);
       case _SubjectViewMode.accuracy:
@@ -2246,8 +2292,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     }).toList();
   }
 
-  List<_TrendPoint> _displayTrendPoints(List<_TrendPoint> points) {
-    if (_trendMode == _DashboardTrendMode.avg) return points;
+  List<_TrendPoint> _displayTrendPoints(
+    List<_TrendPoint> points,
+    _DashboardTrendMode trendMode,
+  ) {
+    if (trendMode == _DashboardTrendMode.avg) return points;
 
     final out = <_TrendPoint>[];
     var currentMax = 0.0;
@@ -2479,12 +2528,28 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       userId: userId,
       examId: examId,
     );
+    final recommendationSignature = _buildRecommendationSignature(
+      attempts: attempts,
+      recommendations: fallbackRecommendations,
+      gainPotential: fallbackGainPotential,
+    );
     final recommendations =
         dbRecommendations?.recommendations ?? fallbackRecommendations;
     final gainPotential =
         dbRecommendations?.gainPotential ?? fallbackGainPotential;
     final recommendationTestsTaken =
         dbRecommendations?.testsTaken ?? attempts.length;
+    if (dbRecommendations == null ||
+        dbRecommendations.signature != recommendationSignature) {
+      _persistComputedRecommendations(
+        userId: userId,
+        examId: examId,
+        testsTaken: attempts.length,
+        gainPotential: fallbackGainPotential,
+        recommendations: fallbackRecommendations,
+        signature: recommendationSignature,
+      );
+    }
 
     final rankGapText = myLeaderboardRow == null
         ? 'Keep attempting tests to enter the live ranking pool.'
@@ -2596,10 +2661,66 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         testsTaken: _toInt(data['testsTaken']),
         gainPotential: _toDouble(data['gainPotential']),
         recommendations: items,
+        signature: (data['signature'] ?? '').toString(),
       );
     } catch (_) {
       return null;
     }
+  }
+
+  Future<void> _persistComputedRecommendations({
+    required String userId,
+    required String examId,
+    required int testsTaken,
+    required double gainPotential,
+    required List<_Recommendation> recommendations,
+    required String signature,
+  }) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('examRecommendations')
+          .doc(examId)
+          .set({
+            'testsTaken': testsTaken,
+            'gainPotential': gainPotential,
+            'recommendations': recommendations
+                .map(
+                  (item) => {
+                    'title': item.title,
+                    'subtitle': item.subtitle,
+                    'icon': _recommendationIconName(item.icon),
+                  },
+                )
+                .toList(),
+            'signature': signature,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+    } catch (_) {
+      // Keep analytics resilient if recommendation persistence fails.
+    }
+  }
+
+  String _buildRecommendationSignature({
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
+    required List<_Recommendation> recommendations,
+    required double gainPotential,
+  }) {
+    final attemptStamp = attempts
+        .map((doc) {
+          final data = doc.data();
+          final stamp =
+              (_toDate(data['submittedAt']) ?? _toDate(data['startedAt']))
+                  ?.millisecondsSinceEpoch ??
+              0;
+          return '${doc.id}:$stamp';
+        })
+        .join('|');
+    final recommendationStamp = recommendations
+        .map((item) => '${item.title}:${item.subtitle}')
+        .join('|');
+    return '$attemptStamp::$recommendationStamp::${gainPotential.toStringAsFixed(2)}';
   }
 
   IconData _recommendationIcon(String rawIcon) {
@@ -2620,6 +2741,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       default:
         return Icons.auto_awesome;
     }
+  }
+
+  String _recommendationIconName(IconData icon) {
+    if (icon == Icons.timeline_rounded) return 'timeline_rounded';
+    if (icon == Icons.menu_book_rounded) return 'menu_book_rounded';
+    if (icon == Icons.bolt_rounded) return 'bolt';
+    if (icon == Icons.science_rounded) return 'science';
+    if (icon == Icons.auto_graph_rounded) return 'auto_graph';
+    if (icon == Icons.biotech_rounded) return 'biotech';
+    return 'auto_awesome';
   }
 
   Future<_QuestionDetailBundle> _loadQuestionDetails(
@@ -3365,11 +3496,13 @@ class _DbRecommendationPayload {
   final int? testsTaken;
   final double? gainPotential;
   final List<_Recommendation> recommendations;
+  final String signature;
 
   const _DbRecommendationPayload({
     required this.testsTaken,
     required this.gainPotential,
     required this.recommendations,
+    required this.signature,
   });
 }
 
@@ -4560,7 +4693,13 @@ class _ExplorerBarChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scaleMax = maxY <= 0 ? 1.0 : maxY;
+    final safeBars = bars.where((bar) => bar.value.isFinite).toList();
+    if (safeBars.isEmpty) {
+      return const _ExplorerEmptyState(message: 'No chart data available');
+    }
+    final scaleMax = maxY.isFinite && maxY > 0
+        ? maxY
+        : safeBars.map((bar) => bar.value).fold<double>(1.0, math.max);
     final tickLabels = _chartTickLabels(
       maxValue: scaleMax,
       steps: 5,
@@ -4592,7 +4731,7 @@ class _ExplorerBarChart extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: bars.map((bar) {
+              children: safeBars.map((bar) {
                 final heightFactor =
                     (bar.value / scaleMax).clamp(0.0, 1.0).toDouble();
                 return Column(
@@ -4638,11 +4777,30 @@ class _ExplorerGroupedBarChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (series.isEmpty || series.first.points.isEmpty) {
+    final safeSeries = series
+        .map(
+          (item) => _ChartSeries(
+            label: item.label,
+            color: item.color,
+            points: item.points.where((point) => point.value.isFinite).toList(),
+          ),
+        )
+        .where((item) => item.points.isNotEmpty)
+        .toList();
+    if (safeSeries.isEmpty) {
       return const _ExplorerEmptyState(message: 'No grouped chart data');
     }
-    final labels = series.first.points.map((point) => point.label).toList();
-    final maxY = series
+    final visiblePointCount = safeSeries
+        .map((item) => item.points.length)
+        .reduce(math.min);
+    if (visiblePointCount <= 0) {
+      return const _ExplorerEmptyState(message: 'No grouped chart data');
+    }
+    final labels = safeSeries.first.points
+        .take(visiblePointCount)
+        .map((point) => point.label)
+        .toList();
+    final maxY = safeSeries
             .expand((item) => item.points.map((point) => point.value))
             .fold<double>(0.0, math.max) +
         1;
@@ -4686,7 +4844,7 @@ class _ExplorerGroupedBarChart extends StatelessWidget {
                         children: [
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.end,
-                            children: series.map((item) {
+                            children: safeSeries.map((item) {
                               final point = item.points[index];
                               final heightFactor =
                                   (point.value / maxY).clamp(0.0, 1.0).toDouble();
@@ -4723,7 +4881,7 @@ class _ExplorerGroupedBarChart extends StatelessWidget {
           Wrap(
             spacing: 14,
             runSpacing: 8,
-            children: series.map((item) {
+            children: safeSeries.map((item) {
               return Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -4857,7 +5015,8 @@ List<String> _chartTickLabels({
   required int steps,
   required String Function(double value) formatter,
 }) {
-  final safeMax = maxValue <= 0 ? 1.0 : maxValue;
+  if (steps <= 0) return const [];
+  final safeMax = maxValue.isFinite && maxValue > 0 ? maxValue : 1.0;
   return List<String>.generate(steps, (index) {
     final ratio = (steps - 1 - index) / math.max(1, steps - 1);
     return formatter(safeMax * ratio);
@@ -5219,6 +5378,14 @@ class _SparkLinePainter extends CustomPainter {
 
 class _BarSparkChart extends StatelessWidget {
   final List<double> values;
+  static const List<List<Color>> _barGradients = [
+    [Color(0xFF6F86FF), Color(0xFF5068E8)],
+    [Color(0xFF4FBEFF), Color(0xFF2D8EEA)],
+    [Color(0xFF43D3B5), Color(0xFF1FAD8C)],
+    [Color(0xFFFFC46B), Color(0xFFF29A2E)],
+    [Color(0xFF8E7DFF), Color(0xFF6857E6)],
+    [Color(0xFFFF8F8F), Color(0xFFE35D6A)],
+  ];
 
   const _BarSparkChart({required this.values});
 
@@ -5241,6 +5408,8 @@ class _BarSparkChart extends StatelessWidget {
           children: values.asMap().entries.map((entry) {
             final maxValue = values.isEmpty ? 1.0 : values.reduce(math.max);
             final normalized = maxValue <= 0 ? 0.0 : entry.value / maxValue;
+            final gradientColors =
+                _barGradients[entry.key % _barGradients.length];
             return Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -5258,8 +5427,19 @@ class _BarSparkChart extends StatelessWidget {
                     Container(
                       height: safeBarHeight * normalized.clamp(0.12, 1.0),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF98A1B2),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: gradientColors,
+                        ),
                         borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(
+                            color: gradientColors.last.withOpacity(0.18),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 8),

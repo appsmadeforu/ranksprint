@@ -31,8 +31,7 @@ class ContentAccessService {
     return (firestore ?? FirebaseFirestore.instance)
         .collection('exams')
         .doc(examId)
-        .collection('pyqs')
-        .where('status', isEqualTo: 'published');
+        .collection('pyqs');
   }
 
   static Query<Map<String, dynamic>> publishedPyqChaptersQuery({

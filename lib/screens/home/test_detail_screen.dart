@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'test_runner_screen.dart';
 
 class TestDetailScreen extends StatelessWidget {
@@ -19,6 +20,19 @@ class TestDetailScreen extends StatelessWidget {
         .collection('tests')
         .doc(testId)
         .get();
+  }
+
+  Future<int> _loadCompletedAttemptCount() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return 0;
+
+    final snap = await FirebaseFirestore.instance
+        .collection('testAttempts')
+        .where('userId', isEqualTo: user.uid)
+        .where('examId', isEqualTo: examId)
+        .where('testId', isEqualTo: testId)
+        .get();
+    return snap.docs.length;
   }
 
   Widget _infoTile(String title, String value) {
@@ -53,14 +67,26 @@ class TestDetailScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
       body: SafeArea(
-        child: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          future: _loadTest(),
+        child: FutureBuilder<Map<String, dynamic>>(
+          future: Future.wait<dynamic>([
+            _loadTest(),
+            _loadCompletedAttemptCount(),
+          ]).then((values) {
+            final testDoc = values[0] as DocumentSnapshot<Map<String, dynamic>>;
+            final completedAttempts = values[1] as int;
+            return {
+              'test': testDoc.data() ?? <String, dynamic>{},
+              'completedAttempts': completedAttempts,
+            };
+          }),
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
 
-            final data = snapshot.data!.data() ?? {};
+            final payload = snapshot.data!;
+            final data = payload['test'] as Map<String, dynamic>;
+            final completedAttempts = payload['completedAttempts'] as int;
 
             final title = data['name'] ?? testId;
             final duration =
@@ -334,13 +360,16 @@ class TestDetailScreen extends StatelessWidget {
                           borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 14),
-                        child: Text(
-                          'Start Test',
-                          style: TextStyle(color: Colors.white, fontSize: 16),
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 14),
+                          child: Text(
+                            completedAttempts > 0 ? 'Reattempt' : 'Start Test',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                            ),
+                          ),
                         ),
-                      ),
                     ),
                   ),
                 ),

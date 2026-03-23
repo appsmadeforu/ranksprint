@@ -241,18 +241,18 @@ class _TestsScreenState extends State<TestsScreen> {
                       isEqualTo: FirebaseAuth.instance.currentUser?.uid,
                     )
                     .where('examId', isEqualTo: selectedExamId)
-                    .where('status', isEqualTo: 'completed')
                     .snapshots(),
                 builder: (context, attemptsSnap) {
+                  if (!attemptsSnap.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
                   final Map<String, int> attemptsByTestId = {};
-                  if (attemptsSnap.hasData) {
-                    for (final d in attemptsSnap.data!.docs) {
-                      final data = d.data();
-                      final testId = (data['testId'] ?? '').toString();
-                      if (testId.isEmpty) continue;
-                      attemptsByTestId[testId] =
-                          (attemptsByTestId[testId] ?? 0) + 1;
-                    }
+                  for (final d in attemptsSnap.data!.docs) {
+                    final data = d.data();
+                    final testId = (data['testId'] ?? '').toString();
+                    if (testId.isEmpty) continue;
+                    attemptsByTestId[testId] =
+                        (attemptsByTestId[testId] ?? 0) + 1;
                   }
 
                   return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -499,7 +499,9 @@ class _TestsScreenState extends State<TestsScreen> {
                   child: Text(
                     isLocked
                         ? "Unlock"
-                        : (limitReached ? "Limit Reached" : "Attempt"),
+                        : (limitReached
+                              ? "Limit Reached"
+                              : (usedAttempts > 0 ? "Reattempt" : "Attempt")),
                     style: TextStyle(
                       color: isLocked
                           ? Colors.orange
