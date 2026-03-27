@@ -27,6 +27,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       TextEditingController();
   String _leaderboardQuery = '';
   final Map<String, String> _userNameCache = <String, String>{};
+  final Set<String> _pendingUserNameIds = <String>{};
   final Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>
   _questionCache =
       <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
@@ -185,7 +186,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   Widget _buildLeaderboard() {
     final currentUser = FirebaseAuth.instance.currentUser;
 
-    return StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
           .collection('results')
           .where('examId', isEqualTo: selectedExamId)
@@ -195,7 +196,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           return const Center(child: CircularProgressIndicator());
         }
 
-        final docs = snap.data!.docs.cast<QueryDocumentSnapshot>();
+        final docs = snap.data!.docs;
         if (docs.isEmpty) {
           return const Center(child: Text('No leaderboard data'));
         }
@@ -204,59 +205,48 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         if (entries.isEmpty) {
           return const Center(child: Text('No leaderboard data'));
         }
+        _ensureLeaderboardDisplayNames(entries.map((entry) => entry.userId));
+        final allRows = _rowsFromEntries(entries);
+        final visibleRows = allRows.where(_matchesLeaderboardQuery).toList();
 
-        return FutureBuilder<List<_LeaderboardRow>>(
-          future: _hydrateLeaderboard(entries),
-          builder: (context, rowsSnap) {
-            if (!rowsSnap.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            final allRows = rowsSnap.data!;
-            final visibleRows = allRows
-                .where(_matchesLeaderboardQuery)
-                .toList();
-
-            if (visibleRows.isEmpty) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  children: [
-                    _buildLeaderboardSearch(),
-                    const Expanded(
-                      child: Center(
-                        child: Text('No leaderboard matches found'),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }
-
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                children: [
-                  _buildLeaderboardSearch(),
-                  const SizedBox(height: 14),
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: visibleRows.length,
-                      itemBuilder: (context, index) {
-                        final row = visibleRows[index];
-                        return _buildLeaderboardCard(
-                          row: row,
-                          isCurrentUser:
-                              currentUser != null &&
-                              currentUser.uid == row.entry.userId,
-                        );
-                      },
-                    ),
+        if (visibleRows.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              children: [
+                _buildLeaderboardSearch(),
+                const Expanded(
+                  child: Center(
+                    child: Text('No leaderboard matches found'),
                   ),
-                ],
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            children: [
+              _buildLeaderboardSearch(),
+              const SizedBox(height: 14),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: visibleRows.length,
+                  itemBuilder: (context, index) {
+                    final row = visibleRows[index];
+                    return _buildLeaderboardCard(
+                      row: row,
+                      isCurrentUser:
+                          currentUser != null &&
+                          currentUser.uid == row.entry.userId,
+                    );
+                  },
+                ),
               ),
-            );
-          },
+            ],
+          ),
         );
       },
     );
@@ -296,11 +286,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     );
   }
 
-  Future<List<_LeaderboardRow>> _hydrateLeaderboard(
+  List<_LeaderboardRow> _rowsFromEntries(
     List<_LeaderboardAgg> entries,
-  ) async {
-    await _loadUserDisplayNames(entries.map((entry) => entry.userId));
-
+  ) {
     return List.generate(entries.length, (index) {
       final entry = entries[index];
       return _LeaderboardRow(
@@ -311,15 +299,27 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     });
   }
 
-  Future<void> _loadUserDisplayNames(Iterable<String> userIds) async {
+  void _ensureLeaderboardDisplayNames(Iterable<String> userIds) {
     final missing = userIds
-        .where((id) => id.isNotEmpty && !_userNameCache.containsKey(id))
+        .where(
+          (id) =>
+              id.isNotEmpty &&
+              !_userNameCache.containsKey(id) &&
+              !_pendingUserNameIds.contains(id),
+        )
         .toSet()
         .toList();
     if (missing.isEmpty) return;
+    _pendingUserNameIds.addAll(missing);
+    _loadUserDisplayNames(missing);
+  }
 
-    for (int i = 0; i < missing.length; i += 10) {
-      final chunk = missing.sublist(i, (i + 10).clamp(0, missing.length));
+  Future<void> _loadUserDisplayNames(Iterable<String> userIds) async {
+    final ids = userIds.where((id) => id.isNotEmpty).toSet().toList();
+    if (ids.isEmpty) return;
+
+    for (int i = 0; i < ids.length; i += 10) {
+      final chunk = ids.sublist(i, (i + 10).clamp(0, ids.length));
       try {
         final snap = await FirebaseFirestore.instance
             .collection('users')
@@ -341,6 +341,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           _userNameCache.putIfAbsent(id, () => id);
         }
       }
+    }
+    _pendingUserNameIds.removeAll(ids);
+    if (mounted) {
+      setState(() {});
     }
   }
 
@@ -376,29 +380,62 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     required bool isCurrentUser,
   }) {
     final rank = row.rank;
+    final badgeColor = isCurrentUser
+        ? const Color(0xFF2F6FEB)
+        : rank == 1
+        ? Colors.amber
+        : rank == 2
+        ? Colors.grey
+        : rank == 3
+        ? Colors.brown
+        : const Color(0xFFEFF3FF);
+    final badgeForeground = isCurrentUser || rank <= 3
+        ? Colors.white
+        : const Color(0xFF2F6FEB);
+    final cardBorderColor = isCurrentUser
+        ? const Color(0xFF2F6FEB)
+        : const Color(0x00000000);
+    final titleColor = isCurrentUser ? const Color(0xFF163B78) : null;
+    final captionColor = isCurrentUser
+        ? const Color(0xFF4B648B)
+        : Colors.grey;
+    final scoreColor =
+        isCurrentUser ? const Color(0xFF163B78) : const Color(0xFF0F172A);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       child: Material(
-        elevation: 6,
+        elevation: isCurrentUser ? 10 : 6,
         borderRadius: BorderRadius.circular(22),
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(22),
             gradient: isCurrentUser
                 ? const LinearGradient(
-                    colors: [Color(0xFF2F6FEB), Color(0xFF6EA8FF)],
+                    colors: [Color(0xFF1D4ED8), Color(0xFF60A5FA)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   )
                 : null,
             color: isCurrentUser ? null : Colors.white,
+            boxShadow: isCurrentUser
+                ? const [
+                    BoxShadow(
+                      color: Color(0x332F6FEB),
+                      blurRadius: 22,
+                      offset: Offset(0, 10),
+                    ),
+                  ]
+                : null,
           ),
           child: Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(22),
               color: isCurrentUser
-                  ? Colors.white.withValues(alpha: 0.95)
+                  ? const Color(0xFFF4F8FF)
                   : Colors.white,
+              border: Border.all(color: cardBorderColor, width: 1.5),
             ),
             child: Row(
               children: [
@@ -407,22 +444,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                   height: 56,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: rank == 1
-                        ? Colors.amber
-                        : rank == 2
-                        ? Colors.grey
-                        : rank == 3
-                        ? Colors.brown
-                        : const Color(0xFFEFF3FF),
+                    color: badgeColor,
                   ),
                   child: Center(
                     child: rank <= 3
-                        ? const Icon(Icons.emoji_events, color: Colors.white)
+                        ? Icon(Icons.emoji_events, color: badgeForeground)
                         : Text(
                             '#$rank',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: Color(0xFF2F6FEB),
+                              color: badgeForeground,
                             ),
                           ),
                   ),
@@ -432,19 +463,45 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        row.displayName,
-                        style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              row.displayName,
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                                color: titleColor,
+                              ),
+                            ),
+                          ),
+                          if (isCurrentUser)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF2F6FEB),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: const Text(
+                                'You',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 6),
                       Text(
                         '${row.entry.testsTaken} tests - ${row.entry.avgPercentile.toStringAsFixed(1)} %ile',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
-                          color: Colors.grey,
+                          color: captionColor,
                         ),
                       ),
                     ],
@@ -455,15 +512,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                   children: [
                     Text(
                       row.entry.avgScore.toStringAsFixed(1),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
+                        color: scoreColor,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       isCurrentUser ? 'your score' : 'avg score',
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      style: TextStyle(fontSize: 12, color: captionColor),
                     ),
                   ],
                 ),
@@ -2901,9 +2959,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           .where('examId', isEqualTo: examId)
           .get();
       final entries = _aggregateLeaderboard(
-        snap.docs.cast<QueryDocumentSnapshot>(),
+        snap.docs,
       );
-      return _hydrateLeaderboard(entries);
+      await _loadUserDisplayNames(entries.map((entry) => entry.userId));
+      return _rowsFromEntries(entries);
     } catch (_) {
       return const <_LeaderboardRow>[];
     }
@@ -3180,12 +3239,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   }
 
   List<_LeaderboardAgg> _aggregateLeaderboard(
-    List<QueryDocumentSnapshot> docs,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
   ) {
     final byUser = <String, _LeaderboardAgg>{};
 
     for (final d in docs) {
-      final data = d.data() as Map<String, dynamic>;
+      final data = d.data();
       final uid = (data['userId'] ?? '').toString();
       if (uid.isEmpty) continue;
 

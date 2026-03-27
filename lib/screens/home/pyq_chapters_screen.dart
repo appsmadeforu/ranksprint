@@ -110,6 +110,13 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
             final title = (data['name'] ?? data['title'] ?? '').toString();
             return title.toLowerCase().contains(_searchQuery.trim().toLowerCase());
           }).toList();
+          final allPdfUrls = filteredDocs
+              .map((document) {
+                final data = document.data();
+                return (data['pdfUrl'] ?? data['notesPdfUrl'] ?? '').toString();
+              })
+              .where((url) => url.isNotEmpty)
+              .toList(growable: false);
 
           if (docs.isEmpty) {
             return const Center(child: Text('No chapters available'));
@@ -182,20 +189,7 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
               final requiredPlanIds = access.requiredPlanIds;
               final isLocked = access.isLocked;
 
-              final List<String> allPdfUrls = filteredDocs
-                  .map((document) {
-                    final documentData =
-                        document.data() as Map<String, dynamic>? ??
-                        <String, dynamic>{};
-                    return (documentData['pdfUrl'] ??
-                            documentData['notesPdfUrl'] ??
-                            '')
-                        .toString();
-                  })
-                  .where((url) => url.isNotEmpty)
-                  .toList();
-
-                  return Container(
+                   return Container(
                     margin: const EdgeInsets.only(bottom: 16),
                     child: Material(
                       borderRadius: BorderRadius.circular(18),
