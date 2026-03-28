@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_cropper/image_cropper.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../widgets/top_header.dart';
 
@@ -38,8 +42,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String _authEmail = '';
   String _authPhone = '';
   Timer? _pincodeDebounce;
+  String? _photoUrl;
+  Uint8List? _selectedPhotoBytes;
+  String? _selectedPhotoName;
+  bool _removePhoto = false;
 
   static const List<String> _genderOptions = ['Male', 'Female', 'Other'];
+  static const int _maxProfilePhotoBytes = 2 * 1024 * 1024;
 
   @override
   void initState() {
@@ -104,6 +113,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       stateController.text = (data['state'] is String) ? data['state'] : '';
       _authEmail = authEmail;
       _authPhone = authPhone;
+      _photoUrl = (data['photoURL'] is String)
+          ? (data['photoURL'] as String).trim()
+          : '';
+      _selectedPhotoBytes = null;
+      _selectedPhotoName = null;
+      _removePhoto = false;
       if (hasPhoneProvider && !hasEmailProvider) {
         _phoneLocked = true;
         _emailLocked = false;
@@ -169,10 +184,27 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
 
     try {
+      if (_selectedPhotoBytes != null) {
+        final uploadedPhotoUrl = await _uploadProfilePhoto(
+          userId: user.uid,
+          bytes: _selectedPhotoBytes!,
+          fileName: _selectedPhotoName,
+        );
+        updateData['photoURL'] = uploadedPhotoUrl;
+      } else if (_removePhoto) {
+        await _deleteProfilePhoto(user.uid);
+        updateData['photoURL'] = '';
+      }
+
       await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .set(updateData, SetOptions(merge: true));
+
+      if (updateData.containsKey('photoURL')) {
+        final nextPhotoUrl = (updateData['photoURL'] ?? '').toString().trim();
+        await user.updatePhotoURL(nextPhotoUrl.isEmpty ? null : nextPhotoUrl);
+      }
 
       if (mounted) {
         Navigator.pop(context);
@@ -205,6 +237,127 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     if (picked != null) {
       setState(() => dob = picked);
+    }
+  }
+
+  Future<void> _pickProfilePhoto() async {
+    try {
+      final image = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+      );
+      if (image == null) return;
+
+      final croppedImage = await ImageCropper().cropImage(
+        sourcePath: image.path,
+        compressFormat: ImageCompressFormat.jpg,
+        compressQuality: 90,
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Crop Photo',
+            toolbarColor: const Color(0xFF2F3E8F),
+            toolbarWidgetColor: Colors.white,
+            initAspectRatio: CropAspectRatioPreset.square,
+            aspectRatioPresets: const [
+              CropAspectRatioPreset.square,
+              CropAspectRatioPreset.ratio4x3,
+              CropAspectRatioPreset.original,
+            ],
+            lockAspectRatio: false,
+            hideBottomControls: false,
+          ),
+          IOSUiSettings(
+            title: 'Crop Photo',
+            aspectRatioLockEnabled: false,
+            resetAspectRatioEnabled: true,
+            aspectRatioPresets: const [
+              CropAspectRatioPreset.square,
+              CropAspectRatioPreset.ratio4x3,
+              CropAspectRatioPreset.original,
+            ],
+          ),
+        ],
+      );
+      if (croppedImage == null) return;
+
+      final bytes = await croppedImage.readAsBytes();
+      if (bytes.length > _maxProfilePhotoBytes) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile photo must be 2 MB or smaller.'),
+          ),
+        );
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _selectedPhotoBytes = bytes;
+        _selectedPhotoName = croppedImage.path.split('/').last;
+        _removePhoto = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not pick image: $e')),
+      );
+    }
+  }
+
+  void _removeProfilePhoto() {
+    setState(() {
+      _selectedPhotoBytes = null;
+      _selectedPhotoName = null;
+      _removePhoto = true;
+    });
+  }
+
+  Future<String> _uploadProfilePhoto({
+    required String userId,
+    required Uint8List bytes,
+    required String? fileName,
+  }) async {
+    final extension = _fileExtension(fileName);
+    final ref = FirebaseStorage.instance.ref().child(
+      'profile_photos/$userId/profile$extension',
+    );
+    await ref.putData(
+      bytes,
+      SettableMetadata(contentType: _contentTypeForExtension(extension)),
+    );
+    return ref.getDownloadURL();
+  }
+
+  Future<void> _deleteProfilePhoto(String userId) async {
+    try {
+      final folderRef = FirebaseStorage.instance.ref().child(
+        'profile_photos/$userId',
+      );
+      final items = await folderRef.listAll();
+      for (final item in items.items) {
+        await item.delete();
+      }
+    } catch (_) {
+      // Ignore missing storage objects for users without uploaded photos.
+    }
+  }
+
+  String _fileExtension(String? fileName) {
+    final value = (fileName ?? '').toLowerCase();
+    if (value.endsWith('.png')) return '.png';
+    if (value.endsWith('.webp')) return '.webp';
+    return '.jpg';
+  }
+
+  String _contentTypeForExtension(String extension) {
+    switch (extension) {
+      case '.png':
+        return 'image/png';
+      case '.webp':
+        return 'image/webp';
+      default:
+        return 'image/jpeg';
     }
   }
 
@@ -334,18 +487,27 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         key: _formKey,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Keep your details accurate so RankSprint can personalize your exam journey.',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Color(0xFF6B7280),
-                                height: 1.5,
-                              ),
-                            ),
-                            const SizedBox(height: 18),
-                            _buildSectionCard(
-                        title: 'Basic Details',
+                           children: [
+                             const Text(
+                               'Keep your details accurate so RankSprint can personalize your exam journey.',
+                               style: TextStyle(
+                                 fontSize: 14,
+                                 color: Color(0xFF6B7280),
+                                 height: 1.5,
+                               ),
+                             ),
+                             const SizedBox(height: 18),
+                             _buildSectionCard(
+                               title: 'Profile Photo',
+                               subtitle:
+                                   'Upload a clear profile image up to 2 MB.',
+                               children: [
+                                 _buildPhotoEditor(),
+                               ],
+                             ),
+                             const SizedBox(height: 16),
+                             _buildSectionCard(
+                         title: 'Basic Details',
                         subtitle: 'Your identity and personal information',
                         children: [
                           Row(
@@ -594,6 +756,79 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildPhotoEditor() {
+    final imageProvider = _avatarImageProvider();
+    final initials = _profileInitials();
+
+    return Row(
+      children: [
+        CircleAvatar(
+          radius: 34,
+          backgroundColor: const Color(0xFF2F3E8F),
+          backgroundImage: imageProvider,
+          child: imageProvider == null
+              ? Text(
+                  initials,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 22,
+                  ),
+                )
+              : null,
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ElevatedButton.icon(
+                onPressed: loading ? null : _pickProfilePhoto,
+                icon: const Icon(Icons.photo_library_outlined),
+                label: const Text('Upload Photo'),
+              ),
+              const SizedBox(height: 8),
+              if (_selectedPhotoBytes != null ||
+                  ((_photoUrl ?? '').isNotEmpty && !_removePhoto))
+                TextButton(
+                  onPressed: loading ? null : _removeProfilePhoto,
+                  child: const Text('Remove Photo'),
+                ),
+              const SizedBox(height: 4),
+              const Text(
+                'JPG, PNG, or WebP. Maximum size 2 MB.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF6B7280),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  ImageProvider? _avatarImageProvider() {
+    if (_selectedPhotoBytes != null) {
+      return MemoryImage(_selectedPhotoBytes!);
+    }
+    final photoUrl = (_photoUrl ?? '').trim();
+    if (photoUrl.isNotEmpty && !_removePhoto) {
+      return NetworkImage(photoUrl);
+    }
+    return null;
+  }
+
+  String _profileInitials() {
+    final first = firstNameController.text.trim();
+    final last = lastNameController.text.trim();
+    final firstInitial = first.isNotEmpty ? first.substring(0, 1) : '';
+    final lastInitial = last.isNotEmpty ? last.substring(0, 1) : '';
+    final value = '$firstInitial$lastInitial'.toUpperCase();
+    return value.isEmpty ? 'RS' : value;
   }
 
   Widget _buildGenderField() {

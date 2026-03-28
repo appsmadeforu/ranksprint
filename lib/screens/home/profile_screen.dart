@@ -7,6 +7,7 @@ import 'terms_conditions_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'subscription_screen.dart';
 import 'payment_history_screen.dart';
 import '../../services/subscription_access_service.dart';
@@ -28,6 +29,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? selectedExamId;
   List<String> userExamIds = [];
   bool isDeletingAccount = false;
+  String _appVersionLabel = 'Rank Sprint';
 
   Future<void> _clearAppCache() async {
     imageCache.clear();
@@ -60,6 +62,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _handlePreferredExamChanged,
     );
     _loadUserExams();
+    _loadAppVersion();
   }
 
   @override
@@ -104,6 +107,69 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() {
       selectedExamId = preferredExamId;
     });
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() {
+        final buildNumber = info.buildNumber.trim();
+        _appVersionLabel = buildNumber.isEmpty
+            ? 'Rank Sprint v${info.version}'
+            : 'Rank Sprint v${info.version}+${info.buildNumber}';
+      });
+    } catch (_) {
+      // Keep fallback label if package metadata is unavailable.
+    }
+  }
+
+  void _showProfilePhotoPreview(String photoUrl) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: Stack(
+          children: [
+            InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 4,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Image.network(
+                  photoUrl,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Text('Could not load profile photo'),
+                    );
+                  },
+                ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Material(
+                color: Colors.black54,
+                shape: const CircleBorder(),
+                child: IconButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  icon: const Icon(Icons.close, color: Colors.white),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _confirmDeleteAccount(BuildContext context) {
@@ -184,6 +250,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await FirebaseAuth.instance.signOut();
   }
 
+  void _confirmLogout(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to log out?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              await _logout(context);
+            },
+            child: const Text(
+              'Logout',
+              style: TextStyle(color: Colors.orange),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _formatDate(DateTime d) {
     final months = [
       'January',
@@ -200,6 +292,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'December',
     ];
     return '${months[d.month - 1]} ${d.day}, ${d.year}';
+  }
+
+  String _profileInitials(Map<String, dynamic> data) {
+    final firstName = (data['firstName'] ?? '').toString().trim();
+    final lastName = (data['lastName'] ?? '').toString().trim();
+    final firstInitial = firstName.isNotEmpty ? firstName.substring(0, 1) : '';
+    final lastInitial = lastName.isNotEmpty ? lastName.substring(0, 1) : '';
+    final directInitials = '$firstInitial$lastInitial'.toUpperCase();
+    if (directInitials.isNotEmpty) {
+      return directInitials;
+    }
+
+    final fullName = (data['name'] ?? '').toString().trim();
+    final parts = fullName
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (parts.length >= 2) {
+      return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'
+          .toUpperCase();
+    }
+    if (parts.length == 1) {
+      return parts.first.substring(0, 1).toUpperCase();
+    }
+    return 'RS';
   }
 
   String? _effectiveSelectedExamId(List<String> selectedExams) {
@@ -356,6 +473,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final data = snapshot.data!.data() as Map<String, dynamic>;
 
           final name = data['name'] ?? '';
+          final photoUrl = (data['photoURL'] ?? '').toString().trim();
           final email = data['email'] ?? '';
           final phone = data['phone'] ?? '';
           final selectedExams = List<String>.from(data['selectedExams'] ?? []);
@@ -394,25 +512,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Container(
-                                width: 72,
-                                height: 72,
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Color(0xFF2F3E8F),
-                                ),
-                                alignment: Alignment.center,
-                                child: Text(
-                                  name.isNotEmpty
-                                      ? (name.length >= 2
-                                            ? name.substring(0, 2).toUpperCase()
-                                            : name.toUpperCase())
-                                      : 'RS',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 20,
+                              GestureDetector(
+                                onTap: photoUrl.isNotEmpty
+                                    ? () => _showProfilePhotoPreview(photoUrl)
+                                    : null,
+                                child: Container(
+                                  width: 72,
+                                  height: 72,
+                                  decoration: const BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Color(0xFF2F3E8F),
                                   ),
+                                  alignment: Alignment.center,
+                                  clipBehavior: Clip.antiAlias,
+                                  child: photoUrl.isNotEmpty
+                                      ? Image.network(
+                                          photoUrl,
+                                          width: 72,
+                                          height: 72,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (
+                                            context,
+                                            error,
+                                            stackTrace,
+                                          ) {
+                                            return Center(
+                                              child: Text(
+                                                _profileInitials(data),
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 20,
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        )
+                                      : Text(
+                                          _profileInitials(data),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 20,
+                                          ),
+                                        ),
                                 ),
                               ),
                               const SizedBox(width: 16),
@@ -834,7 +977,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   style: TextStyle(color: Colors.orange),
                                 ),
                                 // trailing: const Icon(Icons.chevron_right),
-                                onTap: () => _logout(context),
+                                onTap: () => _confirmLogout(context),
                               ),
                               const Divider(height: 1),
 
@@ -859,11 +1002,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
 
                   const SizedBox(height: 30),
-                  const Center(
+                  Center(
                     child: Text(
-                      'Rank Sprint v1.0.0\n© 2026 Rank Sprint',
+                      '$_appVersionLabel\n© 2026 Rank Sprint',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey),
+                      style: const TextStyle(color: Colors.grey),
                     ),
                   ),
                   const SizedBox(height: 40),

@@ -26,6 +26,15 @@ class TopHeader extends StatelessWidget {
     this.enableTitleNavigation = true,
   });
 
+  void _goHome(BuildContext context) {
+    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => const MainNavigation(initialIndex: 0),
+      ),
+      (route) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -41,16 +50,7 @@ class TopHeader extends StatelessWidget {
           Expanded(
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
-              onTap: enableTitleNavigation
-                  ? () {
-                      Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(
-                          builder: (_) => const MainNavigation(initialIndex: 0),
-                        ),
-                        (route) => false,
-                      );
-                    }
-                  : null,
+              onTap: enableTitleNavigation ? () => _goHome(context) : null,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                 child: FittedBox(

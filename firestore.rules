@@ -133,6 +133,21 @@ service cloud.firestore {
       allow write: if isPrivilegedAdmin();
     }
 
+    match /coupons/{couponCode} {
+      allow read: if isPrivilegedAdmin() ||
+          (signedIn() &&
+              resource.data.isActive == true &&
+              (!(resource.data.validFrom is timestamp) || request.time >= resource.data.validFrom) &&
+              (!(resource.data.validUntil is timestamp) || request.time <= resource.data.validUntil));
+      allow write: if isPrivilegedAdmin();
+    }
+
+    match /couponRedemptions/{redemptionId} {
+      allow read: if isPrivilegedAdmin() || ownsExistingDoc();
+      allow create: if isPrivilegedAdmin() || ownsIncomingDoc();
+      allow update, delete: if isPrivilegedAdmin();
+    }
+
     match /subscriptions/{subscriptionId} {
       allow read: if isPrivilegedAdmin() || ownsExistingDoc();
       allow create: if isPrivilegedAdmin() || ownsIncomingDoc();

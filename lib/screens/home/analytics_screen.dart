@@ -33,6 +33,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
   final Map<String, Map<String, String>> _sectionNameCache =
       <String, Map<String, String>>{};
+  final Map<String, Future<_DashboardVm>> _dashboardFutureCache =
+      <String, Future<_DashboardVm>>{};
+  final Map<String, Future<List<_LeaderboardRow>>> _leaderboardFutureCache =
+      <String, Future<List<_LeaderboardRow>>>{};
+  final Set<String> _dashboardPrefetchKeys = <String>{};
   final ValueNotifier<_DashboardTrendMode> _trendModeNotifier = ValueNotifier(
     _DashboardTrendMode.avg,
   );
@@ -73,6 +78,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       userExamIds = exams;
       selectedExamId = preferredExamId;
     });
+    _prefetchDashboardForSelectedExam();
   }
 
   @override
@@ -101,7 +107,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
     setState(() {
       selectedExamId = preferredExamId;
+      _dashboardFutureCache.clear();
+      _leaderboardFutureCache.remove(preferredExamId);
+      _dashboardPrefetchKeys.clear();
     });
+    _prefetchDashboardForSelectedExam();
   }
 
   @override
@@ -111,17 +121,21 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       body: SafeArea(
         child: Column(
           children: [
-            TopHeader(
-              selectedExamId: selectedExamId,
-              userExamIds: userExamIds,
-              onExamChanged: (examId) async {
-                await UserExamPreferenceService.savePreferredExamId(examId);
-                if (!mounted) return;
-                setState(() {
-                  selectedExamId = examId;
-                });
-              },
-            ),
+              TopHeader(
+                selectedExamId: selectedExamId,
+                userExamIds: userExamIds,
+                onExamChanged: (examId) async {
+                  await UserExamPreferenceService.savePreferredExamId(examId);
+                  if (!mounted) return;
+                  setState(() {
+                    selectedExamId = examId;
+                    _dashboardFutureCache.clear();
+                    _leaderboardFutureCache.remove(examId);
+                    _dashboardPrefetchKeys.clear();
+                  });
+                  _prefetchDashboardForSelectedExam();
+                },
+              ),
             const SizedBox(height: 10),
             Expanded(
               child: selectedExamId == null
@@ -572,8 +586,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           return const Center(child: Text('No analytics data'));
         }
 
+        final dashboardCacheKey = _dashboardCacheKey(
+          userId: user.uid,
+          examId: selectedExamId!,
+          attempts: attempts,
+        );
+
         return FutureBuilder<_DashboardVm>(
-          future: _loadDashboardVm(user.uid, selectedExamId!, attempts),
+          future: _dashboardFutureCache.putIfAbsent(
+            dashboardCacheKey,
+            () => _loadDashboardVm(user.uid, selectedExamId!, attempts),
+          ),
           builder: (context, vmSnap) {
             if (!vmSnap.hasData) {
               return const Center(child: CircularProgressIndicator());
@@ -581,11 +604,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
             final vm = vmSnap.data!;
 
-            return RefreshIndicator(
-              onRefresh: () async {
-                if (!mounted) return;
-                setState(() {});
-              },
+              return RefreshIndicator(
+                onRefresh: () async {
+                  if (!mounted) return;
+                  setState(() {});
+                  _dashboardFutureCache.clear();
+                  _leaderboardFutureCache.remove(selectedExamId);
+                },
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 22),
                 children: [
@@ -746,6 +771,69 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
          ),
       ],
     );
+  }
+
+  void _prefetchDashboardForSelectedExam() {
+    final user = FirebaseAuth.instance.currentUser;
+    final examId = selectedExamId;
+    if (user == null || examId == null || examId.isEmpty) return;
+    final prefetchKey = '${user.uid}|$examId';
+    if (_dashboardPrefetchKeys.contains(prefetchKey)) return;
+    _dashboardPrefetchKeys.add(prefetchKey);
+
+    FirebaseFirestore.instance
+        .collection('testAttempts')
+        .where('examId', isEqualTo: examId)
+        .where('userId', isEqualTo: user.uid)
+        .get()
+        .then((snap) {
+          final attempts =
+              snap.docs.where((doc) {
+                final status = (doc.data()['status'] ?? 'completed')
+                    .toString()
+                    .toLowerCase();
+                return status == 'completed';
+              }).toList()..sort((a, b) {
+                final aTs =
+                    _toDate(a.data()['submittedAt']) ??
+                    _toDate(a.data()['startedAt']) ??
+                    DateTime.fromMillisecondsSinceEpoch(0);
+                final bTs =
+                    _toDate(b.data()['submittedAt']) ??
+                    _toDate(b.data()['startedAt']) ??
+                    DateTime.fromMillisecondsSinceEpoch(0);
+                return aTs.compareTo(bTs);
+              });
+          if (attempts.isEmpty) return;
+          final dashboardCacheKey = _dashboardCacheKey(
+            userId: user.uid,
+            examId: examId,
+            attempts: attempts,
+          );
+          _dashboardFutureCache.putIfAbsent(
+            dashboardCacheKey,
+            () => _loadDashboardVm(user.uid, examId, attempts),
+          );
+        })
+        .catchError((_) {});
+  }
+
+  String _dashboardCacheKey({
+    required String userId,
+    required String examId,
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
+  }) {
+    final stamp = attempts
+        .map((doc) {
+          final data = doc.data();
+          final ts =
+              (_toDate(data['submittedAt']) ?? _toDate(data['startedAt']))
+                  ?.millisecondsSinceEpoch ??
+              0;
+          return '${doc.id}:$ts';
+        })
+        .join('|');
+    return '$userId|$examId|$stamp';
   }
 
   void _handleHeroPageChanged(int index) {
@@ -2377,20 +2465,25 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     String examId,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
   ) async {
-    final examDoc = await FirebaseFirestore.instance
-        .collection('exams')
-        .doc(examId)
-        .get();
-    final examName = (examDoc.data()?['name'] ?? 'Selected Exam').toString();
-
     final resultMap = await ResultDataService.loadResultsMap(
       attempts: attempts,
       userId: userId,
       examId: examId,
     );
-    final detail = await _loadQuestionDetails(attempts, resultMap);
-    final leaderboardRows = await _loadExamLeaderboardRows(examId);
-    final testConfigs = await _loadTestConfigs(attempts);
+    final asyncDeps = await Future.wait<dynamic>([
+      FirebaseFirestore.instance.collection('exams').doc(examId).get(),
+      _loadQuestionDetails(attempts, resultMap),
+      _leaderboardFutureCache.putIfAbsent(
+        examId,
+        () => _loadExamLeaderboardRows(examId),
+      ),
+      _loadTestConfigs(attempts),
+    ]);
+    final examDoc = asyncDeps[0] as DocumentSnapshot<Map<String, dynamic>>;
+    final examName = (examDoc.data()?['name'] ?? 'Selected Exam').toString();
+    final detail = asyncDeps[1] as _QuestionDetailBundle;
+    final leaderboardRows = asyncDeps[2] as List<_LeaderboardRow>;
+    final testConfigs = asyncDeps[3] as Map<String, Map<String, dynamic>>;
 
     final trendPoints = <_TrendPoint>[];
     final riskBars = <double>[];
@@ -2819,6 +2912,50 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     final chapters = <String, _ChapterMetric>{};
     final totalsByAttempt = <String, int>{};
     final chapterAttempts = <_ChapterAttemptMetric>[];
+    final questionLoads =
+        <String, Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>>{};
+    final sectionNameLoads = <String, Future<Map<String, String>>>{};
+
+    for (final attemptDoc in attempts) {
+      final attempt = attemptDoc.data();
+      final examId = (attempt['examId'] ?? '').toString();
+      final testId = (attempt['testId'] ?? '').toString();
+      if (examId.isEmpty || testId.isEmpty) continue;
+
+      final cacheKey = '$examId|$testId';
+      final embeddedQuestions = _readEmbeddedQuestions(
+        resultMap[attemptDoc.id]?['question'] ?? attempt['question'],
+      );
+      if (embeddedQuestions.isEmpty) {
+        questionLoads.putIfAbsent(cacheKey, () async {
+          if (_questionCache.containsKey(cacheKey)) {
+            return _questionCache[cacheKey] ?? const [];
+          }
+          try {
+            final snap = await FirebaseFirestore.instance
+                .collection('exams')
+                .doc(examId)
+                .collection('tests')
+                .doc(testId)
+                .collection('questions')
+                .get();
+            _questionCache[cacheKey] = snap.docs;
+          } catch (_) {
+            _questionCache[cacheKey] = const [];
+          }
+          return _questionCache[cacheKey] ?? const [];
+        });
+      }
+      sectionNameLoads.putIfAbsent(
+        cacheKey,
+        () => _loadSectionNames(examId, testId),
+      );
+    }
+
+    await Future.wait<dynamic>([
+      ...questionLoads.values,
+      ...sectionNameLoads.values,
+    ]);
 
     for (int attemptIndex = 0; attemptIndex < attempts.length; attemptIndex++) {
       final attemptDoc = attempts[attemptIndex];
@@ -2828,30 +2965,26 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       if (examId.isEmpty || testId.isEmpty) continue;
 
       final cacheKey = '$examId|$testId';
-      if (!_questionCache.containsKey(cacheKey)) {
-        try {
-          final snap = await FirebaseFirestore.instance
-              .collection('exams')
-              .doc(examId)
-              .collection('tests')
-              .doc(testId)
-              .collection('questions')
-              .get();
-          _questionCache[cacheKey] = snap.docs;
-        } catch (_) {
-          _questionCache[cacheKey] = const [];
-        }
+      final embeddedQuestions = _readEmbeddedQuestions(
+        resultMap[attemptDoc.id]?['question'] ?? attempt['question'],
+      );
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> firestoreQuestions =
+          const [];
+      if (embeddedQuestions.isEmpty) {
+        firestoreQuestions = _questionCache[cacheKey] ?? const [];
       }
 
-      final questions = _questionCache[cacheKey] ?? const [];
-      final sectionNames = await _loadSectionNames(examId, testId);
-      totalsByAttempt[attemptDoc.id] = questions.length;
+      final sectionNames = await sectionNameLoads[cacheKey] ?? const <String, String>{};
+      final totalQuestions = embeddedQuestions.isNotEmpty
+          ? embeddedQuestions.length
+          : firestoreQuestions.length;
+      totalsByAttempt[attemptDoc.id] = totalQuestions;
       final answers = _answersMap(resultMap[attemptDoc.id]?['answers'] ?? attempt['answers']);
       final perQuestionSeconds =
           _secondsPerQuestion(
             attempt,
             resultMap[attemptDoc.id] ?? const <String, dynamic>{},
-            questions.length,
+            totalQuestions,
           ) ??
           0.0;
       final attemptChapterMetrics = <String, _ChapterMetric>{};
@@ -2861,40 +2994,79 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           DateTime.now();
       final label = 'T${attemptIndex + 1}';
 
-      for (final qDoc in questions) {
-        final question = qDoc.data();
-        final subjectName = _subjectName(question, sectionNames);
-        final chapterName = _chapterName(question, subjectName);
-        final selected = _normalizeAnswerValue(answers[qDoc.id] ?? '');
-        final correct = _optionLetter(question['correctOption']);
-        final isAttempted = selected.isNotEmpty;
-        final isCorrect = isAttempted && selected == correct;
+      if (embeddedQuestions.isNotEmpty) {
+        for (final question in embeddedQuestions) {
+          final questionId =
+              (question['__id'] ?? question['id'] ?? '').toString();
+          final subjectName = _subjectName(question, sectionNames);
+          final chapterName = _chapterName(question, subjectName);
+          final selected = _normalizeAnswerValue(answers[questionId] ?? '');
+          final correct = _optionLetter(question['correctOption']);
+          final isAttempted = selected.isNotEmpty;
+          final isCorrect = isAttempted && selected == correct;
 
-        final subjectMetric = subjects.putIfAbsent(
-          subjectName,
-          () => _SubjectMetric(subjectName),
-        );
-        subjectMetric.total++;
-        if (isAttempted) subjectMetric.attempted++;
-        if (isCorrect) subjectMetric.correct++;
-        subjectMetric.totalSeconds += perQuestionSeconds;
+          final subjectMetric = subjects.putIfAbsent(
+            subjectName,
+            () => _SubjectMetric(subjectName),
+          );
+          subjectMetric.total++;
+          if (isAttempted) subjectMetric.attempted++;
+          if (isCorrect) subjectMetric.correct++;
+          subjectMetric.totalSeconds += perQuestionSeconds;
 
-        final chapterKey = '$subjectName|$chapterName';
-        final chapterMetric = chapters.putIfAbsent(
-          chapterKey,
-          () => _ChapterMetric(name: chapterName, subject: subjectName),
-        );
-        chapterMetric.total++;
-        if (isAttempted) chapterMetric.attempted++;
-        if (isCorrect) chapterMetric.correct++;
+          final chapterKey = '$subjectName|$chapterName';
+          final chapterMetric = chapters.putIfAbsent(
+            chapterKey,
+            () => _ChapterMetric(name: chapterName, subject: subjectName),
+          );
+          chapterMetric.total++;
+          if (isAttempted) chapterMetric.attempted++;
+          if (isCorrect) chapterMetric.correct++;
 
-        final attemptChapterMetric = attemptChapterMetrics.putIfAbsent(
-          chapterKey,
-          () => _ChapterMetric(name: chapterName, subject: subjectName),
-        );
-        attemptChapterMetric.total++;
-        if (isAttempted) attemptChapterMetric.attempted++;
-        if (isCorrect) attemptChapterMetric.correct++;
+          final attemptChapterMetric = attemptChapterMetrics.putIfAbsent(
+            chapterKey,
+            () => _ChapterMetric(name: chapterName, subject: subjectName),
+          );
+          attemptChapterMetric.total++;
+          if (isAttempted) attemptChapterMetric.attempted++;
+          if (isCorrect) attemptChapterMetric.correct++;
+        }
+      } else {
+        for (final qDoc in firestoreQuestions) {
+          final question = qDoc.data();
+          final subjectName = _subjectName(question, sectionNames);
+          final chapterName = _chapterName(question, subjectName);
+          final selected = _normalizeAnswerValue(answers[qDoc.id] ?? '');
+          final correct = _optionLetter(question['correctOption']);
+          final isAttempted = selected.isNotEmpty;
+          final isCorrect = isAttempted && selected == correct;
+
+          final subjectMetric = subjects.putIfAbsent(
+            subjectName,
+            () => _SubjectMetric(subjectName),
+          );
+          subjectMetric.total++;
+          if (isAttempted) subjectMetric.attempted++;
+          if (isCorrect) subjectMetric.correct++;
+          subjectMetric.totalSeconds += perQuestionSeconds;
+
+          final chapterKey = '$subjectName|$chapterName';
+          final chapterMetric = chapters.putIfAbsent(
+            chapterKey,
+            () => _ChapterMetric(name: chapterName, subject: subjectName),
+          );
+          chapterMetric.total++;
+          if (isAttempted) chapterMetric.attempted++;
+          if (isCorrect) chapterMetric.correct++;
+
+          final attemptChapterMetric = attemptChapterMetrics.putIfAbsent(
+            chapterKey,
+            () => _ChapterMetric(name: chapterName, subject: subjectName),
+          );
+          attemptChapterMetric.total++;
+          if (isAttempted) attemptChapterMetric.attempted++;
+          if (isCorrect) attemptChapterMetric.correct++;
+        }
       }
 
       for (final metric in attemptChapterMetrics.values) {
@@ -2921,6 +3093,18 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       totalsByAttempt: totalsByAttempt,
       chapterAttempts: chapterAttempts,
     );
+  }
+
+  List<Map<String, dynamic>> _readEmbeddedQuestions(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map(
+          (item) => Map<String, dynamic>.from(
+            item.map((key, value) => MapEntry(key.toString(), value)),
+          ),
+        )
+        .toList(growable: false);
   }
 
   Future<Map<String, String>> _loadSectionNames(String examId, String testId) async {
@@ -2957,6 +3141,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       final snap = await FirebaseFirestore.instance
           .collection('results')
           .where('examId', isEqualTo: examId)
+          .orderBy('createdAt', descending: true)
+          .limit(120)
           .get();
       final entries = _aggregateLeaderboard(
         snap.docs,

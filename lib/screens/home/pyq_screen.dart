@@ -103,7 +103,7 @@ class _PyqScreenState extends State<PyqScreen> {
     return ContentAccessService.publishedPyqsQuery(examId).snapshots();
   }
 
-  Future<Map<String, int>> _loadSubjectPaperCounts(
+  Future<Map<String, int>> _loadSubjectQuestionCounts(
     String examId,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> subjects,
   ) {
@@ -202,13 +202,13 @@ class _PyqScreenState extends State<PyqScreen> {
                           }
 
                            return FutureBuilder<Map<String, int>>(
-                             future: _loadSubjectPaperCounts(
-                               effectiveSelectedExamId,
-                               docs,
-                             ),
+                              future: _loadSubjectQuestionCounts(
+                                effectiveSelectedExamId,
+                                docs,
+                              ),
                              builder: (context, countsSnapshot) {
-                               final paperCounts =
-                                   countsSnapshot.data ?? const <String, int>{};
+                                final questionCounts =
+                                    countsSnapshot.data ?? const <String, int>{};
                                return LayoutBuilder(
                                  builder: (context, constraints) {
                                    return SingleChildScrollView(
@@ -229,11 +229,11 @@ class _PyqScreenState extends State<PyqScreen> {
                                              ),
                                            ),
                                            const SizedBox(height: 6),
-                                           const Text(
-                                             "Access exam papers organized by subject and chapter",
-                                             style: TextStyle(
-                                               fontSize: 14,
-                                               color: Colors.grey,
+                                            const Text(
+                                              "Access exam questions organized by subject and chapter",
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                color: Colors.grey,
                                              ),
                                            ),
                                            const SizedBox(height: 20),
@@ -256,8 +256,8 @@ class _PyqScreenState extends State<PyqScreen> {
                                                final requiredPlanIds =
                                                    access.requiredPlanIds;
                                                final isLocked = access.isLocked;
-                                               final paperCount =
-                                                   paperCounts[doc.id] ?? 0;
+                                               final questionCount =
+                                                   questionCounts[doc.id] ?? 0;
                                                return Container(
                                                  margin: const EdgeInsets.only(
                                                    bottom: 16,
@@ -343,10 +343,10 @@ class _PyqScreenState extends State<PyqScreen> {
                                                                  const SizedBox(
                                                                    height: 4,
                                                                  ),
-                                                                 Text(
-                                                                   "$paperCount papers available",
-                                                                   style:
-                                                                       const TextStyle(
+                                                                  Text(
+                                                                    "$questionCount questions available",
+                                                                    style:
+                                                                        const TextStyle(
                                                                          fontSize:
                                                                              13,
                                                                          color: Colors

@@ -35,6 +35,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   List<String> _selectedExamPlanIds = const [];
   bool isLoadingPlans = false;
   bool _isPurchasing = false;
+  bool _isApplyingCoupon = false;
+  Map<String, dynamic>? _appliedCoupon;
+  String? _couponFeedback;
+  bool _couponFeedbackIsError = false;
   StreamSubscription<List<PurchaseDetails>>? _purchaseSubscription;
 
   @override
@@ -128,13 +132,16 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       await _loadSelectedExamContext();
       final snapshot = await FirebaseFirestore.instance
           .collection('subscriptionPlans')
-          .where('isActive', isEqualTo: true)
+          .where('features.isActive', isEqualTo: true)
           .get();
 
       final plans = <Map<String, dynamic>>[];
 
       for (var doc in snapshot.docs) {
         final data = doc.data();
+        final features = Map<String, dynamic>.from(
+          data['features'] ?? const <String, dynamic>{},
+        );
 
         final rawExamsIncluded = data['examsIncluded'];
         final examsIncluded = <String, dynamic>{};
@@ -156,17 +163,26 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
         plans.add({
           'id': doc.id,
-          'name': data['name'] ?? 'Plan',
+          'name': (features['name'] ?? data['name'] ?? 'Plan').toString(),
           'durationDays': data['durationDays'] ?? 30,
           'duration': _getDurationString(data['durationDays'] ?? 30),
-          'price': (data['price'] ?? 0).toInt(),
-          'discount': data['discountPercentage'] ?? 0,
+          'price': ((features['price'] ?? data['price'] ?? 0) as num).toInt(),
+          'discount': ((features['discountPercentage'] ??
+                      data['discountPercentage'] ??
+                      0)
+                  as num)
+              .toInt(),
           'originalPrice': _calculateOriginalPrice(
-            (data['price'] ?? 0).toInt(),
-            (data['discountPercentage'] ?? 0).toInt(),
+            ((features['price'] ?? data['price'] ?? 0) as num).toInt(),
+            ((features['discountPercentage'] ??
+                        data['discountPercentage'] ??
+                        0)
+                    as num)
+                .toInt(),
           ),
           'storeProductId':
-              (data['storeProductId'] ??
+              (features['storeProductId'] ??
+                      data['storeProductId'] ??
                       data['productId'] ??
                       data['playProductId'] ??
                       data['androidProductId'] ??
@@ -312,7 +328,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     final plan = _selectedPlanOrNull();
     if (plan == null) return;
 
-    final productId = (plan['storeProductId'] ?? '').toString().trim();
+    final effectivePrice = _effectivePriceForPlan(plan);
+    if (effectivePrice <= 0) {
+      await _redeemFreeCoupon(plan);
+      return;
+    }
+
+    final productId = _productIdForPlan(plan);
     if (productId.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -374,9 +396,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   }
 
   Future<void> _grantSubscriptionForPurchase(PurchaseDetails purchase) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
     final plan = subscriptionPlans.where((p) {
       return (p['storeProductId'] ?? '').toString() == purchase.productID;
     }).firstWhere(
@@ -385,18 +404,278 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     );
     if (plan.isEmpty) return;
 
+    await _grantSubscription(
+      plan: plan,
+      source: 'iap',
+      productId: purchase.productID,
+      purchaseId: purchase.purchaseID ?? '',
+    );
+  }
+
+  int _effectivePriceForPlan(
+    Map<String, dynamic> plan, {
+    Map<String, dynamic>? couponOverride,
+  }) {
+    final basePrice = ((plan['price'] ?? 0) as num).toInt();
+    final coupon = couponOverride ?? _appliedCoupon;
+    if (coupon == null || !_couponAppliesToPlan(coupon, plan)) {
+      return basePrice;
+    }
+
+    final type = (coupon['discountType'] ?? '').toString().toLowerCase();
+    final value = ((coupon['discountValue'] ?? 0) as num).toInt();
+
+    switch (type) {
+      case 'free':
+        return 0;
+      case 'flat':
+      case 'fixed':
+        return (basePrice - value).clamp(0, basePrice).toInt();
+      case 'percent':
+        final discounted = basePrice - ((basePrice * value) / 100).round();
+        return discounted.clamp(0, basePrice).toInt();
+      default:
+        return basePrice;
+    }
+  }
+
+  String _productIdForPlan(Map<String, dynamic> plan) {
+    final coupon = _appliedCoupon;
+    if (coupon != null && _couponAppliesToPlan(coupon, plan)) {
+      final couponProductId =
+          (coupon['googlePlayProductId'] ??
+                  coupon['playProductId'] ??
+                  coupon['storeProductId'] ??
+                  '')
+              .toString()
+              .trim();
+      if (couponProductId.isNotEmpty) {
+        return couponProductId;
+      }
+    }
+
+    return (plan['storeProductId'] ?? '').toString().trim();
+  }
+
+  bool _couponAppliesToPlan(Map<String, dynamic> coupon, Map<String, dynamic> plan) {
+    final applicablePlanIds = List<String>.from(
+      coupon['applicablePlanIds'] ?? const <String>[],
+    );
+    if (applicablePlanIds.isNotEmpty &&
+        !applicablePlanIds.contains(plan['id'].toString())) {
+      return false;
+    }
+
+    final applicableExamIds = List<String>.from(
+      coupon['applicableExamIds'] ?? const <String>[],
+    );
+    if (applicableExamIds.isEmpty) {
+      return true;
+    }
+
+    final examId = selectedExamId;
+    return examId != null && applicableExamIds.contains(examId);
+  }
+
+  bool _couponWithinWindow(Map<String, dynamic> coupon) {
+    final now = DateTime.now();
+    final validFrom = coupon['validFrom'];
+    final validUntil = coupon['validUntil'];
+
+    if (validFrom is Timestamp && now.isBefore(validFrom.toDate())) {
+      return false;
+    }
+    if (validUntil is Timestamp && now.isAfter(validUntil.toDate())) {
+      return false;
+    }
+    return true;
+  }
+
+  Future<bool> _couponAllowedForUser(Map<String, dynamic> coupon) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
+
+    final userType = (coupon['userType'] ?? 'all').toString().toLowerCase();
+    if (userType.isEmpty || userType == 'all') {
+      return true;
+    }
+
+    final allowedUserIds = List<String>.from(coupon['userIds'] ?? const []);
+    if (userType == 'users') {
+      return allowedUserIds.isEmpty || allowedUserIds.contains(user.uid);
+    }
+
+    if (userType == 'groups') {
+      if (allowedUserIds.contains(user.uid)) {
+        return true;
+      }
+
+      final allowedGroupIds = List<String>.from(
+        coupon['userGroupIds'] ?? const [],
+      );
+      if (allowedGroupIds.isEmpty) {
+        return false;
+      }
+
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      final userData = userDoc.data() ?? const <String, dynamic>{};
+      final userGroupIds = <String>{
+        ...List<String>.from(userData['userGroupIds'] ?? const []),
+        ...List<String>.from(userData['groupIds'] ?? const []),
+      };
+
+      for (final groupId in allowedGroupIds) {
+        if (userGroupIds.contains(groupId)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    return allowedUserIds.isEmpty || allowedUserIds.contains(user.uid);
+  }
+
+  Future<QueryDocumentSnapshot<Map<String, dynamic>>?> _findCouponDocument(
+    String code,
+  ) async {
+    final candidates = <String>{
+      code.trim(),
+      code.trim().toUpperCase(),
+      code.trim().toLowerCase(),
+    }.where((value) => value.isNotEmpty);
+
+    for (final candidate in candidates) {
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('coupons')
+          .where('code', isEqualTo: candidate)
+          .limit(1)
+          .get();
+      if (querySnapshot.docs.isNotEmpty) {
+        return querySnapshot.docs.first;
+      }
+    }
+
+    return null;
+  }
+
+  Future<void> _applyCoupon() async {
+    final rawCode = _couponController.text.trim();
+    final plan = _selectedPlanOrNull();
+    if (rawCode.isEmpty || plan == null) return;
+
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _isApplyingCoupon = true;
+      _couponFeedback = null;
+      _couponFeedbackIsError = false;
+    });
+
+    try {
+      final doc = await _findCouponDocument(rawCode);
+      if (doc == null) {
+        throw 'Coupon not found.';
+      }
+
+      final data = doc.data();
+      if ((data['isActive'] ?? false) != true) {
+        throw 'Coupon is inactive.';
+      }
+      if (!_couponWithinWindow(data)) {
+        throw 'Coupon has expired or is not live yet.';
+      }
+      if (!_couponAppliesToPlan(data, plan)) {
+        throw 'Coupon is not valid for this plan.';
+      }
+      if (!await _couponAllowedForUser(data)) {
+        throw 'Coupon is not available for this user.';
+      }
+
+      final maxRedemptions =
+          ((data['maxRedemptions'] ?? data['usageLimit'] ?? 0) as num).toInt();
+      final redeemedCount =
+          ((data['redeemedCount'] ?? data['usedCount'] ?? 0) as num).toInt();
+      if (maxRedemptions > 0 && redeemedCount >= maxRedemptions) {
+        throw 'Coupon redemption limit reached.';
+      }
+
+      if (!mounted) return;
+      final appliedCoupon = {
+        ...data,
+        'id': (data['code'] ?? rawCode).toString(),
+        'docId': doc.id,
+      };
+      final finalPrice = _effectivePriceForPlan(
+        plan,
+        couponOverride: appliedCoupon,
+      );
+      setState(() {
+        _appliedCoupon = appliedCoupon;
+        _couponFeedback =
+            'Coupon ${(appliedCoupon['id'] ?? rawCode).toString()} applied. Final price: Rs. $finalPrice';
+        _couponFeedbackIsError = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Coupon ${(appliedCoupon['id'] ?? rawCode).toString()} applied successfully.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      final message = error.toString().replaceFirst('Exception: ', '');
+      setState(() {
+        _appliedCoupon = null;
+        _couponFeedback = message;
+        _couponFeedbackIsError = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isApplyingCoupon = false);
+      }
+    }
+  }
+
+  Future<void> _grantSubscription({
+    required Map<String, dynamic> plan,
+    required String source,
+    String productId = '',
+    String purchaseId = '',
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
     final durationDays = (plan['durationDays'] ?? 30) as int;
     final now = DateTime.now();
     final expiresAt = now.add(Duration(days: durationDays));
     final subRef = FirebaseFirestore.instance.collection('subscriptions').doc();
+    final coupon = _appliedCoupon;
+    final couponCode = (coupon?['id'] ?? '').toString();
+    final effectivePrice = _effectivePriceForPlan(plan);
 
     await subRef.set({
       'userId': user.uid,
       'planId': plan['id'],
       'status': 'active',
-      'source': 'iap',
-      'productId': purchase.productID,
-      'purchaseId': purchase.purchaseID ?? '',
+      'source': source,
+      'productId': productId,
+      'purchaseId': purchaseId,
+      'originalPrice': plan['price'],
+      'finalPrice': effectivePrice,
+      'couponCode': couponCode,
+      'couponSnapshot': coupon == null
+          ? null
+          : {
+              'discountType': coupon['discountType'],
+              'discountValue': coupon['discountValue'],
+              'googlePlayProductId': coupon['googlePlayProductId'],
+            },
       'startedAt': Timestamp.fromDate(now),
       'expiresAt': Timestamp.fromDate(expiresAt),
       'createdAt': FieldValue.serverTimestamp(),
@@ -407,6 +686,62 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       'activePlanIds': FieldValue.arrayUnion([plan['id']]),
       'subscriptionIds': FieldValue.arrayUnion([subRef.id]),
     }, SetOptions(merge: true));
+
+    if (couponCode.isNotEmpty) {
+      final couponDocId = (coupon?['docId'] ?? '').toString();
+      if (couponDocId.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('coupons')
+            .doc(couponDocId)
+            .set({
+          'usedCount': FieldValue.increment(1),
+          'redeemedCount': FieldValue.increment(1),
+          'lastRedeemedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+
+      await FirebaseFirestore.instance.collection('couponRedemptions').add({
+        'couponCode': couponCode,
+        'couponId': couponDocId.isNotEmpty ? couponDocId : couponCode,
+        'userId': user.uid,
+        'planId': plan['id'],
+        'subscriptionId': subRef.id,
+        'source': source,
+        'originalPrice': plan['price'],
+        'finalPrice': effectivePrice,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
+  Future<void> _redeemFreeCoupon(Map<String, dynamic> plan) async {
+    if (_appliedCoupon == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Apply a valid coupon first.')),
+      );
+      return;
+    }
+
+    if (mounted) {
+      setState(() => _isPurchasing = true);
+    }
+
+    try {
+      await _grantSubscription(
+        plan: plan,
+        source: 'coupon',
+      );
+      SubscriptionAccessService.clearCache();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Coupon redeemed and subscription activated.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isPurchasing = false);
+      }
+    }
   }
 
   @override
@@ -416,7 +751,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
 
     final visiblePlans = _visiblePlans();
-    final selectedPlan = _selectedPlanOrNull();
+    final selectedPlan = _selectedPlanOrNull() == null
+        ? null
+        : Map<String, dynamic>.from(_selectedPlanOrNull()!);
+    final bottomInset = MediaQuery.of(context).viewPadding.bottom;
     if (selectedPlan == null) {
       return Scaffold(
         backgroundColor: const Color(0xFFF5F6FA),
@@ -499,6 +837,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       );
     }
 
+    final effectivePrice = _effectivePriceForPlan(selectedPlan);
+    final hasCoupon = _appliedCoupon != null &&
+        _couponAppliesToPlan(_appliedCoupon!, selectedPlan);
+    if (hasCoupon) {
+      selectedPlan['price'] = effectivePrice;
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
       body: SafeArea(
@@ -554,9 +899,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                       ),
                     ),
                   if ((selectedExamId ?? '').isNotEmpty)
-                    _sectionCard(
-                      color: const Color(0xFFEAF4FF),
-                      child: Row(
+                   _sectionCard(
+                     color: const Color(0xFFEAF4FF),
+                     child: Row(
                         children: [
                           const Icon(
                             Icons.school_outlined,
@@ -743,11 +1088,54 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                             ),
                             const SizedBox(width: 8),
                             OutlinedButton(
-                              onPressed: () {},
-                              child: const Text("Apply"),
+                              onPressed: _isApplyingCoupon ? null : _applyCoupon,
+                              child: _isApplyingCoupon
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Text("Apply"),
                             ),
                           ],
                         ),
+                        if (hasCoupon) ...[
+                          const SizedBox(height: 10),
+                          Text(
+                            'Applied: ${_appliedCoupon!['id']}  |  Final price: Rs. $effectivePrice',
+                            style: const TextStyle(
+                              color: Colors.green,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            ((_appliedCoupon!['googlePlayProductId'] ?? '')
+                                        .toString()
+                                        .trim()
+                                        .isNotEmpty) ||
+                                    effectivePrice == 0
+                                ? 'This coupon is linked to the checkout flow.'
+                                : 'Coupon saved, but add googlePlayProductId in Firebase if you want Play Store discounted billing.',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF6B7280),
+                            ),
+                          ),
+                        ],
+                        if (_couponFeedback != null) ...[
+                          const SizedBox(height: 10),
+                          Text(
+                            _couponFeedback!,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: _couponFeedbackIsError
+                                  ? Colors.red.shade700
+                                  : Colors.green.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -764,7 +1152,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     ),
                   ),
 
-                  const SizedBox(height: 80),
+                  SizedBox(height: 88 + bottomInset),
                 ],
               ),
             ),
@@ -775,7 +1163,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
       /// BOTTOM BAR
       bottomNavigationBar: Container(
-        padding: const EdgeInsets.all(12),
+        padding: EdgeInsets.fromLTRB(12, 12, 12, 12 + bottomInset),
         color: Colors.white,
         child: Row(
           children: [

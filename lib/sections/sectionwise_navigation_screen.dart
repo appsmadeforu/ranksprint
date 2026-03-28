@@ -151,7 +151,7 @@ class ExamNavigationDrawer extends StatelessWidget {
                       children: [
                         if (section.sectionDurationMinutes != null)
                           Text(
-                            formatTime(section.sectionDurationMinutes!),
+                            formatTime(section.sectionDurationMinutes! * 60),
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               color: Colors.blue,

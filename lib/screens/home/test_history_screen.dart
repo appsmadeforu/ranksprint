@@ -141,10 +141,19 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
     final testId = (data['testId'] ?? '').toString().toLowerCase();
     final examId = (data['examId'] ?? '').toString().toLowerCase();
     final title = _titleText(data).toLowerCase();
+    final examName = _examDisplayName(
+      (data['examId'] ?? '').toString(),
+    ).toLowerCase();
+    final testName = _testDisplayName(
+      (data['examId'] ?? '').toString(),
+      (data['testId'] ?? '').toString(),
+    ).toLowerCase();
 
     return testId.contains(_searchText) ||
         examId.contains(_searchText) ||
-        title.contains(_searchText);
+        title.contains(_searchText) ||
+        examName.contains(_searchText) ||
+        testName.contains(_searchText);
   }
 
   Future<Map<String, Map<String, dynamic>>> _loadResultsMap(
@@ -387,7 +396,9 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => const PerformanceTrendsScreen(),
+                      builder: (_) => PerformanceTrendsScreen(
+                        initialExamId: selectedExamId,
+                      ),
                     ),
                   );
                 },

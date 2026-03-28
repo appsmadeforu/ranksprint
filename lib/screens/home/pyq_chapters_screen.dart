@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/content_access_service.dart';
@@ -27,11 +28,13 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
   List<String> _examSubscriptionPlanIds = const [];
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  Set<String> _favoriteLessonIds = <String>{};
 
   @override
   void initState() {
     super.initState();
     _loadAccess();
+    _loadFavorites();
   }
 
   @override
@@ -57,11 +60,98 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
     });
   }
 
+  Future<void> _loadFavorites() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      final raw = doc.data()?['favoritePyqLessons'];
+      final favorites = raw is Iterable
+          ? raw
+                .map((value) => value.toString())
+                .where((value) => value.isNotEmpty)
+                .toSet()
+          : <String>{};
+      if (!mounted) return;
+      setState(() {
+        _favoriteLessonIds = favorites;
+      });
+    } catch (_) {
+      if (!mounted) return;
+    }
+  }
+
   Stream<QuerySnapshot> _chaptersStream() {
     return ContentAccessService.publishedPyqChaptersQuery(
       examId: widget.examId,
       subjectId: widget.subjectId,
     ).snapshots();
+  }
+
+  String _favoriteLessonKey(String lessonId) {
+    return '${widget.examId}|${widget.subjectId}|$lessonId';
+  }
+
+  String _chapterTitle(
+    Map<String, dynamic> data, {
+    required String fallback,
+  }) {
+    final name = (data['name'] ?? '').toString().trim();
+    if (name.isNotEmpty) return name;
+    final title = (data['title'] ?? '').toString().trim();
+    if (title.isNotEmpty) return title;
+    return fallback;
+  }
+
+  bool _isFavoriteLesson(String lessonId) {
+    return _favoriteLessonIds.contains(_favoriteLessonKey(lessonId));
+  }
+
+  Future<void> _toggleFavorite(String lessonId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please log in to save favourites')),
+      );
+      return;
+    }
+
+    final favoriteKey = _favoriteLessonKey(lessonId);
+    final wasFavorite = _favoriteLessonIds.contains(favoriteKey);
+
+    setState(() {
+      if (wasFavorite) {
+        _favoriteLessonIds.remove(favoriteKey);
+      } else {
+        _favoriteLessonIds.add(favoriteKey);
+      }
+    });
+
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'favoritePyqLessons': wasFavorite
+            ? FieldValue.arrayRemove([favoriteKey])
+            : FieldValue.arrayUnion([favoriteKey]),
+      }, SetOptions(merge: true));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        if (wasFavorite) {
+          _favoriteLessonIds.add(favoriteKey);
+        } else {
+          _favoriteLessonIds.remove(favoriteKey);
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not update favourite right now')),
+      );
+    }
   }
 
   void _openSubscription({
@@ -107,9 +197,17 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
           final filteredDocs = docs.where((doc) {
             if (_searchQuery.trim().isEmpty) return true;
             final data = doc.data();
-            final title = (data['name'] ?? data['title'] ?? '').toString();
+            final title = _chapterTitle(data, fallback: doc.id);
             return title.toLowerCase().contains(_searchQuery.trim().toLowerCase());
-          }).toList();
+          }).toList()
+            ..sort((a, b) {
+              final aFavorite = _isFavoriteLesson(a.id);
+              final bFavorite = _isFavoriteLesson(b.id);
+              if (aFavorite != bFavorite) {
+                return aFavorite ? -1 : 1;
+              }
+              return ContentAccessService.compareCreatedAtAsc(a, b);
+            });
           final allPdfUrls = filteredDocs
               .map((document) {
                 final data = document.data();
@@ -175,26 +273,35 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
               else
                 ...List.generate(filteredDocs.length, (index) {
                   final doc = filteredDocs[index];
-              final data = doc.data() as Map<String, dynamic>? ?? {};
+                  final data = doc.data();
 
-              final title =
-                  data['name'] ?? data['title'] ?? 'Chapter ${index + 1}';
-              final pdfUrl = data['pdfUrl'] ?? data['notesPdfUrl'] ?? '';
-              final qCount = data['questionCount']?.toString() ?? '';
-              final access = ContentAccessService.resolveAccess(
-                itemData: data,
-                examPlanIds: _examSubscriptionPlanIds,
-                activePlanIds: _activePlanIds,
-              );
-              final requiredPlanIds = access.requiredPlanIds;
-              final isLocked = access.isLocked;
+                  final title = _chapterTitle(
+                    data,
+                    fallback: 'Chapter ${index + 1}',
+                  );
+                  final pdfUrl = data['pdfUrl'] ?? data['notesPdfUrl'] ?? '';
+                  final qCount = data['questionCount']?.toString() ?? '';
+                  final access = ContentAccessService.resolveAccess(
+                    itemData: data,
+                    examPlanIds: _examSubscriptionPlanIds,
+                    activePlanIds: _activePlanIds,
+                  );
+                  final requiredPlanIds = access.requiredPlanIds;
+                  final isLocked = access.isLocked;
+                  final isFavorite = _isFavoriteLesson(doc.id);
+                  final cardColor = Colors.white;
+                  final iconTileColor = isLocked
+                      ? Colors.grey.shade200
+                      : const Color(0xFFEFF3FF);
+                  final titleColor = const Color(0xFF111827);
+                  final metaColor = Colors.grey;
 
-                   return Container(
+                  return Container(
                     margin: const EdgeInsets.only(bottom: 16),
                     child: Material(
                       borderRadius: BorderRadius.circular(18),
-                      color: Colors.white,
-                      elevation: 3,
+                      color: cardColor,
+                      elevation: isFavorite ? 4 : 3,
                       child: InkWell(
                         borderRadius: BorderRadius.circular(18),
                         splashColor: const Color(0xFF2F6FEB).withValues(alpha: 0.1),
@@ -225,17 +332,24 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
                             );
                           }
                         },
-                        child: Padding(
+                        child: Container(
                           padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: isFavorite
+                                  ? const Color(0xFFD7E3FF)
+                                  : const Color(0x00000000),
+                              width: 1.2,
+                            ),
+                          ),
                           child: Row(
                             children: [
                               Container(
                                 width: 52,
                                 height: 52,
                                 decoration: BoxDecoration(
-                                  color: isLocked
-                                      ? Colors.grey.shade200
-                                      : const Color(0xFFEFF3FF),
+                                  color: iconTileColor,
                                   borderRadius: BorderRadius.circular(14),
                                 ),
                                 child: Center(
@@ -258,23 +372,47 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      title,
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            title,
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
+                                              color: titleColor,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                     const SizedBox(height: 4),
                                     if (qCount.isNotEmpty)
                                       Text(
-                                        '$qCount papers available',
-                                        style: const TextStyle(
+                                        '$qCount questions available',
+                                        style: TextStyle(
                                           fontSize: 13,
-                                          color: Colors.grey,
+                                          color: metaColor,
                                         ),
                                       ),
                                   ],
+                                ),
+                              ),
+                              SizedBox(
+                                width: 44,
+                                child: IconButton(
+                                  onPressed: () => _toggleFavorite(doc.id),
+                                  tooltip: isFavorite
+                                      ? 'Remove from favourites'
+                                      : 'Add to favourites',
+                                  icon: Icon(
+                                    isFavorite
+                                        ? Icons.favorite_rounded
+                                        : Icons.favorite_border_rounded,
+                                    color: isFavorite
+                                        ? const Color(0xFF2F6FEB)
+                                        : const Color(0xFF94A3B8),
+                                  ),
                                 ),
                               ),
                               Icon(

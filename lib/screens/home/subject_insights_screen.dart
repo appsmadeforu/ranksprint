@@ -83,7 +83,11 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
             final attempts =
                 List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
                   attemptSnap.data!.docs,
-                )..sort((a, b) {
+                ).where((doc) {
+                  final data = doc.data();
+                  final status = (data['status'] ?? 'completed').toString();
+                  return status == 'completed' && _attemptDate(data) != null;
+                }).toList()..sort((a, b) {
                   final aDate = _attemptDate(a.data()) ?? DateTime(2000);
                   final bDate = _attemptDate(b.data()) ?? DateTime(2000);
                   return aDate.compareTo(bDate);
@@ -907,15 +911,19 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     final overallSubjects = <String, _SubjectMetric>{};
     final points = <_InsightPoint>[];
     final attemptCards = <_AttemptInsight>[];
-    final computedAttempts = await Future.wait(
-      attempts.asMap().entries.map(
-        (entry) => _buildAttemptInsight(
+    final computedAttempts = <_ComputedAttemptInsight>[];
+    for (final entry in attempts.asMap().entries) {
+      try {
+        final computed = await _buildAttemptInsight(
           entry.key,
           entry.value,
           resultMap[entry.value.id] ?? const <String, dynamic>{},
-        ),
-      ),
-    );
+        );
+        computedAttempts.add(computed);
+      } catch (_) {
+        // Skip malformed attempts instead of crashing the whole screen.
+      }
+    }
 
     double previousScore = 0;
     double previousSubjectAverage = 0;

@@ -21,9 +21,14 @@ class PerformanceTrendsScreen extends StatefulWidget {
 }
 
 class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
+  static const int _platformAvgSampleSize = 250;
+  static const int _subjectStatsAttemptLimit = 8;
   String? _examId;
   List<String> _examIds = [];
   _Window _window = _Window.d30;
+  final Map<String, Future<_Vm>> _vmFutureCache = <String, Future<_Vm>>{};
+  final Map<String, Future<double>> _platformAvgFutureCache =
+      <String, Future<double>>{};
 
   @override
   void initState() {
@@ -61,6 +66,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
       _examIds = exams;
       _examId = preferredExamId;
     });
+    _prefetchWindowData();
   }
 
   void _handlePreferredExamChanged() {
@@ -75,7 +81,41 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
 
     setState(() {
       _examId = preferredExamId;
+      _vmFutureCache.clear();
+      _platformAvgFutureCache.clear();
     });
+    _prefetchWindowData();
+  }
+
+  Future<_Vm> _vmFutureFor(String uid) {
+    final key = '$uid|${_examId ?? ''}|${_window.name}';
+    return _vmFutureCache.putIfAbsent(key, () => _loadVm(uid, _examId!, _window));
+  }
+
+  Future<double> _platformAvgFutureFor() {
+    final key = '${_examId ?? ''}|${_window.name}';
+    return _platformAvgFutureCache.putIfAbsent(
+      key,
+      () => _platformAvg(_examId!, _window.cutoff(DateTime.now())),
+    );
+  }
+
+  void _prefetchWindowData() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final examId = _examId;
+    if (uid == null || examId == null || examId.isEmpty) return;
+
+    final vmKey = '$uid|$examId|${_window.name}';
+    _vmFutureCache.putIfAbsent(
+      vmKey,
+      () => _loadVm(uid, examId, _window),
+    );
+
+    final platformKey = '$examId|${_window.name}';
+    _platformAvgFutureCache.putIfAbsent(
+      platformKey,
+      () => _platformAvg(examId, _window.cutoff(DateTime.now())),
+    );
   }
 
   @override
@@ -93,7 +133,12 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
             TopHeader(
               selectedExamId: _examId,
               userExamIds: _examIds,
-              onExamChanged: (id) => setState(() => _examId = id),
+              onExamChanged: (id) => setState(() {
+                _examId = id;
+                _vmFutureCache.clear();
+                _platformAvgFutureCache.clear();
+                _prefetchWindowData();
+              }),
             ),
             const SizedBox(height: 10),
             Expanded(
@@ -101,7 +146,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                   ? const Center(child: Text('No exam selected'))
                   : FutureBuilder<_Vm>(
                       key: ValueKey<String>('${_examId ?? ''}:${_window.name}'),
-                      future: _loadVm(uid, _examId!, _window),
+                      future: _vmFutureFor(uid),
                       builder: (context, snap) {
                         if (snap.connectionState == ConnectionState.waiting) {
                           return const Center(
@@ -124,7 +169,11 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                         return RefreshIndicator(
                           onRefresh: () async {
                             if (!mounted) return;
-                            setState(() {});
+                            setState(() {
+                              _vmFutureCache.clear();
+                              _platformAvgFutureCache.clear();
+                            });
+                            _prefetchWindowData();
                           },
                           child: ListView(
                             padding: const EdgeInsets.fromLTRB(10, 0, 10, 16),
@@ -133,7 +182,12 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                               const SizedBox(height: 10),
                               _windowRow(),
                               const SizedBox(height: 10),
-                              _scoreTrend(vm),
+                              FutureBuilder<double>(
+                                future: _platformAvgFutureFor(),
+                                builder: (context, platformSnap) {
+                                  return _scoreTrend(vm, platformSnap.data);
+                                },
+                              ),
                               const SizedBox(height: 10),
                               _subjectCard(vm),
                               const SizedBox(height: 10),
@@ -295,10 +349,12 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
           return Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: () => setState(() => _window = w),
-                child: Container(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => setState(() {
+                    _window = w;
+                  }),
+                  child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 7),
                   decoration: BoxDecoration(
                     color: s
@@ -324,7 +380,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
     );
   }
 
-  Widget _scoreTrend(_Vm vm) {
+  Widget _scoreTrend(_Vm vm, double? platformAvg) {
     return _card(
       'Score Trend',
       Column(
@@ -335,7 +391,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                 ? const Center(
                     child: Text('Need at least 2 attempts to show trend'),
                   )
-                : _TrendChart(points: vm.points, platformAvg: vm.platformAvg),
+                : _TrendChart(points: vm.points, platformAvg: platformAvg),
           ),
           const SizedBox(height: 8),
           Row(
@@ -356,13 +412,15 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                   const Color(0xFF1E40AF),
                 ),
               ),
-              Expanded(
-                child: _small(
-                  'Platform Average',
-                  '${vm.platformAvg.toStringAsFixed(0)}%',
-                  const Color(0xFFF97316),
-                ),
-              ),
+               Expanded(
+                 child: _small(
+                   'Platform Average',
+                   platformAvg == null
+                       ? 'Loading...'
+                       : '${platformAvg.toStringAsFixed(0)}%',
+                   const Color(0xFFF97316),
+                 ),
+               ),
             ],
           ),
         ],
@@ -914,8 +972,6 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
     }
 
     final avg = attempts.isEmpty ? 0.0 : scoreSum / attempts.length;
-    final platformAvg = await _platformAvg(examId, cutoff);
-
     final subjectMap = await _subjectStats(attempts);
     final subjects = subjectMap.values.toList()
       ..sort((a, b) => b.accuracy.compareTo(a.accuracy));
@@ -944,7 +1000,6 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
       tests: attempts.length,
       totalMinutes: totalMinutes,
       avg: avg,
-      platformAvg: platformAvg,
       bestSubject: subjects.isEmpty ? '-' : subjects.first.name,
       delta: delta,
       points: points,
@@ -997,7 +1052,8 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
     try {
       Query<Map<String, dynamic>> q = FirebaseFirestore.instance
           .collection('results')
-          .where('examId', isEqualTo: examId);
+          .where('examId', isEqualTo: examId)
+          .limit(_platformAvgSampleSize);
       if (cutoff != null) {
         q = q.where(
           'createdAt',
@@ -1005,7 +1061,19 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
         );
       }
       final s = await q.get();
-      if (s.docs.isEmpty) return 0;
+      if (s.docs.isEmpty) {
+        final fallback = await FirebaseFirestore.instance
+            .collection('results')
+            .where('examId', isEqualTo: examId)
+            .limit(_platformAvgSampleSize)
+            .get();
+        if (fallback.docs.isEmpty) return 0;
+        double fallbackSum = 0;
+        for (final d in fallback.docs) {
+          fallbackSum += _platformPct(d.data());
+        }
+        return fallbackSum / fallback.docs.length;
+      }
       double sum = 0;
       for (final d in s.docs) {
         sum += _platformPct(d.data());
@@ -1021,15 +1089,19 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
     List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
   ) async {
     final out = <String, _SubjectMetric>{};
-    final cache = <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+    final recentAttempts = attempts.length <= _subjectStatsAttemptLimit
+        ? attempts
+        : attempts.sublist(attempts.length - _subjectStatsAttemptLimit);
+    final questionFutures =
+        <String, Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>>{};
 
-    for (final aDoc in attempts) {
+    for (final aDoc in recentAttempts) {
       final a = aDoc.data();
       final examId = (a['examId'] ?? '').toString();
       final testId = (a['testId'] ?? '').toString();
       if (examId.isEmpty || testId.isEmpty) continue;
       final key = '$examId|$testId';
-      if (!cache.containsKey(key)) {
+      questionFutures.putIfAbsent(key, () async {
         try {
           final qs = await FirebaseFirestore.instance
               .collection('exams')
@@ -1038,12 +1110,24 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
               .doc(testId)
               .collection('questions')
               .get();
-          cache[key] = qs.docs;
+          return qs.docs;
         } catch (_) {
-          cache[key] = const [];
+          return const [];
         }
-      }
-      final questions = cache[key] ?? const [];
+      });
+    }
+
+    final cache = <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+    for (final entry in questionFutures.entries) {
+      cache[entry.key] = await entry.value;
+    }
+
+    for (final aDoc in recentAttempts) {
+      final a = aDoc.data();
+      final examId = (a['examId'] ?? '').toString();
+      final testId = (a['testId'] ?? '').toString();
+      if (examId.isEmpty || testId.isEmpty) continue;
+      final questions = cache['$examId|$testId'] ?? const [];
 
       final answers = <String, String>{};
       if (a['answers'] is Map) {
@@ -1190,7 +1274,6 @@ class _Vm {
   final int tests;
   final int totalMinutes;
   final double avg;
-  final double platformAvg;
   final String bestSubject;
   final double delta;
   final List<_P> points;
@@ -1215,7 +1298,6 @@ class _Vm {
     required this.tests,
     required this.totalMinutes,
     required this.avg,
-    required this.platformAvg,
     required this.bestSubject,
     required this.delta,
     required this.points,
@@ -1275,7 +1357,7 @@ class _TrendChart extends StatelessWidget {
   const _TrendChart({required this.points, required this.platformAvg});
 
   final List<_P> points;
-  final double platformAvg;
+  final double? platformAvg;
 
   @override
   Widget build(BuildContext context) {
@@ -1321,7 +1403,7 @@ class _TrendChart extends StatelessWidget {
 
 class _TrendPainter extends CustomPainter {
   final List<_P> points;
-  final double platformAvg;
+  final double? platformAvg;
   _TrendPainter(this.points, this.platformAvg);
 
   @override
@@ -1363,14 +1445,16 @@ class _TrendPainter extends CustomPainter {
     }
     canvas.drawPath(p, line);
 
-    final py = bottom - (platformAvg.clamp(0, 100) / 100.0) * h;
-    final pp = Paint()
-      ..color = const Color(0xFFF97316)
-      ..strokeWidth = 1.5;
-    double x = left;
-    while (x < right) {
-      canvas.drawLine(Offset(x, py), Offset(math.min(x + 5, right), py), pp);
-      x += 9;
+    if (platformAvg != null) {
+      final py = bottom - (platformAvg!.clamp(0, 100) / 100.0) * h;
+      final pp = Paint()
+        ..color = const Color(0xFFF97316)
+        ..strokeWidth = 1.5;
+      double x = left;
+      while (x < right) {
+        canvas.drawLine(Offset(x, py), Offset(math.min(x + 5, right), py), pp);
+        x += 9;
+      }
     }
   }
 
