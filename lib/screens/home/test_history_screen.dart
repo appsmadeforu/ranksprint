@@ -7,6 +7,7 @@ import '../../sections/section_bean.dart';
 import '../../sections/section_service.dart';
 import '../../services/result_data_service.dart';
 import '../../services/user_exam_preference_service.dart';
+import '../../widgets/offline_state.dart';
 import '../../widgets/top_header.dart';
 import 'performance_trends_screen.dart';
 import 'test_runner_screen.dart';
@@ -258,6 +259,13 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
+                  if (snapshot.hasError) {
+                    return OfflineState(
+                      message:
+                          'Could not load test history. Please check your connection and try again.',
+                      onRetry: _refresh,
+                    );
+                  }
 
                   if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                     final emptyExamId = selectedExamId;
@@ -289,6 +297,13 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
                               ConnectionState.waiting &&
                           !resultSnap.hasData) {
                         return const Center(child: CircularProgressIndicator());
+                      }
+                      if (resultSnap.hasError) {
+                        return OfflineState(
+                          message:
+                              'Could not load test results. Please check your connection and try again.',
+                          onRetry: _refresh,
+                        );
                       }
 
                       final results =

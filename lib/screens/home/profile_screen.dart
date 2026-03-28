@@ -12,6 +12,7 @@ import 'subscription_screen.dart';
 import 'payment_history_screen.dart';
 import '../../services/subscription_access_service.dart';
 import '../../services/user_exam_preference_service.dart';
+import '../../widgets/offline_state.dart';
 import '../../widgets/top_header.dart';
 import 'edit_profile_screen.dart';
 import '../auth/login_screen.dart';
@@ -464,6 +465,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           }
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return const OfflineState(
+              message:
+                  'Could not load your profile. Please check your connection and try again.',
+            );
           }
 
           if (!snapshot.hasData || !snapshot.data!.exists) {

@@ -83,6 +83,7 @@ dev_dependencies:
 flutter:
   assets:
     - assets/images/google.png
+    - assets/images/nointernet.png
     - assets/images/ranksprintai_logo.png
     - assets/icons/app_icon.png
     - assets/splash_screen.mp4

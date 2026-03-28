@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/content_access_service.dart';
 import '../../services/user_exam_preference_service.dart';
+import '../../widgets/offline_state.dart';
 import '../../widgets/top_header.dart';
 import '../onboarding/select_exam_screen.dart';
 import 'analytics_screen.dart';
@@ -497,6 +498,19 @@ class _SelectExamHomeState extends State<SelectExamHome> {
               .doc(user.uid)
               .snapshots(),
           builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return OfflineState(
+                message:
+                    'Could not load your home screen. Please check your connection and try again.',
+                onRetry: () {
+                  if (!mounted) return;
+                  setState(() {
+                    _homeVmFuture = null;
+                    _homeVmSignature = '';
+                  });
+                },
+              );
+            }
             if (!snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
@@ -506,6 +520,19 @@ class _SelectExamHomeState extends State<SelectExamHome> {
             return FutureBuilder<_HomeVm>(
               future: _homeVmFuture,
               builder: (context, vmSnap) {
+                if (vmSnap.hasError) {
+                  return OfflineState(
+                    message:
+                        'Could not load your home screen. Please check your connection and try again.',
+                    onRetry: () {
+                      if (!mounted) return;
+                      setState(() {
+                        _homeVmFuture = null;
+                        _homeVmSignature = '';
+                      });
+                    },
+                  );
+                }
                 if (!vmSnap.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }

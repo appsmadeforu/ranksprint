@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/result_data_service.dart';
 import '../../services/user_exam_preference_service.dart';
+import '../../widgets/offline_state.dart';
 import '../../widgets/top_header.dart';
 import 'main_navigation.dart';
 import 'test_solution_screen.dart';
@@ -154,10 +155,17 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                           );
                         }
                         if (snap.hasError) {
-                          return const Center(
-                            child: Text(
-                              'Could not load trends. Pull to retry.',
-                            ),
+                          return OfflineState(
+                            message:
+                                'Could not load trends. Please check your connection and try again.',
+                            onRetry: () {
+                              if (!mounted) return;
+                              setState(() {
+                                _vmFutureCache.clear();
+                                _platformAvgFutureCache.clear();
+                              });
+                              _prefetchWindowData();
+                            },
                           );
                         }
                         if (!snap.hasData) {

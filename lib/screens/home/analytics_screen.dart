@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/result_data_service.dart';
 import '../../services/user_exam_preference_service.dart';
+import '../../widgets/offline_state.dart';
 import '../../widgets/top_header.dart';
 import 'main_navigation.dart';
 import 'subject_insights_screen.dart';
@@ -206,6 +207,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           .where('examId', isEqualTo: selectedExamId)
           .snapshots(),
       builder: (context, snap) {
+        if (snap.hasError) {
+          return const OfflineState(
+            message:
+                'Could not load leaderboard. Please check your connection and try again.',
+          );
+        }
         if (!snap.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
@@ -560,6 +567,21 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           .where('userId', isEqualTo: user.uid)
           .snapshots(),
       builder: (context, snap) {
+        if (snap.hasError) {
+          return OfflineState(
+            message:
+                'Could not load analytics. Please check your connection and try again.',
+            onRetry: () {
+              if (!mounted) return;
+              setState(() {
+                _dashboardFutureCache.clear();
+                if (selectedExamId != null) {
+                  _leaderboardFutureCache.remove(selectedExamId);
+                }
+              });
+            },
+          );
+        }
         if (!snap.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
@@ -598,6 +620,21 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             () => _loadDashboardVm(user.uid, selectedExamId!, attempts),
           ),
           builder: (context, vmSnap) {
+            if (vmSnap.hasError) {
+              return OfflineState(
+                message:
+                    'Could not load analytics. Please check your connection and try again.',
+                onRetry: () {
+                  if (!mounted) return;
+                  setState(() {
+                    _dashboardFutureCache.clear();
+                    if (selectedExamId != null) {
+                      _leaderboardFutureCache.remove(selectedExamId);
+                    }
+                  });
+                },
+              );
+            }
             if (!vmSnap.hasData) {
               return const Center(child: CircularProgressIndicator());
             }

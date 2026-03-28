@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/content_access_service.dart';
 import '../../services/subscription_access_service.dart';
 import '../../services/user_exam_preference_service.dart';
+import '../../widgets/offline_state.dart';
 import '../../widgets/top_header.dart';
 import 'pyq_chapters_screen.dart';
 import 'subscription_screen.dart';
@@ -186,6 +187,12 @@ class _PyqScreenState extends State<PyqScreen> {
                     : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                         stream: _getPyqs(effectiveSelectedExamId),
                         builder: (context, snapshot) {
+                          if (snapshot.hasError) {
+                            return const OfflineState(
+                              message:
+                                  'Could not load PYQs. Please check your connection and try again.',
+                            );
+                          }
                           if (!snapshot.hasData) {
                             return const Center(
                               child: CircularProgressIndicator(),
@@ -207,6 +214,12 @@ class _PyqScreenState extends State<PyqScreen> {
                                 docs,
                               ),
                              builder: (context, countsSnapshot) {
+                               if (countsSnapshot.hasError) {
+                                 return const OfflineState(
+                                   message:
+                                       'Could not load PYQ details. Please check your connection and try again.',
+                                 );
+                               }
                                 final questionCounts =
                                     countsSnapshot.data ?? const <String, int>{};
                                return LayoutBuilder(

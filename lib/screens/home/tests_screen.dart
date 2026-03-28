@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/content_access_service.dart';
 import '../../services/subscription_access_service.dart';
 import '../../services/user_exam_preference_service.dart';
+import '../../widgets/offline_state.dart';
 import '../../widgets/top_header.dart';
 import 'test_detail_screen.dart';
 import 'subscription_screen.dart';
@@ -243,6 +244,12 @@ class _TestsScreenState extends State<TestsScreen> {
                     .where('examId', isEqualTo: selectedExamId)
                     .snapshots(),
                 builder: (context, attemptsSnap) {
+                  if (attemptsSnap.hasError) {
+                    return const OfflineState(
+                      message:
+                          'Could not load test attempts. Please check your connection and try again.',
+                    );
+                  }
                   if (!attemptsSnap.hasData) {
                     return const Center(child: CircularProgressIndicator());
                   }
@@ -260,6 +267,12 @@ class _TestsScreenState extends State<TestsScreen> {
                       selectedExamId!,
                     ).snapshots(),
                     builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return const OfflineState(
+                          message:
+                              'Could not load tests. Please check your connection and try again.',
+                        );
+                      }
                       if (!snapshot.hasData) {
                         return const Center(child: CircularProgressIndicator());
                       }
