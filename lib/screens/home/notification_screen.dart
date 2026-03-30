@@ -93,10 +93,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
         .doc(user.uid)
         .collection('notifications')
         .doc(id)
-        .set({
-          'isRead': false,
-          'seenAt': null,
-        }, SetOptions(merge: true));
+        .set({'isRead': false, 'seenAt': null}, SetOptions(merge: true));
   }
 
   void _showMarkedReadMessage() {
@@ -183,7 +180,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || examId.isEmpty) return;
 
-    final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+    final userRef = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid);
     final userSnap = await userRef.get();
     final selectedExams = List<String>.from(
       userSnap.data()?['selectedExams'] ?? const <String>[],
@@ -191,7 +190,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
     if (!selectedExams.contains(examId)) {
       selectedExams.add(examId);
-      await userRef.set({'selectedExams': selectedExams}, SetOptions(merge: true));
+      await userRef.set({
+        'selectedExams': selectedExams,
+      }, SetOptions(merge: true));
     }
 
     await UserExamPreferenceService.savePreferredExamId(examId);
@@ -266,9 +267,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
     final sortedAttempts = attemptsSnap.docs.toList()
       ..sort(
-        (a, b) => _attemptSortDate(
-          b.data(),
-        ).compareTo(_attemptSortDate(a.data())),
+        (a, b) =>
+            _attemptSortDate(b.data()).compareTo(_attemptSortDate(a.data())),
       );
 
     final latestAttempt = sortedAttempts.first;
@@ -495,11 +495,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
                               final createdLabel = createdAt is Timestamp
                                   ? _timeAgo(createdAt)
                                   : '';
-                               return TweenAnimationBuilder<Offset>(
-                                 tween: Tween(
-                                   begin: const Offset(0, 0.2),
-                                   end: Offset.zero,
-                                 ),
+                              return TweenAnimationBuilder<Offset>(
+                                tween: Tween(
+                                  begin: const Offset(0, 0.2),
+                                  end: Offset.zero,
+                                ),
                                 duration: const Duration(milliseconds: 300),
                                 curve: Curves.easeOut,
                                 builder: (context, offset, child) {
@@ -533,10 +533,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                     alignment: Alignment.centerLeft,
                                     child: const Row(
                                       children: [
-                                        Icon(
-                                          Icons.done,
-                                          color: Colors.white,
-                                        ),
+                                        Icon(Icons.done, color: Colors.white),
                                         SizedBox(width: 10),
                                         Text(
                                           'Mark as read',
@@ -584,7 +581,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                       elevation: 2,
                                       child: InkWell(
                                         borderRadius: BorderRadius.circular(16),
-                                        onTap: () => _handleNotificationTap(data),
+                                        onTap: () =>
+                                            _handleNotificationTap(data),
                                         child: Padding(
                                           padding: const EdgeInsets.fromLTRB(
                                             16,
@@ -600,7 +598,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                                 width: 40,
                                                 height: 40,
                                                 decoration: BoxDecoration(
-                                                  color: const Color(0xFFEFF3FF),
+                                                  color: const Color(
+                                                    0xFFEFF3FF,
+                                                  ),
                                                   borderRadius:
                                                       BorderRadius.circular(12),
                                                 ),
@@ -619,7 +619,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                                                 error,
                                                                 stackTrace,
                                                               ) => const Icon(
-                                                                Icons.notifications,
+                                                                Icons
+                                                                    .notifications,
                                                                 size: 24,
                                                                 color: Color(
                                                                   0xFF2F6FEB,
@@ -630,7 +631,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                                     : const Icon(
                                                         Icons.notifications,
                                                         size: 24,
-                                                        color: Color(0xFF2F6FEB),
+                                                        color: Color(
+                                                          0xFF2F6FEB,
+                                                        ),
                                                       ),
                                               ),
                                               const SizedBox(width: 12),
@@ -646,12 +649,15 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                                             title,
                                                             maxLines: 2,
                                                             overflow:
-                                                                TextOverflow.ellipsis,
-                                                            style: const TextStyle(
-                                                              fontSize: 16,
-                                                              fontWeight:
-                                                                  FontWeight.w700,
-                                                            ),
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                            style:
+                                                                const TextStyle(
+                                                                  fontSize: 16,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w700,
+                                                                ),
                                                           ),
                                                         ),
                                                         if (!isRead)
@@ -668,17 +674,22 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                                           const EdgeInsets.only(
                                                             bottom: 1.0,
                                                           ),
-                                                      child: HtmlHelper.renderHtml(
-                                                        message,
-                                                        style: const TextStyle(
-                                                          color: Color(0xFF667085),
-                                                          fontSize: 14,
-                                                          height: 1.35,
-                                                        ),
-                                                        maxLines: 2,
-                                                        overflow:
-                                                            TextOverflow.ellipsis,
-                                                      ),
+                                                      child:
+                                                          HtmlHelper.renderHtml(
+                                                            message,
+                                                            style:
+                                                                const TextStyle(
+                                                                  color: Color(
+                                                                    0xFF667085,
+                                                                  ),
+                                                                  fontSize: 14,
+                                                                  height: 1.35,
+                                                                ),
+                                                            maxLines: 2,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                          ),
                                                     ),
                                                     Row(
                                                       mainAxisAlignment:
@@ -687,14 +698,16 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                                       children: [
                                                         Text(
                                                           createdLabel,
-                                                          style: const TextStyle(
-                                                            fontSize: 12,
-                                                            fontWeight:
-                                                                FontWeight.w500,
-                                                            color: Color(
-                                                              0xFF98A2B3,
-                                                            ),
-                                                          ),
+                                                          style:
+                                                              const TextStyle(
+                                                                fontSize: 12,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w500,
+                                                                color: Color(
+                                                                  0xFF98A2B3,
+                                                                ),
+                                                              ),
                                                         ),
                                                         TextButton(
                                                           style: TextButton.styleFrom(
@@ -724,8 +737,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                                           },
                                                           child: Text(
                                                             isRead
-                                                                ? "Mark unread"
-                                                                : "Mark read",
+                                                                ? "Mark as unread"
+                                                                : "Mark as read",
                                                           ),
                                                         ),
                                                       ],

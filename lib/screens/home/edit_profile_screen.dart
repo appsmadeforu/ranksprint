@@ -46,6 +46,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Uint8List? _selectedPhotoBytes;
   String? _selectedPhotoName;
   bool _removePhoto = false;
+  Map<String, dynamic>? _initialProfileSnapshot;
 
   static const List<String> _genderOptions = ['Male', 'Female', 'Other'];
   static const int _maxProfilePhotoBytes = 2 * 1024 * 1024;
@@ -135,8 +136,103 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       } else {
         dob = null;
       }
+      _initialProfileSnapshot = _currentProfileSnapshot();
       _initialLoadComplete = true;
     });
+  }
+
+  Map<String, dynamic> _currentProfileSnapshot() {
+    return <String, dynamic>{
+      'firstName': firstNameController.text.trim(),
+      'middleName': middleNameController.text.trim(),
+      'lastName': lastNameController.text.trim(),
+      'email': emailController.text.trim(),
+      'phone': phoneController.text.trim(),
+      'pincode': pincodeController.text.trim(),
+      'city': cityController.text.trim(),
+      'state': stateController.text.trim(),
+      'gender': gender ?? '',
+      'dob': dob == null
+          ? ''
+          : DateTime(dob!.year, dob!.month, dob!.day).millisecondsSinceEpoch,
+      'photoUrl': (_photoUrl ?? '').trim(),
+      'hasSelectedPhoto': _selectedPhotoBytes != null,
+      'selectedPhotoName': (_selectedPhotoName ?? '').trim(),
+      'removePhoto': _removePhoto,
+    };
+  }
+
+  bool get _hasUnsavedChanges {
+    final initial = _initialProfileSnapshot;
+    if (initial == null) return false;
+    return jsonEncode(initial) != jsonEncode(_currentProfileSnapshot());
+  }
+
+  Future<bool> _confirmDiscardChanges() async {
+    if (!_hasUnsavedChanges) return true;
+    final shouldDiscard = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: const Text('Discard changes?'),
+          content: const Text(
+            'You have unsaved profile changes. Do you want to discard them and leave?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Keep Editing'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFDC2626),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Discard'),
+            ),
+          ],
+        );
+      },
+    );
+    return shouldDiscard ?? false;
+  }
+
+  Future<bool> _confirmApplyChanges() async {
+    final shouldApply = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: const Text('Apply changes?'),
+          content: const Text(
+            'Do you want to save these profile updates now?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2F3E8F),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Apply'),
+            ),
+          ],
+        );
+      },
+    );
+    return shouldApply ?? false;
+  }
+
+  Future<void> _handleSavePressed() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (!await _confirmApplyChanges()) return;
+    await _saveProfile();
   }
 
   Future<void> _saveProfile() async {
@@ -207,6 +303,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
 
       if (mounted) {
+        _initialProfileSnapshot = _currentProfileSnapshot();
         Navigator.pop(context);
       }
     } catch (e) {
@@ -465,7 +562,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return WillPopScope(
+      onWillPop: () async => await _confirmDiscardChanges(),
+      child: Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
       body: SafeArea(
         child: Column(
@@ -671,7 +770,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             SizedBox(
                               width: double.infinity,
                               child: ElevatedButton(
-                                onPressed: loading ? null : _saveProfile,
+                                onPressed: loading ? null : _handleSavePressed,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFF2F3E8F),
                                   foregroundColor: Colors.white,
@@ -708,6 +807,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -838,14 +938,85 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         value: _genderOptions.contains(gender) ? gender : null,
         isExpanded: true,
         menuMaxHeight: 220,
-        decoration: _inputDecoration('Gender'),
+        icon: Container(
+          margin: const EdgeInsets.only(right: 4),
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: const Color(0xFFEFF2FF),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Icon(
+            Icons.keyboard_arrow_down_rounded,
+            size: 18,
+            color: Color(0xFF2F3E8F),
+          ),
+        ),
+        dropdownColor: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        style: const TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFF111827),
+        ),
+        decoration: _inputDecoration(
+          'Gender',
+          helperText: 'Choose the option that best describes you',
+          suffixIcon: const Icon(
+            Icons.arrow_drop_down_rounded,
+            color: Colors.transparent,
+          ),
+        ).copyWith(
+          prefixIcon: const Padding(
+            padding: EdgeInsets.only(left: 14, right: 8),
+            child: Icon(
+              Icons.person_outline_rounded,
+              size: 20,
+              color: Color(0xFF6B7280),
+            ),
+          ),
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 44,
+            minHeight: 20,
+          ),
+          hintText: 'Select Gender',
+          hintStyle: const TextStyle(
+            fontSize: 15,
+            color: Color(0xFF9CA3AF),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
         items: _genderOptions
             .map(
               (option) => DropdownMenuItem<String>(
                 value: option,
-                child: SizedBox(
+                child: Container(
                   width: double.infinity,
-                  child: Text(option, overflow: TextOverflow.ellipsis),
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: gender == option
+                              ? const Color(0xFF2F3E8F)
+                              : const Color(0xFFD1D5DB),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          option,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             )

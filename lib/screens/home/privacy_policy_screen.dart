@@ -19,15 +19,21 @@ class PrivacyPolicyScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
       appBar: const StaticTopHeader(title: 'Privacy Policy'),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
+      body: FutureBuilder<QuerySnapshot>(
+        future: FirebaseFirestore.instance
             .collection('policies')
             .where('type', isEqualTo: 'privacy')
             .where('isActive', isEqualTo: true)
             .limit(1)
-            .snapshots(),
+            .get()
+            .timeout(const Duration(seconds: 12)),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) {
+          if (snapshot.hasError) {
+            return const Center(child: Text('Could not load Privacy Policy'));
+          }
+
+          if (snapshot.connectionState == ConnectionState.waiting &&
+              !snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 

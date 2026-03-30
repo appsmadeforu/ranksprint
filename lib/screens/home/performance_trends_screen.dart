@@ -62,10 +62,13 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
         : await UserExamPreferenceService.loadPreferredExamId(
             availableExamIds: exams,
           );
+    final resolvedExamId = exams.contains(preferredExamId)
+        ? preferredExamId
+        : (exams.isNotEmpty ? exams.first : null);
     if (!mounted) return;
     setState(() {
       _examIds = exams;
-      _examId = preferredExamId;
+      _examId = resolvedExamId;
     });
     _prefetchWindowData();
   }

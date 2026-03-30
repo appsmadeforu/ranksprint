@@ -35,6 +35,7 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
   ConfirmationResult? _confirmationResult;
   bool _loading = false;
   bool _resending = false;
+  bool _autofillListening = false;
   int _resendSeconds = 30;
   Timer? _timer;
 
@@ -47,9 +48,6 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
     _resendToken = widget.resendToken;
     _confirmationResult = widget.confirmationResult;
     _startResendTimer();
-    if (!kIsWeb) {
-      listenForCode();
-    }
   }
 
   void _startResendTimer() {
@@ -110,9 +108,7 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
         setState(() => _loading = false);
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(
-          SnackBar(content: Text(e.message ?? "Invalid OTP")),
-        );
+        ).showSnackBar(SnackBar(content: Text(e.message ?? "Invalid OTP")));
       }
     } catch (_) {
       if (mounted) {
@@ -135,12 +131,33 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
     _applyOtpCode(digits.substring(0, 6));
   }
 
+  Future<void> _startSmsAutofill() async {
+    if (kIsWeb || _loading || _autofillListening) return;
+
+    setState(() => _autofillListening = true);
+    try {
+      listenForCode();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Waiting for OTP SMS...')));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _autofillListening = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not start OTP autofill')),
+      );
+    }
+  }
+
   Future<void> _resendOtp() async {
     if (_resendSeconds > 0 || _resending || _loading) return;
     if (widget.phoneNumber.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Phone number missing. Go back and retry.")),
+          const SnackBar(
+            content: Text("Phone number missing. Go back and retry."),
+          ),
         );
       }
       return;
@@ -176,6 +193,7 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
           },
           verificationFailed: (FirebaseAuthException e) {
             if (mounted) {
+              setState(() => _resending = false);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text(e.message ?? "Failed to resend OTP")),
               );
@@ -186,6 +204,7 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
             setState(() {
               _verificationId = verificationId;
               _resendToken = resendToken;
+              _resending = false;
             });
             _startResendTimer();
             ScaffoldMessenger.of(
@@ -194,7 +213,10 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
           },
           codeAutoRetrievalTimeout: (String verificationId) {
             if (!mounted) return;
-            setState(() => _verificationId = verificationId);
+            setState(() {
+              _verificationId = verificationId;
+              _autofillListening = false;
+            });
           },
         );
       }
@@ -206,7 +228,7 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
       }
     }
 
-    if (mounted) {
+    if (mounted && kIsWeb) {
       setState(() => _resending = false);
     }
   }
@@ -257,9 +279,8 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
     if (!mounted) return;
 
     FocusScope.of(context).unfocus();
-
-    if (otp.length == 6 && !_loading) {
-      _verifyOtp();
+    if (_autofillListening) {
+      setState(() => _autofillListening = false);
     }
   }
 
@@ -300,125 +321,148 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-              // Logo
-              SizedBox(
-                width: 250,
-                // height: 250,
-                child: Image.asset(
-                  "assets/icons/app_icon.png",
-                  fit: BoxFit.contain,
-                ),
-              ),
-
-              const Icon(
-                Icons.mail_outline,
-                size: 40,
-                color: Color(0xFF1F3A8A),
-              ),
-
-              const SizedBox(height: 12),
-
-              const Text(
-                "Verify OTP",
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1F3A8A),
-                ),
-              ),
-
-              const SizedBox(height: 6),
-
-              const Text(
-                "Enter the 6-digit code sent to your phone",
-                style: TextStyle(color: Colors.grey),
-                textAlign: TextAlign.center,
-              ),
-
-              const SizedBox(height: 20),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: List.generate(6, _buildOtpBox),
-              ),
-
-              const SizedBox(height: 30),
-
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _loading ? null : _verifyOtp,
-                  style: ElevatedButton.styleFrom(
-                    textStyle: const TextStyle(color: Colors.white),
-                    backgroundColor: const Color(0xFF1F3A8A),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  child: _loading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text(
-                          "Verify & Continue",
-                          style: TextStyle(color: Colors.white),
+                      // Logo
+                      SizedBox(
+                        width: 250,
+                        // height: 250,
+                        child: Image.asset(
+                          "assets/icons/app_icon.png",
+                          fit: BoxFit.contain,
                         ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              TextButton(
-                onPressed: (_resendSeconds == 0 && !_resending && !_loading)
-                    ? _resendOtp
-                    : null,
-                child: Text(
-                  _resendSeconds == 0
-                      ? (_resending ? "Resending..." : "Resend OTP")
-                      : "Resend OTP in 00:${_resendSeconds.toString().padLeft(2, '0')}",
-                  style: const TextStyle(color: Color(0xFF1F3A8A)),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Policy Card
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF8E1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.orange.shade300),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(Icons.info_outline, color: Colors.orange),
-
-                    const SizedBox(width: 12),
-
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
-                            "Single Device Policy",
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-
-                          SizedBox(height: 6),
-
-                          Text(
-                            "Your account can only be active on one device at a time. Logging in on a new device will automatically log you out from other devices.",
-                            style: TextStyle(fontSize: 13),
-                          ),
-                        ],
                       ),
-                    ),
-                  ],
-                ),
-              ),
 
-                        const SizedBox(height: 30),
+                      const Icon(
+                        Icons.mail_outline,
+                        size: 40,
+                        color: Color(0xFF1F3A8A),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      const Text(
+                        "Verify OTP",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1F3A8A),
+                        ),
+                      ),
+
+                      const SizedBox(height: 6),
+
+                      const Text(
+                        "Enter the 6-digit code sent to your phone",
+                        style: TextStyle(color: Colors.grey),
+                        textAlign: TextAlign.center,
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: List.generate(6, _buildOtpBox),
+                      ),
+
+                      const SizedBox(height: 30),
+
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: _loading ? null : _verifyOtp,
+                          style: ElevatedButton.styleFrom(
+                            textStyle: const TextStyle(color: Colors.white),
+                            backgroundColor: const Color(0xFF1F3A8A),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: _loading
+                              ? const CircularProgressIndicator(
+                                  color: Colors.white,
+                                )
+                              : const Text(
+                                  "Verify & Continue",
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      if (!kIsWeb)
+                        TextButton(
+                          onPressed: (_loading || _autofillListening)
+                              ? null
+                              : _startSmsAutofill,
+                          child: Text(
+                            _autofillListening
+                                ? 'Waiting for OTP SMS...'
+                                : 'Autofill from SMS',
+                            style: const TextStyle(color: Color(0xFF1F3A8A)),
+                          ),
+                        ),
+
+                      if (!kIsWeb) const SizedBox(height: 8),
+
+                      TextButton(
+                        onPressed:
+                            (_resendSeconds == 0 && !_resending && !_loading)
+                            ? _resendOtp
+                            : null,
+                        child: Text(
+                          _resendSeconds == 0
+                              ? (_resending ? "Resending..." : "Resend OTP")
+                              : "Resend OTP in 00:${_resendSeconds.toString().padLeft(2, '0')}",
+                          style: const TextStyle(color: Color(0xFF1F3A8A)),
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // Policy Card
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF8E1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.orange.shade300),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(
+                              Icons.info_outline,
+                              color: Colors.orange,
+                            ),
+
+                            const SizedBox(width: 12),
+
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: const [
+                                  Text(
+                                    "Single Device Policy",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+
+                                  SizedBox(height: 6),
+
+                                  Text(
+                                    "Your account can only be active on one device at a time. Logging in on a new device will automatically log you out from other devices.",
+                                    style: TextStyle(fontSize: 13),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 30),
                     ],
                   ),
                 ),

@@ -8,7 +8,17 @@ import 'select_exam_home.dart';
 
 class MainNavigation extends StatefulWidget {
   final int initialIndex;
-  const MainNavigation({Key? key, this.initialIndex = 0}) : super(key: key);
+  final String? initialAnalyticsExamId;
+
+  const MainNavigation({
+    Key? key,
+    this.initialIndex = 0,
+    this.initialAnalyticsExamId,
+  }) : super(key: key);
+
+  static _MainNavigationState? maybeOf(BuildContext context) {
+    return context.findAncestorStateOfType<_MainNavigationState>();
+  }
 
   @override
   State<MainNavigation> createState() => _MainNavigationState();
@@ -17,28 +27,15 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   late int _index;
   late final List<bool> _visited;
-  bool _hasScheduledPreload = false;
+  String? _analyticsExamId;
 
   @override
   void initState() {
     super.initState();
     _index = widget.initialIndex;
+    _analyticsExamId = widget.initialAnalyticsExamId;
     _visited = List<bool>.filled(5, false);
     _visited[_index] = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _preloadRemainingTabs();
-    });
-  }
-
-  void _preloadRemainingTabs() {
-    if (!mounted || _hasScheduledPreload) return;
-    _hasScheduledPreload = true;
-    if (_visited.every((visited) => visited)) return;
-    setState(() {
-      for (var i = 0; i < _visited.length; i++) {
-        _visited[i] = true;
-      }
-    });
   }
 
   void navigateToSubscription() {
@@ -46,6 +43,16 @@ class _MainNavigationState extends State<MainNavigation> {
       context,
       MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
     );
+  }
+
+  void switchToTab(int index, {String? analyticsExamId}) {
+    setState(() {
+      _index = index;
+      _visited[index] = true;
+      if (analyticsExamId != null) {
+        _analyticsExamId = analyticsExamId;
+      }
+    });
   }
 
   @override
@@ -110,7 +117,7 @@ class _MainNavigationState extends State<MainNavigation> {
       case 2:
         return const PyqScreen();
       case 3:
-        return const AnalyticsScreen();
+        return AnalyticsScreen(initialExamId: _analyticsExamId);
       case 4:
         return const ProfileScreen();
       default:

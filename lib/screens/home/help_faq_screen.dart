@@ -11,7 +11,7 @@ class HelpFaqScreen extends StatefulWidget {
 
 class _HelpFaqScreenState extends State<HelpFaqScreen> {
   final TextEditingController _searchController = TextEditingController();
-  late final Stream<QuerySnapshot> _faqStream;
+  late Future<QuerySnapshot> _faqFuture;
 
   String _searchQuery = '';
   String _selectedCategory = 'All';
@@ -30,7 +30,14 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
   @override
   void initState() {
     super.initState();
-    _faqStream = FirebaseFirestore.instance.collection('helpFaqs').snapshots();
+    _faqFuture = _loadFaqs();
+  }
+
+  Future<QuerySnapshot> _loadFaqs() {
+    return FirebaseFirestore.instance
+        .collection('helpFaqs')
+        .get()
+        .timeout(const Duration(seconds: 12));
   }
 
   @override
@@ -46,14 +53,37 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
       appBar: const StaticTopHeader(title: 'Help & FAQ'),
       body: SafeArea(
         top: false,
-        child: StreamBuilder<QuerySnapshot>(
-          stream: _faqStream,
+        child: FutureBuilder<QuerySnapshot>(
+          future: _faqFuture,
           builder: (context, snapshot) {
             if (snapshot.hasError) {
-              return const Center(child: Text('Error loading FAQs'));
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Could not load FAQs right now.',
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _faqFuture = _loadFaqs();
+                          });
+                        },
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              );
             }
 
-            if (snapshot.connectionState == ConnectionState.waiting) {
+            if (snapshot.connectionState == ConnectionState.waiting &&
+                !snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
 

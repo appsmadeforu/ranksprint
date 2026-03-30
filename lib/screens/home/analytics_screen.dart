@@ -13,8 +13,13 @@ import 'subject_insights_screen.dart';
 
 class AnalyticsScreen extends StatefulWidget {
   final int initialTabIndex;
+  final String? initialExamId;
 
-  const AnalyticsScreen({super.key, this.initialTabIndex = 0});
+  const AnalyticsScreen({
+    super.key,
+    this.initialTabIndex = 0,
+    this.initialExamId,
+  });
 
   @override
   State<AnalyticsScreen> createState() => _AnalyticsScreenState();
@@ -74,10 +79,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     final preferredExamId = await UserExamPreferenceService.loadPreferredExamId(
       availableExamIds: exams,
     );
+    final resolvedExamId =
+        widget.initialExamId != null && exams.contains(widget.initialExamId)
+        ? widget.initialExamId
+        : exams.contains(preferredExamId)
+        ? preferredExamId
+        : (exams.isNotEmpty ? exams.first : null);
     if (!mounted) return;
     setState(() {
       userExamIds = exams;
-      selectedExamId = preferredExamId;
+      selectedExamId = resolvedExamId;
     });
     _prefetchDashboardForSelectedExam();
   }
@@ -122,21 +133,21 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       body: SafeArea(
         child: Column(
           children: [
-              TopHeader(
-                selectedExamId: selectedExamId,
-                userExamIds: userExamIds,
-                onExamChanged: (examId) async {
-                  await UserExamPreferenceService.savePreferredExamId(examId);
-                  if (!mounted) return;
-                  setState(() {
-                    selectedExamId = examId;
-                    _dashboardFutureCache.clear();
-                    _leaderboardFutureCache.remove(examId);
-                    _dashboardPrefetchKeys.clear();
-                  });
-                  _prefetchDashboardForSelectedExam();
-                },
-              ),
+            TopHeader(
+              selectedExamId: selectedExamId,
+              userExamIds: userExamIds,
+              onExamChanged: (examId) async {
+                await UserExamPreferenceService.savePreferredExamId(examId);
+                if (!mounted) return;
+                setState(() {
+                  selectedExamId = examId;
+                  _dashboardFutureCache.clear();
+                  _leaderboardFutureCache.remove(examId);
+                  _dashboardPrefetchKeys.clear();
+                });
+                _prefetchDashboardForSelectedExam();
+              },
+            ),
             const SizedBox(height: 10),
             Expanded(
               child: selectedExamId == null
@@ -205,6 +216,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       stream: FirebaseFirestore.instance
           .collection('results')
           .where('examId', isEqualTo: selectedExamId)
+          .limit(300)
           .snapshots(),
       builder: (context, snap) {
         if (snap.hasError) {
@@ -237,9 +249,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
               children: [
                 _buildLeaderboardSearch(),
                 const Expanded(
-                  child: Center(
-                    child: Text('No leaderboard matches found'),
-                  ),
+                  child: Center(child: Text('No leaderboard matches found')),
                 ),
               ],
             ),
@@ -307,9 +317,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     );
   }
 
-  List<_LeaderboardRow> _rowsFromEntries(
-    List<_LeaderboardAgg> entries,
-  ) {
+  List<_LeaderboardRow> _rowsFromEntries(List<_LeaderboardAgg> entries) {
     return List.generate(entries.length, (index) {
       final entry = entries[index];
       return _LeaderboardRow(
@@ -349,8 +357,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
         for (final doc in snap.docs) {
           final data = doc.data();
-          final rawName =
-              (data['name'] ?? data['displayName'] ?? doc.id).toString();
+          final rawName = (data['name'] ?? data['displayName'] ?? doc.id)
+              .toString();
           _userNameCache[doc.id] = _compactLeaderboardName(rawName);
         }
 
@@ -388,7 +396,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   }
 
   double _leaderboardPercentile(Map<String, dynamic> data, double score) {
-    final raw = (data['percentile'] as num?)?.toDouble() ??
+    final raw =
+        (data['percentile'] as num?)?.toDouble() ??
         (data['avgPercentile'] as num?)?.toDouble() ??
         (data['percentileScore'] as num?)?.toDouble() ??
         (data['percentage'] as num?)?.toDouble();
@@ -417,11 +426,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         ? const Color(0xFF2F6FEB)
         : const Color(0x00000000);
     final titleColor = isCurrentUser ? const Color(0xFF163B78) : null;
-    final captionColor = isCurrentUser
-        ? const Color(0xFF4B648B)
-        : Colors.grey;
-    final scoreColor =
-        isCurrentUser ? const Color(0xFF163B78) : const Color(0xFF0F172A);
+    final captionColor = isCurrentUser ? const Color(0xFF4B648B) : Colors.grey;
+    final scoreColor = isCurrentUser
+        ? const Color(0xFF163B78)
+        : const Color(0xFF0F172A);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -453,9 +461,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(22),
-              color: isCurrentUser
-                  ? const Color(0xFFF4F8FF)
-                  : Colors.white,
+              color: isCurrentUser ? const Color(0xFFF4F8FF) : Colors.white,
               border: Border.all(color: cardBorderColor, width: 1.5),
             ),
             child: Row(
@@ -520,10 +526,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                       const SizedBox(height: 6),
                       Text(
                         '${row.entry.testsTaken} tests - ${row.entry.avgPercentile.toStringAsFixed(1)} %ile',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: captionColor,
-                        ),
+                        style: TextStyle(fontSize: 13, color: captionColor),
                       ),
                     ],
                   ),
@@ -641,13 +644,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
             final vm = vmSnap.data!;
 
-              return RefreshIndicator(
-                onRefresh: () async {
-                  if (!mounted) return;
-                  setState(() {});
-                  _dashboardFutureCache.clear();
-                  _leaderboardFutureCache.remove(selectedExamId);
-                },
+            return RefreshIndicator(
+              onRefresh: () async {
+                if (!mounted) return;
+                setState(() {});
+                _dashboardFutureCache.clear();
+                _leaderboardFutureCache.remove(selectedExamId);
+              },
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 22),
                 children: [
@@ -775,37 +778,37 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           child: PageView(
             controller: _heroPageController,
             onPageChanged: _handleHeroPageChanged,
-              children: [
-                _readinessHeroCard(vm),
-                _accuracySpeedHeroCard(vm),
-                _rankProjectionHeroCard(vm),
-              ],
-            ),
+            children: [
+              _readinessHeroCard(vm),
+              _accuracySpeedHeroCard(vm),
+              _rankProjectionHeroCard(vm),
+            ],
           ),
-         const SizedBox(height: 10),
-         ValueListenableBuilder<int>(
-           valueListenable: _heroPageIndexNotifier,
-           builder: (context, heroPageIndex, child) {
-             return Row(
-               mainAxisAlignment: MainAxisAlignment.center,
-               children: List.generate(3, (index) {
-                 final selected = index == heroPageIndex;
-                 return AnimatedContainer(
-                   duration: const Duration(milliseconds: 180),
-                   margin: const EdgeInsets.symmetric(horizontal: 4),
-                   width: selected ? 18 : 6,
-                   height: 6,
-                   decoration: BoxDecoration(
-                     color: selected
-                         ? const Color(0xFF2E4BCB)
-                         : const Color(0xFFC8D1EA),
-                     borderRadius: BorderRadius.circular(999),
-                   ),
-                 );
-               }),
-             );
-           },
-         ),
+        ),
+        const SizedBox(height: 10),
+        ValueListenableBuilder<int>(
+          valueListenable: _heroPageIndexNotifier,
+          builder: (context, heroPageIndex, child) {
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(3, (index) {
+                final selected = index == heroPageIndex;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  width: selected ? 18 : 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? const Color(0xFF2E4BCB)
+                        : const Color(0xFFC8D1EA),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                );
+              }),
+            );
+          },
+        ),
       ],
     );
   }
@@ -1565,7 +1568,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                           vm.subjects,
                           subjectViewMode,
                         );
-                        final value = _subjectMetricValue(subject, subjectViewMode);
+                        final value = _subjectMetricValue(
+                          subject,
+                          subjectViewMode,
+                        );
                         final normalizedHeight = maxValue <= 0
                             ? 0.0
                             : 120 * (value / maxValue);
@@ -1835,16 +1841,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                   SizedBox(
                     width: cardWidth,
                     child: _riskStatCard(
-                      label:
-                          vm.hasNegativeMarking
-                              ? 'Neg. Marks Lost'
-                              : 'Marks Lost',
+                      label: vm.hasNegativeMarking
+                          ? 'Neg. Marks Lost'
+                          : 'Marks Lost',
                       value:
                           '${vm.hasNegativeMarking ? '-' : ''}${_formatDashboardMetric(vm.marksLost)}',
-                      subtitle:
-                          vm.hasNegativeMarking
-                              ? 'from wrong answers'
-                              : 'potential score from wrong answers',
+                      subtitle: vm.hasNegativeMarking
+                          ? 'from wrong answers'
+                          : 'potential score from wrong answers',
                       tone: _RiskTone.red,
                     ),
                   ),
@@ -2565,12 +2569,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       final correct = normalizedCounts['correct'] ?? 0;
       final incorrect = normalizedCounts['incorrect'] ?? 0;
       final unanswered = normalizedCounts['unanswered'] ?? 0;
-      final testConfig = testConfigs['$examId|${(attempt['testId'] ?? '').toString()}'];
+      final testConfig =
+          testConfigs['$examId|${(attempt['testId'] ?? '').toString()}'];
       final negativeMarkingEnabled =
           (testConfig?['negativeMarkingEnabled'] == true) ||
           ((_toDouble(testConfig?['negativeMarks']) ?? 0) > 0);
-      final penaltyPerWrong =
-          _toDouble(testConfig?['negativeMarks']) ?? 0.0;
+      final penaltyPerWrong = _toDouble(testConfig?['negativeMarks']) ?? 0.0;
       final marksPerQuestion =
           _toDouble(testConfig?['marksPerQuestion']) ??
           _toDouble(testConfig?['positiveMarks']) ??
@@ -2578,7 +2582,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       if (negativeMarkingEnabled) {
         hasNegativeMarking = true;
       }
-      totalMarksLost += incorrect *
+      totalMarksLost +=
+          incorrect *
           (negativeMarkingEnabled ? penaltyPerWrong : marksPerQuestion);
       final questionCount = (correct + incorrect + unanswered) > 0
           ? (correct + incorrect + unanswered)
@@ -3011,12 +3016,15 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         firestoreQuestions = _questionCache[cacheKey] ?? const [];
       }
 
-      final sectionNames = await sectionNameLoads[cacheKey] ?? const <String, String>{};
+      final sectionNames =
+          await sectionNameLoads[cacheKey] ?? const <String, String>{};
       final totalQuestions = embeddedQuestions.isNotEmpty
           ? embeddedQuestions.length
           : firestoreQuestions.length;
       totalsByAttempt[attemptDoc.id] = totalQuestions;
-      final answers = _answersMap(resultMap[attemptDoc.id]?['answers'] ?? attempt['answers']);
+      final answers = _answersMap(
+        resultMap[attemptDoc.id]?['answers'] ?? attempt['answers'],
+      );
       final perQuestionSeconds =
           _secondsPerQuestion(
             attempt,
@@ -3033,8 +3041,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
       if (embeddedQuestions.isNotEmpty) {
         for (final question in embeddedQuestions) {
-          final questionId =
-              (question['__id'] ?? question['id'] ?? '').toString();
+          final questionId = (question['__id'] ?? question['id'] ?? '')
+              .toString();
           final subjectName = _subjectName(question, sectionNames);
           final chapterName = _chapterName(question, subjectName);
           final selected = _normalizeAnswerValue(answers[questionId] ?? '');
@@ -3144,7 +3152,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         .toList(growable: false);
   }
 
-  Future<Map<String, String>> _loadSectionNames(String examId, String testId) async {
+  Future<Map<String, String>> _loadSectionNames(
+    String examId,
+    String testId,
+  ) async {
     if (examId.isEmpty || testId.isEmpty) return const {};
     final key = '$examId|$testId';
     if (_sectionNameCache.containsKey(key)) {
@@ -3181,9 +3192,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           .orderBy('createdAt', descending: true)
           .limit(120)
           .get();
-      final entries = _aggregateLeaderboard(
-        snap.docs,
-      );
+      final entries = _aggregateLeaderboard(snap.docs);
       await _loadUserDisplayNames(entries.map((entry) => entry.userId));
       return _rowsFromEntries(entries);
     } catch (_) {
@@ -3239,11 +3248,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     Map<String, dynamic> question,
     Map<String, String> sectionNames,
   ) {
-    final directName = (question['subject'] ??
-            question['sectionName'] ??
-            question['section'])
-        ?.toString()
-        .trim();
+    final directName =
+        (question['subject'] ?? question['sectionName'] ?? question['section'])
+            ?.toString()
+            .trim();
     if (directName != null && directName.isNotEmpty) {
       return directName;
     }
@@ -3299,8 +3307,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       attempt: attempt,
       result: result,
     );
-    final correct =
-        normalizedCounts['correct'] ?? _toInt(result['score']) ?? 0;
+    final correct = normalizedCounts['correct'] ?? _toInt(result['score']) ?? 0;
     final incorrect = normalizedCounts['incorrect'] ?? 0;
     final unanswered = normalizedCounts['unanswered'] ?? 0;
     final total = (correct + incorrect + unanswered) > 0
@@ -3803,12 +3810,13 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
   int _testRange = 5;
 
   List<String> get _subjects {
-    final names = widget.vm.chapterAttempts
-        .map((item) => item.subject)
-        .where((name) => name.trim().isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
+    final names =
+        widget.vm.chapterAttempts
+            .map((item) => item.subject)
+            .where((name) => name.trim().isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
     if (names.isEmpty) {
       names.addAll(
         widget.vm.chapters.map((chapter) => chapter.subject).toSet().toList()
@@ -3821,12 +3829,13 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
   List<String> get _chaptersForSubject {
     final subject = _selectedSubject;
     if (subject == null) return const [];
-    final chapters = widget.vm.chapterAttempts
-        .where((item) => item.subject == subject)
-        .map((item) => item.chapter)
-        .toSet()
-        .toList()
-      ..sort();
+    final chapters =
+        widget.vm.chapterAttempts
+            .where((item) => item.subject == subject)
+            .map((item) => item.chapter)
+            .toSet()
+            .toList()
+          ..sort();
     if (chapters.isEmpty) {
       chapters.addAll(
         widget.vm.chapters
@@ -3843,7 +3852,9 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
   @override
   void initState() {
     super.initState();
-    final weakest = widget.vm.chapters.isNotEmpty ? widget.vm.chapters.first : null;
+    final weakest = widget.vm.chapters.isNotEmpty
+        ? widget.vm.chapters.first
+        : null;
     _selectedSubject =
         weakest?.subject ?? (_subjects.isNotEmpty ? _subjects.first : null);
     final initialChapters = _chaptersForSubject;
@@ -3903,7 +3914,9 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: const Color(0xFFDCE3F4)),
+                              border: Border.all(
+                                color: const Color(0xFFDCE3F4),
+                              ),
                             ),
                             child: const Icon(
                               Icons.chevron_left_rounded,
@@ -4018,7 +4031,8 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
                               children: [
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         '${_selectedSubject ?? 'General'} - ${_selectedChapter ?? 'Overview'}',
@@ -4076,7 +4090,10 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
                             )
                           : _ExplorerLineChart(
                               points: filteredAttempts
-                                  .map((item) => _ChartPoint(item.label, item.accuracy))
+                                  .map(
+                                    (item) =>
+                                        _ChartPoint(item.label, item.accuracy),
+                                  )
                                   .toList(),
                               minY: 0,
                               maxY: 100,
@@ -4111,7 +4128,9 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
                               maxY: math.max(
                                 4.0,
                                 filteredAttempts
-                                        .map((item) => item.avgMinutesPerQuestion)
+                                        .map(
+                                          (item) => item.avgMinutesPerQuestion,
+                                        )
                                         .fold<double>(0.0, math.max) +
                                     0.5,
                               ),
@@ -4216,10 +4235,11 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
     final subject = _selectedSubject;
     final chapter = _selectedChapter;
     if (subject == null || chapter == null) return const [];
-    final items = widget.vm.chapterAttempts
-        .where((item) => item.subject == subject && item.chapter == chapter)
-        .toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
+    final items =
+        widget.vm.chapterAttempts
+            .where((item) => item.subject == subject && item.chapter == chapter)
+            .toList()
+          ..sort((a, b) => a.date.compareTo(b.date));
     if (items.length <= _testRange) return items;
     return items.sublist(items.length - _testRange);
   }
@@ -4236,11 +4256,7 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
     return totalMinutes / totalQuestions;
   }
 
-  Widget _explorerCard({
-    String? title,
-    Widget? footer,
-    required Widget child,
-  }) {
+  Widget _explorerCard({String? title, Widget? footer, required Widget child}) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -4394,7 +4410,6 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
       ),
     );
   }
-
 }
 
 class _SubjectExplorerScreen extends StatefulWidget {
@@ -4431,10 +4446,11 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
   Widget build(BuildContext context) {
     final subject = _selectedSubject;
     final subjectAttempts = _subjectSeries();
-    final chapterHeatmap = widget.vm.chapters
-        .where((chapter) => chapter.subject == subject)
-        .toList()
-      ..sort((a, b) => b.proficiency.compareTo(a.proficiency));
+    final chapterHeatmap =
+        widget.vm.chapters
+            .where((chapter) => chapter.subject == subject)
+            .toList()
+          ..sort((a, b) => b.proficiency.compareTo(a.proficiency));
     final chapterTimeBars = _chapterTimeSeries();
 
     return Scaffold(
@@ -4459,7 +4475,9 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: const Color(0xFFDCE3F4)),
+                              border: Border.all(
+                                color: const Color(0xFFDCE3F4),
+                              ),
                             ),
                             child: const Icon(
                               Icons.chevron_left_rounded,
@@ -4502,7 +4520,8 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
                           return Padding(
                             padding: const EdgeInsets.only(right: 8),
                             child: InkWell(
-                              onTap: () => setState(() => _selectedSubject = item),
+                              onTap: () =>
+                                  setState(() => _selectedSubject = item),
                               borderRadius: BorderRadius.circular(999),
                               child: AnimatedContainer(
                                 duration: const Duration(milliseconds: 180),
@@ -4559,14 +4578,18 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
                     ),
                     const SizedBox(height: 14),
                     _subjectCard(
-                      title: 'Score Trend${subject == null ? '' : ' - $subject'}',
+                      title:
+                          'Score Trend${subject == null ? '' : ' - $subject'}',
                       child: subjectAttempts.isEmpty
                           ? const _ExplorerEmptyState(
                               message: 'No subject trend data available',
                             )
                           : _ExplorerLineChart(
                               points: subjectAttempts
-                                  .map((item) => _ChartPoint(item.label, item.score))
+                                  .map(
+                                    (item) =>
+                                        _ChartPoint(item.label, item.score),
+                                  )
                                   .toList(),
                               minY: 0,
                               maxY: 100,
@@ -4584,7 +4607,10 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
                             )
                           : _ExplorerLineChart(
                               points: subjectAttempts
-                                  .map((item) => _ChartPoint(item.label, item.accuracy))
+                                  .map(
+                                    (item) =>
+                                        _ChartPoint(item.label, item.accuracy),
+                                  )
                                   .toList(),
                               minY: 0,
                               maxY: 100,
@@ -4597,7 +4623,8 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
                       title: 'Chapter Performance Heatmap',
                       child: chapterHeatmap.isEmpty
                           ? const _ExplorerEmptyState(
-                              message: 'No chapter data available for this subject',
+                              message:
+                                  'No chapter data available for this subject',
                             )
                           : Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -4624,7 +4651,9 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
                                 Wrap(
                                   spacing: 10,
                                   runSpacing: 10,
-                                  children: chapterHeatmap.take(8).map((chapter) {
+                                  children: chapterHeatmap.take(8).map((
+                                    chapter,
+                                  ) {
                                     return _HeatmapChip(chapter: chapter);
                                   }).toList(),
                                 ),
@@ -4671,10 +4700,11 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
     final subject = _selectedSubject;
     if (subject == null) return const [];
     final grouped = <String, _SubjectAttemptAccumulator>{};
-    for (final item in widget.vm.chapterAttempts
-        .where((entry) => entry.subject == subject)
-        .toList()
-      ..sort((a, b) => a.date.compareTo(b.date))) {
+    for (final item
+        in widget.vm.chapterAttempts
+            .where((entry) => entry.subject == subject)
+            .toList()
+          ..sort((a, b) => a.date.compareTo(b.date))) {
       final group = grouped.putIfAbsent(
         item.label,
         () => _SubjectAttemptAccumulator(label: item.label, date: item.date),
@@ -4683,25 +4713,26 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
       group.attempted += item.attempted;
       group.total += item.attempted + item.skipped;
     }
-    final items = grouped.values
-        .map(
-          (entry) => _SubjectAttemptMetric(
-            label: entry.label,
-            date: entry.date,
-            subject: subject,
-            score: entry.attempted == 0
-                ? 0.0
-                : (entry.correct * 100.0 / entry.attempted),
-            accuracy: entry.total == 0
-                ? 0.0
-                : (entry.correct * 100.0 / entry.total),
-            attempted: entry.attempted,
-            correct: entry.correct,
-            total: entry.total,
-          ),
-        )
-        .toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
+    final items =
+        grouped.values
+            .map(
+              (entry) => _SubjectAttemptMetric(
+                label: entry.label,
+                date: entry.date,
+                subject: subject,
+                score: entry.attempted == 0
+                    ? 0.0
+                    : (entry.correct * 100.0 / entry.attempted),
+                accuracy: entry.total == 0
+                    ? 0.0
+                    : (entry.correct * 100.0 / entry.total),
+                attempted: entry.attempted,
+                correct: entry.correct,
+                total: entry.total,
+              ),
+            )
+            .toList()
+          ..sort((a, b) => a.date.compareTo(b.date));
     if (items.length <= _testRange) return items;
     return items.sublist(items.length - _testRange);
   }
@@ -4712,18 +4743,20 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
     final allowedLabels = _subjectSeries().map((item) => item.label).toSet();
     final timeByChapter = <String, List<_ChapterAttemptMetric>>{};
     for (final item in widget.vm.chapterAttempts.where(
-      (entry) => entry.subject == subject && allowedLabels.contains(entry.label),
+      (entry) =>
+          entry.subject == subject && allowedLabels.contains(entry.label),
     )) {
-      timeByChapter.putIfAbsent(item.chapter, () => <_ChapterAttemptMetric>[]).add(
-        item,
-      );
+      timeByChapter
+          .putIfAbsent(item.chapter, () => <_ChapterAttemptMetric>[])
+          .add(item);
     }
     final points = timeByChapter.entries.map((entry) {
       final avg = _weightedAverageChapterTime(entry.value);
-      final label = entry.key.length <= 8 ? entry.key : entry.key.substring(0, 8);
+      final label = entry.key.length <= 8
+          ? entry.key
+          : entry.key.substring(0, 8);
       return _ChartPoint(label, avg);
-    }).toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+    }).toList()..sort((a, b) => b.value.compareTo(a.value));
     return points.take(6).toList();
   }
 
@@ -5014,8 +5047,9 @@ class _ExplorerBarChart extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: safeBars.map((bar) {
-                final heightFactor =
-                    (bar.value / scaleMax).clamp(0.0, 1.0).toDouble();
+                final heightFactor = (bar.value / scaleMax)
+                    .clamp(0.0, 1.0)
+                    .toDouble();
                 return Column(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
@@ -5039,7 +5073,10 @@ class _ExplorerBarChart extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       bar.label,
-                      style: const TextStyle(fontSize: 9, color: Color(0xFF8C96AF)),
+                      style: const TextStyle(
+                        fontSize: 9,
+                        color: Color(0xFF8C96AF),
+                      ),
                     ),
                   ],
                 );
@@ -5082,7 +5119,8 @@ class _ExplorerGroupedBarChart extends StatelessWidget {
         .take(visiblePointCount)
         .map((point) => point.label)
         .toList();
-    final maxY = safeSeries
+    final maxY =
+        safeSeries
             .expand((item) => item.points.map((point) => point.value))
             .fold<double>(0.0, math.max) +
         1;
@@ -5128,10 +5166,13 @@ class _ExplorerGroupedBarChart extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: safeSeries.map((item) {
                               final point = item.points[index];
-                              final heightFactor =
-                                  (point.value / maxY).clamp(0.0, 1.0).toDouble();
+                              final heightFactor = (point.value / maxY)
+                                  .clamp(0.0, 1.0)
+                                  .toDouble();
                               return Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 2),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 2,
+                                ),
                                 child: Container(
                                   width: 10,
                                   height: 130 * heightFactor,
@@ -5178,7 +5219,10 @@ class _ExplorerGroupedBarChart extends StatelessWidget {
                   const SizedBox(width: 6),
                   Text(
                     item.label,
-                    style: const TextStyle(fontSize: 10, color: Color(0xFF8C96AF)),
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Color(0xFF8C96AF),
+                    ),
                   ),
                 ],
               );
@@ -5231,7 +5275,13 @@ class _ExplorerLinePainter extends CustomPainter {
     }
 
     final axisStyle = const TextStyle(fontSize: 9, color: Color(0xFF9AA3B8));
-    final steps = <double>[maxY, (maxY * 0.75), (maxY * 0.5), (maxY * 0.25), minY];
+    final steps = <double>[
+      maxY,
+      (maxY * 0.75),
+      (maxY * 0.5),
+      (maxY * 0.25),
+      minY,
+    ];
     for (int i = 0; i < steps.length; i++) {
       final text = suffix == '%'
           ? '${steps[i].round()}%'
@@ -5240,7 +5290,8 @@ class _ExplorerLinePainter extends CustomPainter {
         text: TextSpan(text: text, style: axisStyle),
         textDirection: TextDirection.ltr,
       )..layout();
-      final y = chartRect.top + (chartRect.height * i / 4) - (painter.height / 2);
+      final y =
+          chartRect.top + (chartRect.height * i / 4) - (painter.height / 2);
       painter.paint(canvas, Offset(0, y));
     }
 
@@ -5257,8 +5308,7 @@ class _ExplorerLinePainter extends CustomPainter {
       final dx =
           chartRect.left +
           (chartRect.width * i / math.max(1.0, (points.length - 1).toDouble()));
-      final normalized = ((points[i].value - minY) /
-              math.max(1.0, maxY - minY))
+      final normalized = ((points[i].value - minY) / math.max(1.0, maxY - minY))
           .clamp(0.0, 1.0)
           .toDouble();
       final dy = chartRect.bottom - (chartRect.height * normalized);
@@ -5885,6 +5935,3 @@ Color _subjectColor(String subject) {
   }
   return palette[hash % palette.length];
 }
-
-
-

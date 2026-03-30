@@ -9,7 +9,7 @@ import '../../services/user_exam_preference_service.dart';
 import '../../widgets/offline_state.dart';
 import '../../widgets/top_header.dart';
 import '../onboarding/select_exam_screen.dart';
-import 'analytics_screen.dart';
+import 'main_navigation.dart';
 import 'pyq_screen.dart';
 import 'subscription_screen.dart';
 import 'test_detail_screen.dart';
@@ -618,9 +618,22 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                               title: 'Quick Stats',
                               actionLabel: 'View Analytics',
                               onTap: () {
+                                final navState = MainNavigation.maybeOf(context);
+                                if (navState != null) {
+                                  navState.switchToTab(
+                                    3,
+                                    analyticsExamId: vm.activeExam?.examId,
+                                  );
+                                  return;
+                                }
+
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
-                                    builder: (_) => const AnalyticsScreen(),
+                                    builder: (_) => MainNavigation(
+                                      initialIndex: 3,
+                                      initialAnalyticsExamId:
+                                          vm.activeExam?.examId,
+                                    ),
                                   ),
                                 );
                               },

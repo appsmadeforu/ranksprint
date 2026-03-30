@@ -643,20 +643,88 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
         .toLowerCase();
   }
 
-  void _unlockSectionAndMoveNext() {
+  Future<void> _unlockSectionAndMoveNext({
+    bool closeNavigationPanel = false,
+  }) async {
     SectionService.isLock = false;
     remainingSeconds = SectionService.lockedTime * 60;
     _saveProgress();
     final nextIndex = currentIndex + 1;
     if (!mounted) return;
-    if (nextIndex < questions.length && _canOpenQuestion(nextIndex)) {
-      setState(() {
-        _markCurrentQuestionVisited();
-        currentIndex = nextIndex;
-      });
-    } else {
+    if (nextIndex >= questions.length || !_canOpenQuestion(nextIndex)) {
       setState(() {});
+      return;
     }
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          content: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 68,
+                  height: 68,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE8F5E9),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check_circle,
+                    color: Color(0xFF2E7D32),
+                    size: 40,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Section Submitted',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Your section has been submitted successfully. Continue to the next section.',
+                  style: TextStyle(fontSize: 14, color: Color(0xFF475569)),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                },
+                style: ElevatedButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text('Continue'),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted) return;
+    if (closeNavigationPanel) {
+      Navigator.pop(context);
+    }
+    setState(() {
+      _markCurrentQuestionVisited();
+      currentIndex = nextIndex;
+    });
   }
 
   void _showSubmitSectionDialog() {
@@ -715,9 +783,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
             ElevatedButton(
               onPressed: () {
                 Navigator.of(context).pop(); // Close dialog first
-                _unlockSectionAndMoveNext();
-                if (!mounted) return;
-                Navigator.pop(context); // Call your method
+                _unlockSectionAndMoveNext(closeNavigationPanel: true);
               },
               child: const Text("Yes"),
             ),
@@ -869,6 +935,29 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
         markedForReview.add(qid);
       }
     });
+  }
+
+  void _moveToNextQuestionOrHandleSectionBoundary() {
+    final nextIndex = currentIndex + 1;
+
+    if (nextIndex < questions.length && _canOpenQuestion(nextIndex)) {
+      setState(() {
+        _markCurrentQuestionVisited();
+        currentIndex = nextIndex;
+      });
+      return;
+    }
+
+    final isAtLockedSectionBoundary =
+        SectionService.isLock &&
+        currentIndex == SectionService.unlockedSectionLength;
+
+    if (isAtLockedSectionBoundary) {
+      setState(() {
+        _markCurrentQuestionVisited();
+        currentIndex = 0;
+      });
+    }
   }
 
   void _selectOption(String qid, String optionId) {
@@ -1563,14 +1652,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                             questions[currentIndex]['__id']
                                                 as String;
                                         _toggleReview(qid);
-                                        if (_canOpenQuestion(
-                                          currentIndex + 1,
-                                        )) {
-                                          setState(() {
-                                            _markCurrentQuestionVisited();
-                                            currentIndex += 1;
-                                          });
-                                        }
+                                        _moveToNextQuestionOrHandleSectionBoundary();
                                       },
                                       style: OutlinedButton.styleFrom(
                                         shape: RoundedRectangleBorder(

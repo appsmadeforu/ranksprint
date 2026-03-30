@@ -189,44 +189,64 @@ class _TestsScreenState extends State<TestsScreen> {
 
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _TestListFilter.values.map((filter) {
-                  final selected = _testListFilter == filter;
-                  return InkWell(
-                    onTap: () => setState(() => _testListFilter = filter),
-                    borderRadius: BorderRadius.circular(999),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 9,
-                      ),
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? const Color(0xFF2F3E8F)
-                            : Colors.white,
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final chips = _TestListFilter.values.map((filter) {
+                    final selected = _testListFilter == filter;
+                    return InkWell(
+                      onTap: () => setState(() => _testListFilter = filter),
+                      borderRadius: BorderRadius.circular(999),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 9,
+                        ),
+                        decoration: BoxDecoration(
                           color: selected
                               ? const Color(0xFF2F3E8F)
-                              : const Color(0xFFD8DEEA),
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: selected
+                                ? const Color(0xFF2F3E8F)
+                                : const Color(0xFFD8DEEA),
+                          ),
+                        ),
+                        child: Text(
+                          filter.label,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: selected
+                                ? Colors.white
+                                : const Color(0xFF5B6478),
+                          ),
                         ),
                       ),
-                      child: Text(
-                        filter.label,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: selected
-                              ? Colors.white
-                              : const Color(0xFF5B6478),
-                        ),
+                    );
+                  }).toList();
+
+                  if (constraints.maxWidth < 360) {
+                    return SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          for (var i = 0; i < chips.length; i++) ...[
+                            if (i > 0) const SizedBox(width: 8),
+                            chips[i],
+                          ],
+                        ],
                       ),
-                    ),
+                    );
+                  }
+
+                  return Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: chips,
                   );
-                }).toList(),
+                },
               ),
             ),
 

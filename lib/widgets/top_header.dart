@@ -28,9 +28,7 @@ class TopHeader extends StatelessWidget {
 
   void _goHome(BuildContext context) {
     Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (_) => const MainNavigation(initialIndex: 0),
-      ),
+      MaterialPageRoute(builder: (_) => const MainNavigation(initialIndex: 0)),
       (route) => false,
     );
   }
@@ -103,7 +101,8 @@ class TopHeader extends StatelessWidget {
                                 : userExamIds;
 
                             return FutureBuilder<QuerySnapshot>(
-                              future: ContentAccessService.activeExamsQuery().get(),
+                              future: ContentAccessService.activeExamsQuery()
+                                  .get(),
                               builder: (context, snapshot) {
                                 if (!snapshot.hasData) {
                                   return const SizedBox();
@@ -111,7 +110,10 @@ class TopHeader extends StatelessWidget {
 
                                 final exams = snapshot.data!.docs;
                                 final unlockedExamIds = exams
-                                    .where((exam) => liveUserExamIds.contains(exam.id))
+                                    .where(
+                                      (exam) =>
+                                          liveUserExamIds.contains(exam.id),
+                                    )
                                     .map((exam) => exam.id)
                                     .toList();
                                 final validSelectedExamId =
@@ -150,8 +152,9 @@ class TopHeader extends StatelessWidget {
                                       ),
                                       selectedItemBuilder: (context) {
                                         return exams.map((exam) {
-                                          final label = (exam['name'] ?? exam.id)
-                                              .toString();
+                                          final label =
+                                              (exam['name'] ?? exam.id)
+                                                  .toString();
                                           return Align(
                                             alignment: Alignment.centerLeft,
                                             child: Text(
@@ -180,19 +183,26 @@ class TopHeader extends StatelessWidget {
                                               Expanded(
                                                 child: Text(
                                                   label,
-                                                  overflow: TextOverflow.ellipsis,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
                                                   style: TextStyle(
                                                     fontSize: 14,
                                                     fontWeight: FontWeight.w600,
                                                     color: isUnlocked
-                                                        ? const Color(0xFF1F2937)
-                                                        : const Color(0xFF9CA3AF),
+                                                        ? const Color(
+                                                            0xFF1F2937,
+                                                          )
+                                                        : const Color(
+                                                            0xFF9CA3AF,
+                                                          ),
                                                   ),
                                                 ),
                                               ),
                                               if (!isUnlocked)
                                                 const Padding(
-                                                  padding: EdgeInsets.only(left: 8),
+                                                  padding: EdgeInsets.only(
+                                                    left: 8,
+                                                  ),
                                                   child: Icon(
                                                     Icons.lock_outline_rounded,
                                                     size: 16,
@@ -228,6 +238,7 @@ class TopHeader extends StatelessWidget {
                           ? const Stream.empty()
                           : FirebaseFirestore.instance
                                 .collection('notification')
+                                .limit(40)
                                 .snapshots(),
                       builder: (context, notifSnap) {
                         final user = FirebaseAuth.instance.currentUser;
@@ -242,6 +253,7 @@ class TopHeader extends StatelessWidget {
                               .collection('users')
                               .doc(user.uid)
                               .collection('notifications')
+                              .limit(40)
                               .snapshots(),
                           builder: (context, metaSnap) {
                             int unread = 0;
