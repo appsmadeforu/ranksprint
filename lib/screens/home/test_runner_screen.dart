@@ -8,7 +8,6 @@ import 'package:ranksprint/sections/section_bean.dart';
 import 'package:ranksprint/sections/section_service.dart';
 import 'package:ranksprint/sections/sectionwise_navigation_screen.dart';
 import 'package:ranksprint/services/result_schema_contract.dart';
-import 'package:lottie/lottie.dart';
 import 'package:screen_protector/screen_protector.dart';
 import 'package:ranksprint/services/html_helper.dart';
 
@@ -44,7 +43,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
   Timer? _timer;
   int remainingSeconds = 0;
 
-  bool loading = false;
+  bool loading = true;
   bool _isSubmittingAttempt = false;
   List<SectionBean> sectionsBeans = [];
   int violationCount = 0;
@@ -54,6 +53,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _blockScreenshots;
+    unawaited(_bootstrapTestRunner());
     Future.delayed(const Duration(seconds: 5), () {
       if (mounted && !loading && attemptId == null) {
         _startAttempt();
@@ -110,6 +110,12 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
     }
   }
 
+  Future<void> _bootstrapTestRunner() async {
+    await _loadTestMetadata();
+    if (!mounted || attemptId != null) return;
+    await _startAttempt();
+  }
+
   void _showWarning() {
     showDialog(
       context: context,
@@ -146,10 +152,14 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
         .doc(widget.examId)
         .get();
 
+    if (!mounted) return;
     setState(() {
       testName = testDoc.data()?['name'] ?? widget.testId;
       examName = examDoc.data()?['name'] ?? widget.examId;
     });
+    if (!loading && attemptId == null) {
+      unawaited(_startAttempt());
+    }
   }
 
   Future<void> _startAttempt() async {
@@ -1168,24 +1178,24 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                   padding: const EdgeInsets.all(12.0),
                   child: Column(
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          InkWell(
-                            onTap: _openPalette,
-                            child: Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Icon(
-                                Icons.menu,
-                                color: Color(0xFF2F6FEB),
+                      if (hasAttempt) ...[
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            InkWell(
+                              onTap: _openPalette,
+                              child: Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Icon(
+                                  Icons.menu,
+                                  color: Color(0xFF2F6FEB),
+                                ),
                               ),
                             ),
-                          ),
-                          if (hasAttempt)
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 12,
@@ -1204,9 +1214,10 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                 ),
                               ),
                             ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                      ],
 
                       if (!hasAttempt)
                         Expanded(
@@ -1215,11 +1226,38 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 /// AI Animation
-                                SizedBox(
+                                Container(
                                   height: 220,
-                                  child: Lottie.network(
-                                    "https://assets2.lottiefiles.com/packages/lf20_x62chJ.json",
-                                    repeat: true,
+                                  width: 220,
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        Color(0xFFE9F1FF),
+                                        Color(0xFFF6F8FF),
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    borderRadius: BorderRadius.circular(36),
+                                  ),
+                                  child: const Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.auto_awesome_rounded,
+                                        size: 68,
+                                        color: Color(0xFF2F6FEB),
+                                      ),
+                                      SizedBox(height: 14),
+                                      SizedBox(
+                                        width: 42,
+                                        height: 42,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 3,
+                                          color: Color(0xFF5B3FD6),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
 
@@ -1247,8 +1285,6 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                     height: 1.5,
                                   ),
                                 ),
-                                const SizedBox(height: 30),
-                                const CircularProgressIndicator(),
                                 const SizedBox(height: 30),
                                 const Text(
                                   "Your Test starting in a moment...",

@@ -20,6 +20,7 @@ class PyqScreen extends StatefulWidget {
 class _PyqScreenState extends State<PyqScreen> {
   String? selectedExamId;
   List<String> userExamIds = [];
+  Set<String> _userGroupIds = <String>{};
   Set<String> _activePlanIds = <String>{};
   List<String> _examSubscriptionPlanIds = const [];
   final Map<String, Future<Map<String, int>>> _subjectPaperCountsFutures = {};
@@ -58,6 +59,7 @@ class _PyqScreenState extends State<PyqScreen> {
     if (!mounted) return;
     setState(() {
       userExamIds = exams;
+      _userGroupIds = ContentAccessService.readUserGroupIds(doc.data());
       selectedExamId = preferredExamId;
     });
 
@@ -118,7 +120,13 @@ class _PyqScreenState extends State<PyqScreen> {
           var total = 0;
           for (final doc in snapshot.docs) {
             final data = doc.data();
-            if (!ContentAccessService.isVisibleNow(data)) continue;
+            if (!ContentAccessService.isVisibleToUser(
+              itemData: data,
+              userId: FirebaseAuth.instance.currentUser?.uid,
+              userGroupIds: _userGroupIds,
+            )) {
+              continue;
+            }
             total += _readCount(
               data['questionCount'] ?? data['paperCount'] ?? data['count'],
             );
@@ -412,6 +420,10 @@ class _PyqScreenState extends State<PyqScreen> {
 
   bool _isPublishedPyq(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
-    return ContentAccessService.isVisibleNow(data);
+    return ContentAccessService.isVisibleToUser(
+      itemData: data,
+      userId: FirebaseAuth.instance.currentUser?.uid,
+      userGroupIds: _userGroupIds,
+    );
   }
 }

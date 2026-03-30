@@ -20,6 +20,7 @@ class TestsScreen extends StatefulWidget {
 
 class _TestsScreenState extends State<TestsScreen> {
   List<String> userExamIds = [];
+  Set<String> _userGroupIds = <String>{};
   String? selectedExamId;
   bool _examIsPremium = false;
   List<String> _examSubscriptionPlanIds = const [];
@@ -62,6 +63,7 @@ class _TestsScreenState extends State<TestsScreen> {
       if (!mounted) return;
       setState(() {
         userExamIds = exams;
+        _userGroupIds = ContentAccessService.readUserGroupIds(doc.data());
         selectedExamId = preferredExamId;
       });
 
@@ -320,7 +322,11 @@ class _TestsScreenState extends State<TestsScreen> {
 
   bool _isTestVisible(QueryDocumentSnapshot<Map<String, dynamic>> test) {
     final data = test.data();
-    return ContentAccessService.isVisibleNow(data);
+    return ContentAccessService.isVisibleToUser(
+      itemData: data,
+      userId: FirebaseAuth.instance.currentUser?.uid,
+      userGroupIds: _userGroupIds,
+    );
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _applyTestFilter({

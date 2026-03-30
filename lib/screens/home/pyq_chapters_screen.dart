@@ -26,6 +26,7 @@ class PyqChaptersScreen extends StatefulWidget {
 class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
   Set<String> _activePlanIds = <String>{};
   List<String> _examSubscriptionPlanIds = const [];
+  Set<String> _userGroupIds = <String>{};
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   Set<String> _favoriteLessonIds = <String>{};
@@ -50,6 +51,10 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
         .collection('exams')
         .doc(widget.examId)
         .get();
+    final user = FirebaseAuth.instance.currentUser;
+    final userDoc = user == null
+        ? null
+        : await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
 
     if (!mounted) return;
 
@@ -57,6 +62,7 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
       _activePlanIds = activePlanIds;
       _examSubscriptionPlanIds =
           SubscriptionAccessService.readPlanIds(examDoc.data());
+      _userGroupIds = ContentAccessService.readUserGroupIds(userDoc?.data());
     });
   }
 
@@ -435,6 +441,10 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
 
   bool _isPublishedChapter(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
-    return ContentAccessService.isVisibleNow(data);
+    return ContentAccessService.isVisibleToUser(
+      itemData: data,
+      userId: FirebaseAuth.instance.currentUser?.uid,
+      userGroupIds: _userGroupIds,
+    );
   }
 }
