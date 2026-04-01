@@ -23,7 +23,7 @@ class SelectExamHome extends StatefulWidget {
 }
 
 class _SelectExamHomeState extends State<SelectExamHome> {
-  static const List<String> _quotes = [
+  static const List<String> _fallbackQuotes = [
     'Success is the sum of small efforts, repeated day in and day out.',
     'Small progress each day adds up to big results.',
     'Focus on consistency. The rank will follow.',
@@ -31,7 +31,6 @@ class _SelectExamHomeState extends State<SelectExamHome> {
   ];
   Future<_HomeVm>? _homeVmFuture;
   String _homeVmSignature = '';
-
   Future<void> _removeExam(String examId) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -257,26 +256,15 @@ class _SelectExamHomeState extends State<SelectExamHome> {
     }
   }
 
-  Future<_HomeVm> _loadVm({
-    required String userId,
-    required Map<String, dynamic> userData,
-  }) async {
-    final selectedExams = List<String>.from(
-      userData['selectedExams'] ?? const [],
-    );
-    final preferredExamId = await UserExamPreferenceService.loadPreferredExamId(
-      availableExamIds: selectedExams,
-    );
-
-    final examIds = selectedExams.toList();
+  Future<List<_ExamCardVm>> _loadSelectedExams(List<String> selectedExamIds) async {
+    if (selectedExamIds.isEmpty) return const <_ExamCardVm>[];
     final examDocs = await Future.wait(
-      examIds.map(
+      selectedExamIds.map(
         (examId) =>
             FirebaseFirestore.instance.collection('exams').doc(examId).get(),
       ),
     );
-
-    final exams = examDocs.map((doc) {
+    return examDocs.map((doc) {
       final data = doc.data() ?? const <String, dynamic>{};
       return _ExamCardVm(
         examId: doc.id,
@@ -284,13 +272,41 @@ class _SelectExamHomeState extends State<SelectExamHome> {
         description: (data['description'] ?? 'No description available.')
             .toString(),
       );
-    }).toList();
+    }).toList(growable: false);
+  }
 
-    final activeExamId = selectedExams.contains(preferredExamId)
-        ? preferredExamId
-        : (selectedExams.isNotEmpty ? selectedExams.first : null);
+  Future<_HomeStatsVm> _loadHomeStats({
+    required String userId,
+    required String? activeExamId,
+  }) async {
+    if (activeExamId != null && activeExamId.isNotEmpty) {
+      try {
+        final summaryDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .collection('examHomeSummary')
+            .doc(activeExamId)
+            .get();
+        final summary = summaryDoc.data();
+        if (summary != null) {
+          final testsAttended =
+              _asInt(summary['testsAttended'] ?? summary['completedAttempts']);
+          final bestRank = _asInt(summary['bestRank']);
+          final bestScore = _asDouble(summary['bestScorePercent']);
+          if (testsAttended != null || bestRank != null || bestScore != null) {
+            return _HomeStatsVm(
+              testsAttended: testsAttended ?? 0,
+              bestRank: bestRank,
+              bestScoreText: bestScore == null ? '--' : '${bestScore.round()}/100',
+            );
+          }
+        }
+      } catch (_) {
+        // Fall back to direct queries when no summary document is available.
+      }
+    }
 
-    final baseFetches = await Future.wait([
+    final baseFetches = await Future.wait<QuerySnapshot<Map<String, dynamic>>>([
       FirebaseFirestore.instance
           .collection('testAttempts')
           .where('userId', isEqualTo: userId)
@@ -300,17 +316,28 @@ class _SelectExamHomeState extends State<SelectExamHome> {
           .where('userId', isEqualTo: userId)
           .get(),
     ]);
-    final attemptsSnap = baseFetches[0] as QuerySnapshot<Map<String, dynamic>>;
-    final resultsSnap = baseFetches[1] as QuerySnapshot<Map<String, dynamic>>;
+    final attemptsSnap = baseFetches[0];
+    final resultsSnap = baseFetches[1];
     final completedAttempts = attemptsSnap.docs.where((doc) {
       final data = doc.data();
-      return (data['status'] ?? '').toString() == 'completed';
-    }).toList();
+      if ((data['status'] ?? '').toString() != 'completed') {
+        return false;
+      }
+      if (activeExamId == null || activeExamId.isEmpty) {
+        return true;
+      }
+      return (data['examId'] ?? '').toString() == activeExamId;
+    }).length;
 
     int? bestRank;
     double? bestScorePct;
     for (final doc in resultsSnap.docs) {
       final data = doc.data();
+      if (activeExamId != null &&
+          activeExamId.isNotEmpty &&
+          (data['examId'] ?? '').toString() != activeExamId) {
+        continue;
+      }
       final rank = _asInt(data['rank']);
       if (rank != null && (bestRank == null || rank < bestRank)) {
         bestRank = rank;
@@ -323,57 +350,45 @@ class _SelectExamHomeState extends State<SelectExamHome> {
       }
     }
 
-    final featuredMockTests = <_FeaturedCardVm>[];
-    final featuredPyqs = <_FeaturedCardVm>[];
-    if (activeExamId != null) {
-      final featuredConfigDoc = await FirebaseFirestore.instance
-          .collection('exams')
-          .doc(activeExamId)
-          .collection('home_config')
-          .doc('featured')
-          .get();
-      final featuredConfig = featuredConfigDoc.data() ?? const <String, dynamic>{};
-      final featuredMockTestIds = List<String>.from(
-        featuredConfig['featuredMockTestIds'] ?? const [],
-      );
-      final featuredPyqIds = List<String>.from(
-        featuredConfig['featuredPyqIds'] ?? const [],
-      );
+    return _HomeStatsVm(
+      testsAttended: completedAttempts,
+      bestRank: bestRank,
+      bestScoreText: bestScorePct == null ? '--' : '${bestScorePct.round()}/100',
+    );
+  }
 
-      final featuredFetches = await Future.wait([
-        Future.wait(
-          featuredMockTestIds.map(
-            (id) => FirebaseFirestore.instance
-                .collection('exams')
-                .doc(activeExamId)
-                .collection('tests')
-                .doc(id)
-                .get(),
-          ),
-        ),
-        Future.wait(
-          featuredPyqIds.map(
-            (id) => FirebaseFirestore.instance
-                .collection('exams')
-                .doc(activeExamId)
-                .collection('pyqs')
-                .doc(id)
-                .get(),
-          ),
-        ),
-      ]);
+  Future<_FeaturedContentVm> _loadFeaturedContent(String activeExamId) async {
+    final featuredConfigDoc = await FirebaseFirestore.instance
+        .collection('exams')
+        .doc(activeExamId)
+        .collection('home_config')
+        .doc('featured')
+        .get();
+    final featuredConfig = featuredConfigDoc.data() ?? const <String, dynamic>{};
+    final featuredMockTestIds = List<String>.from(
+      featuredConfig['featuredMockTestIds'] ?? const [],
+    );
+    final featuredPyqIds = List<String>.from(
+      featuredConfig['featuredPyqIds'] ?? const [],
+    );
 
-      final testDocs = (featuredFetches[0] as List<DocumentSnapshot<Map<String, dynamic>>>)
-          .where((doc) => doc.exists && ContentAccessService.isVisibleNow(doc.data()))
-          .toList();
-      final pyqDocs = (featuredFetches[1] as List<DocumentSnapshot<Map<String, dynamic>>>)
-          .where((doc) => doc.exists && ContentAccessService.isVisibleNow(doc.data()))
-          .toList();
+    final featuredFetches =
+        await Future.wait<List<QueryDocumentSnapshot<Map<String, dynamic>>>>([
+      _loadFeaturedCollectionDocs(
+        parentPath: 'exams/$activeExamId/tests',
+        docIds: featuredMockTestIds,
+      ),
+      _loadFeaturedCollectionDocs(
+        parentPath: 'exams/$activeExamId/pyqs',
+        docIds: featuredPyqIds,
+      ),
+    ]);
 
-      for (final test in testDocs) {
-        final data = test.data()!;
-        featuredMockTests.add(
-          _FeaturedCardVm(
+    final featuredMockTests = featuredFetches[0]
+        .where((doc) => ContentAccessService.isVisibleNow(doc.data()))
+        .map((test) {
+          final data = test.data();
+          return _FeaturedCardVm(
             title: (data['name'] ?? test.id).toString(),
             badge: _isNewItem(data) ? 'NEW' : 'TEST',
             meta: _testMetaLabel(data),
@@ -395,14 +410,15 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                 ),
               );
             },
-          ),
-        );
-      }
+          );
+        })
+        .toList(growable: false);
 
-      for (final pyq in pyqDocs) {
-        final data = pyq.data()!;
-        featuredPyqs.add(
-          _FeaturedCardVm(
+    final featuredPyqs = featuredFetches[1]
+        .where((doc) => ContentAccessService.isVisibleNow(doc.data()))
+        .map((pyq) {
+          final data = pyq.data();
+          return _FeaturedCardVm(
             title: (data['name'] ?? pyq.id).toString(),
             badge: 'PYQ',
             meta: '${_pyqPaperCountLabel(data)} papers',
@@ -415,46 +431,108 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                 context,
               ).push(MaterialPageRoute(builder: (_) => const PyqScreen()));
             },
-          ),
-        );
+          );
+        })
+        .toList(growable: false);
+
+    return _FeaturedContentVm(
+      featuredMockTests: featuredMockTests,
+      featuredPyqs: featuredPyqs,
+    );
+  }
+
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+  _loadFeaturedCollectionDocs({
+    required String parentPath,
+    required List<String> docIds,
+  }) async {
+    if (docIds.isEmpty) return const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+
+    final chunks = <List<String>>[];
+    for (int i = 0; i < docIds.length; i += 10) {
+      final end = math.min(i + 10, docIds.length);
+      chunks.add(docIds.sublist(i, end));
+    }
+
+    final snapshots = await Future.wait(
+      chunks.map(
+        (chunk) => FirebaseFirestore.instance
+            .collection(parentPath)
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get(),
+      ),
+    );
+
+    final docMap = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+    for (final snapshot in snapshots) {
+      for (final doc in snapshot.docs) {
+        docMap[doc.id] = doc;
       }
     }
 
-    final greetingName = _firstName(
-      (userData['name'] ?? FirebaseAuth.instance.currentUser?.displayName ?? '')
-          .toString(),
-    );
+    return docIds
+        .map((id) => docMap[id])
+        .whereType<QueryDocumentSnapshot<Map<String, dynamic>>>()
+        .toList(growable: false);
+  }
 
-    final activeExam = exams.firstWhere(
+  Future<_HomeVm> _loadVm({
+    required String userId,
+    required Map<String, dynamic> userData,
+  }) async {
+    final selectedExamIds = List<String>.from(
+      userData['selectedExams'] ?? const <String>[],
+    );
+    final preferredExamId = await UserExamPreferenceService.loadPreferredExamId(
+      availableExamIds: selectedExamIds,
+    );
+    final activeExamId =
+        preferredExamId != null && selectedExamIds.contains(preferredExamId)
+        ? preferredExamId
+        : (selectedExamIds.isNotEmpty ? selectedExamIds.first : null);
+
+    final selectedExams = await _loadSelectedExams(selectedExamIds);
+    final activeExam = selectedExams.firstWhere(
       (exam) => exam.examId == activeExamId,
-      orElse: () => exams.isNotEmpty
-          ? exams.first
+      orElse: () => selectedExams.isNotEmpty
+          ? selectedExams.first
           : const _ExamCardVm(
               examId: '',
               title: 'No exam selected',
               description: 'Choose an exam to personalize your dashboard.',
             ),
     );
+    final stats = await _loadHomeStats(userId: userId, activeExamId: activeExamId);
+    final featured = activeExamId == null || activeExamId.isEmpty
+        ? const _FeaturedContentVm.empty()
+        : await _loadFeaturedContent(activeExamId);
 
+    final greetingName = _firstName(
+      (userData['name'] ?? FirebaseAuth.instance.currentUser?.displayName ?? '')
+          .toString(),
+    );
     final rawGoalData = userData['currentGoal'];
     final goalData = rawGoalData is Map
         ? Map<String, dynamic>.from(rawGoalData)
         : null;
-    final currentGoal = _GoalVm.fromMap(goalData, fallbackExam: activeExam);
+    final currentGoal = _GoalVm.fromMap(
+      goalData,
+      fallbackExam: activeExam.examId.isEmpty ? null : activeExam,
+    );
+
+    final dailyQuote = await _loadDailyQuote();
 
     return _HomeVm(
       greetingName: greetingName.isEmpty ? 'Learner' : greetingName,
-      quote: _quoteForUser(userId),
+      quote: dailyQuote,
       activeExam: activeExam.examId.isEmpty ? null : activeExam,
-      selectedExams: exams,
-      testsAttended: completedAttempts.length,
-      bestRank: bestRank,
-      bestScoreText: bestScorePct == null
-          ? '--'
-          : '${bestScorePct.round()}/100',
+      selectedExams: selectedExams,
+      testsAttended: stats.testsAttended,
+      bestRank: stats.bestRank,
+      bestScoreText: stats.bestScoreText,
       currentGoal: currentGoal,
-      featuredMockTests: featuredMockTests,
-      featuredPyqs: featuredPyqs,
+      featuredMockTests: featured.featuredMockTests,
+      featuredPyqs: featured.featuredPyqs,
     );
   }
 
@@ -1204,20 +1282,47 @@ class _SelectExamHomeState extends State<SelectExamHome> {
     return trimmed.split(RegExp(r'\s+')).first;
   }
 
-  String _quoteForUser(String userId) {
-    if (userId.isEmpty) return _quotes.first;
-    return _quotes[userId.codeUnits.fold<int>(0, (a, b) => a + b) %
-        _quotes.length];
+  Future<String> _loadDailyQuote() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('quotes')
+          .limit(1)
+          .get();
+      final data = snapshot.docs.isNotEmpty ? snapshot.docs.first.data() : null;
+      final rawQuotes = data?['quote_list'];
+      final quotes = rawQuotes is Iterable
+          ? rawQuotes
+              .map((item) => item?.toString().trim() ?? '')
+              .where((item) => item.isNotEmpty)
+              .toList()
+          : _fallbackQuotes;
+      return _quoteForDate(quotes);
+    } catch (_) {
+      return _quoteForDate(_fallbackQuotes);
+    }
   }
 
-  int? _remainingDays(String title) {
-    final match = RegExp(r'(20\d{2})').firstMatch(title);
-    if (match == null) return null;
-    final year = int.tryParse(match.group(1)!);
-    if (year == null) return null;
-    final end = DateTime(year, 12, 31);
+  String _quoteForDate(List<String> quotes) {
+    final availableQuotes = quotes.isEmpty ? _fallbackQuotes : quotes;
+    if (availableQuotes.length == 1) return availableQuotes.first;
+
     final now = DateTime.now();
-    return math.max(0, end.difference(now).inDays);
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final todayIndex = _dailyQuoteIndex(today, availableQuotes.length);
+    final yesterdayIndex = _dailyQuoteIndex(yesterday, availableQuotes.length);
+
+    if (todayIndex != yesterdayIndex) {
+      return availableQuotes[todayIndex];
+    }
+
+    return availableQuotes[(todayIndex + 1) % availableQuotes.length];
+  }
+
+  int _dailyQuoteIndex(DateTime date, int length) {
+    final dayNumber = date.millisecondsSinceEpoch ~/ Duration.millisecondsPerDay;
+    final seededValue = (dayNumber * 1103515245 + 12345) & 0x7fffffff;
+    return seededValue % length;
   }
 
   int? _asInt(dynamic value) {
@@ -1297,6 +1402,32 @@ class _HomeVm {
   final int? bestRank;
   final String bestScoreText;
   final _GoalVm? currentGoal;
+  final List<_FeaturedCardVm> featuredMockTests;
+  final List<_FeaturedCardVm> featuredPyqs;
+}
+
+class _HomeStatsVm {
+  const _HomeStatsVm({
+    required this.testsAttended,
+    required this.bestRank,
+    required this.bestScoreText,
+  });
+
+  final int testsAttended;
+  final int? bestRank;
+  final String bestScoreText;
+}
+
+class _FeaturedContentVm {
+  const _FeaturedContentVm({
+    required this.featuredMockTests,
+    required this.featuredPyqs,
+  });
+
+  const _FeaturedContentVm.empty()
+    : featuredMockTests = const <_FeaturedCardVm>[],
+      featuredPyqs = const <_FeaturedCardVm>[];
+
   final List<_FeaturedCardVm> featuredMockTests;
   final List<_FeaturedCardVm> featuredPyqs;
 }

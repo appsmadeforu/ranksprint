@@ -236,7 +236,7 @@ class ResultDataService {
     if (raw is! List) return const [];
     return raw.map((item) {
       if (item is Map) {
-        final map = Map<String, dynamic>.from(item as Map);
+        final map = Map<String, dynamic>.from(item);
         return (map['__id'] ?? map['id'] ?? '').toString();
       }
       return '';

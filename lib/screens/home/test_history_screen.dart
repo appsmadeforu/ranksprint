@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../examSummary/exam_summary_screen.dart';
 import '../../sections/section_bean.dart';
 import '../../sections/section_service.dart';
+import '../../services/exam_metadata_cache_service.dart';
 import '../../services/result_data_service.dart';
 import '../../services/user_exam_preference_service.dart';
 import '../../widgets/offline_state.dart';
@@ -755,13 +756,10 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
       return;
     }
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('exams')
-          .doc(examId)
-          .collection('tests')
-          .doc(testId)
-          .get();
-      final name = (doc.data()?['name'] ?? 'Test').toString();
+      final name =
+          ((await ExamMetadataCacheService.getTestName(examId, testId)) ??
+                  'Test')
+              .toString();
       if (!mounted) return;
       setState(() {
         _testNameCache[key] = name;

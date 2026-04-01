@@ -7,7 +7,9 @@ import 'package:ranksprint/screens/home/test_solution_screen.dart';
 import 'package:ranksprint/sections/section_bean.dart';
 import 'package:ranksprint/sections/section_service.dart';
 import 'package:ranksprint/sections/sectionwise_navigation_screen.dart';
+import 'package:ranksprint/services/leaderboard_backfill_service.dart';
 import 'package:ranksprint/services/result_schema_contract.dart';
+import 'package:ranksprint/services/startup_prefetch_service.dart';
 import 'package:screen_protector/screen_protector.dart';
 import 'package:ranksprint/services/html_helper.dart';
 
@@ -45,6 +47,9 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
 
   bool loading = true;
   bool _isSubmittingAttempt = false;
+  bool _isHandlingLifecycleViolation = false;
+  int _allowedAppSwitch = 1;
+  bool _autoSubmitOnViolation = true;
   List<SectionBean> sectionsBeans = [];
   int violationCount = 0;
 
@@ -64,50 +69,79 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) {
-      violationCount++;
-
-      if (violationCount >= 2) {
-        //print("violations: $violationCount");
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (dialogContext) {
-            var isSubmitting = false;
-            return StatefulBuilder(
-              builder: (context, setDialogState) => AlertDialog(
-                title: const Text("Test Submitted"),
-                content: Text(
-                  isSubmitting
-                      ? "Submitting your test. Please wait..."
-                      : "You left the exam screen. The test will now be submitted automatically.",
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: isSubmitting
-                        ? null
-                        : () async {
-                            setDialogState(() => isSubmitting = true);
-                            Navigator.of(dialogContext).pop();
-                            await _submitAttempt();
-                          },
-                    child: isSubmitting
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text("OK"),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      } else {
-        _showWarning();
-      }
+    if (_isViolationState(state)) {
+      _handleLifecycleViolation();
     }
+  }
+
+  bool _isViolationState(AppLifecycleState state) {
+    return state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached;
+  }
+
+  void _handleLifecycleViolation() {
+    if (!mounted ||
+        loading ||
+        _isSubmittingAttempt ||
+        _isHandlingLifecycleViolation) {
+      return;
+    }
+
+    _isHandlingLifecycleViolation = true;
+    violationCount++;
+
+    if (_shouldAutoSubmitForViolation) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          var isSubmitting = false;
+          return StatefulBuilder(
+            builder: (context, setDialogState) => AlertDialog(
+              title: const Text("Test Submitted"),
+              content: Text(
+                isSubmitting
+                    ? "Submitting your test. Please wait..."
+                    : "Video/audio overlay or leaving the test screen is not allowed. The test will now be submitted automatically.",
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          setDialogState(() => isSubmitting = true);
+                          Navigator.of(dialogContext).pop();
+                          await _submitAttempt();
+                        },
+                  child: isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text("OK"),
+                ),
+              ],
+            ),
+          );
+        },
+      ).whenComplete(() {
+        _isHandlingLifecycleViolation = false;
+      });
+    } else {
+      _showWarning().whenComplete(() {
+        _isHandlingLifecycleViolation = false;
+      });
+    }
+  }
+
+  bool get _shouldAutoSubmitForViolation {
+    if (violationCount <= _allowedAppSwitch) {
+      return false;
+    }
+    return _autoSubmitOnViolation;
   }
 
   Future<void> _bootstrapTestRunner() async {
@@ -116,13 +150,15 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
     await _startAttempt();
   }
 
-  void _showWarning() {
-    showDialog(
+  Future<void> _showWarning() {
+    return showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: const Text("Warning"),
-        content: const Text("Switching apps during the test is not allowed."),
+        content: const Text(
+          "Switching apps or opening video/audio overlays during the test is not allowed.",
+        ),
         actions: [
           TextButton(
             onPressed: () {
@@ -146,6 +182,10 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
         .collection('tests')
         .doc(widget.testId)
         .get();
+    final testData = testDoc.data() ?? const <String, dynamic>{};
+    final securityConfig = testData['securityConfig'] is Map
+        ? Map<String, dynamic>.from(testData['securityConfig'] as Map)
+        : const <String, dynamic>{};
 
     final examDoc = await FirebaseFirestore.instance
         .collection('exams')
@@ -154,12 +194,29 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
 
     if (!mounted) return;
     setState(() {
-      testName = testDoc.data()?['name'] ?? widget.testId;
+      testName = testData['name'] ?? widget.testId;
       examName = examDoc.data()?['name'] ?? widget.examId;
+      _allowedAppSwitch = _asInt(securityConfig['allowedAppSwitch']) ?? 1;
+      _autoSubmitOnViolation =
+          _asBool(securityConfig['autoSubmitOnViolation']) ?? true;
     });
     if (!loading && attemptId == null) {
       unawaited(_startAttempt());
     }
+  }
+
+  int? _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  bool? _asBool(dynamic value) {
+    if (value is bool) return value;
+    final normalized = value?.toString().trim().toLowerCase();
+    if (normalized == 'true') return true;
+    if (normalized == 'false') return false;
+    return null;
   }
 
   Future<void> _startAttempt() async {
@@ -368,6 +425,20 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
         'createdAt': Timestamp.now(),
       });
       await _syncLeaderboardMetricsForTest();
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser != null) {
+        StartupPrefetchService.invalidateDashboardData(
+          userId: currentUser.uid,
+          examId: widget.examId,
+        );
+        unawaited(
+          StartupPrefetchService.prefetchDashboardData(
+            userId: currentUser.uid,
+            examId: widget.examId,
+            forceRefresh: true,
+          ),
+        );
+      }
 
       SectionService.lockedTime = 0;
       SectionService.unlockedSectionLength = 0;
@@ -597,6 +668,10 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
     if (opCount > 0) {
       await batch.commit();
     }
+
+    await LeaderboardBackfillService.syncExamLeaderboardSummary(
+      examId: widget.examId,
+    );
   }
 
   double _percentileForRank(int rank, int total) {

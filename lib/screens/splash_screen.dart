@@ -11,7 +11,7 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen> with WidgetsBindingObserver {
   VideoPlayerController? _videoController;
   Future<void>? _initializeVideoFuture;
   bool _showApp = false;
@@ -19,6 +19,7 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (kIsWeb) {
       _showApp = true;
       return;
@@ -29,9 +30,27 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _videoController?.removeListener(_handlePlaybackState);
     _videoController?.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final controller = _videoController;
+    if (controller == null || !controller.value.isInitialized) return;
+
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      controller.pause();
+      return;
+    }
+
+    if (state == AppLifecycleState.resumed && !_showApp) {
+      controller.play();
+    }
   }
 
   Future<void> _initializeVideo() async {

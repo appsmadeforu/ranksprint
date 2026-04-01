@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../services/exam_metadata_cache_service.dart';
 import '../../services/result_data_service.dart';
 import '../../services/user_exam_preference_service.dart';
 import '../../widgets/offline_state.dart';
@@ -26,23 +27,21 @@ class AnalyticsScreen extends StatefulWidget {
 }
 
 class _AnalyticsScreenState extends State<AnalyticsScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   String? selectedExamId;
   List<String> userExamIds = [];
   final TextEditingController _leaderboardSearchController =
       TextEditingController();
+  final ScrollController _leaderboardScrollController = ScrollController();
   String _leaderboardQuery = '';
   final Map<String, String> _userNameCache = <String, String>{};
   final Set<String> _pendingUserNameIds = <String>{};
-  final Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>
-  _questionCache =
-      <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
-  final Map<String, Map<String, String>> _sectionNameCache =
-      <String, Map<String, String>>{};
   final Map<String, Future<_DashboardVm>> _dashboardFutureCache =
       <String, Future<_DashboardVm>>{};
   final Map<String, Future<List<_LeaderboardRow>>> _leaderboardFutureCache =
       <String, Future<List<_LeaderboardRow>>>{};
+  final Map<String, Future<_CompetitionVm>> _competitionFutureCache =
+      <String, Future<_CompetitionVm>>{};
   final Set<String> _dashboardPrefetchKeys = <String>{};
   final ValueNotifier<_DashboardTrendMode> _trendModeNotifier = ValueNotifier(
     _DashboardTrendMode.avg,
@@ -52,14 +51,33 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   final ValueNotifier<int> _heroPageIndexNotifier = ValueNotifier(0);
   final PageController _heroPageController = PageController();
   late final AnimationController _liveBlinkController;
+  late final TabController _tabController;
+  late final List<bool> _visitedTabs;
+  bool _showDeferredDashboardSections = false;
+  String? _deferredDashboardKey;
+  final Map<String, List<_LeaderboardRow>> _leaderboardRowsByExam =
+      <String, List<_LeaderboardRow>>{};
+  final Map<String, DocumentSnapshot<Map<String, dynamic>>?>
+  _leaderboardLastDocsByExam =
+      <String, DocumentSnapshot<Map<String, dynamic>>?>{};
+  final Set<String> _leaderboardLoadingExams = <String>{};
+  final Set<String> _leaderboardLoadedExams = <String>{};
+  final Set<String> _leaderboardHasMoreExams = <String>{};
+  final Map<String, String?> _leaderboardErrorByExam = <String, String?>{};
 
   @override
   void initState() {
     super.initState();
+    final initialTabIndex = widget.initialTabIndex.clamp(0, 1);
+    _tabController = TabController(length: 2, vsync: this, initialIndex: initialTabIndex)
+      ..addListener(_handleTabChanged);
+    _visitedTabs = List<bool>.filled(2, false);
+    _visitedTabs[initialTabIndex] = true;
     _liveBlinkController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
     )..repeat(reverse: true);
+    _leaderboardScrollController.addListener(_handleLeaderboardScroll);
     UserExamPreferenceService.preferredExamNotifier.addListener(
       _handlePreferredExamChanged,
     );
@@ -98,10 +116,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     UserExamPreferenceService.preferredExamNotifier.removeListener(
       _handlePreferredExamChanged,
     );
+    _tabController
+      ..removeListener(_handleTabChanged)
+      ..dispose();
     _trendModeNotifier.dispose();
     _subjectViewModeNotifier.dispose();
     _heroPageIndexNotifier.dispose();
     _leaderboardSearchController.dispose();
+    _leaderboardScrollController
+      ..removeListener(_handleLeaderboardScroll)
+      ..dispose();
     _heroPageController.dispose();
     _liveBlinkController.dispose();
     super.dispose();
@@ -121,9 +145,41 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       selectedExamId = preferredExamId;
       _dashboardFutureCache.clear();
       _leaderboardFutureCache.remove(preferredExamId);
+      _competitionFutureCache.remove(preferredExamId);
+      _resetLeaderboardPaging(preferredExamId);
       _dashboardPrefetchKeys.clear();
+      _showDeferredDashboardSections = false;
+      _deferredDashboardKey = null;
     });
     _prefetchDashboardForSelectedExam();
+  }
+
+  void _handleTabChanged() {
+    final index = _tabController.index;
+    if (_tabController.indexIsChanging) {
+      return;
+    }
+    if (_visitedTabs[index]) {
+      setState(() {});
+      return;
+    }
+    setState(() {
+      _visitedTabs[index] = true;
+    });
+  }
+
+  void _scheduleDeferredDashboardSections(String dashboardKey) {
+    if (_deferredDashboardKey == dashboardKey && _showDeferredDashboardSections) {
+      return;
+    }
+    _deferredDashboardKey = dashboardKey;
+    _showDeferredDashboardSections = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _deferredDashboardKey != dashboardKey) return;
+      setState(() {
+        _showDeferredDashboardSections = true;
+      });
+    });
   }
 
   @override
@@ -143,7 +199,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                   selectedExamId = examId;
                   _dashboardFutureCache.clear();
                   _leaderboardFutureCache.remove(examId);
+                  _competitionFutureCache.remove(examId);
+                  _resetLeaderboardPaging(examId);
                   _dashboardPrefetchKeys.clear();
+                  _showDeferredDashboardSections = false;
+                  _deferredDashboardKey = null;
                 });
                 _prefetchDashboardForSelectedExam();
               },
@@ -152,10 +212,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             Expanded(
               child: selectedExamId == null
                   ? const Center(child: Text('No exam selected'))
-                  : DefaultTabController(
-                      length: 2,
-                      initialIndex: widget.initialTabIndex.clamp(0, 1),
-                      child: Column(
+                  : Column(
                         children: [
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -172,7 +229,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                                   ),
                                 ],
                               ),
-                              child: const TabBar(
+                              child: TabBar(
+                                controller: _tabController,
                                 indicator: BoxDecoration(
                                   color: Color(0xFF263D9A),
                                   borderRadius: BorderRadius.all(
@@ -192,17 +250,21 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                           ),
                           const SizedBox(height: 14),
                           Expanded(
-                            child: TabBarView(
-                              children: [
-                                _buildDashboard(),
-                                _buildLeaderboard(),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-            ),
+                             child: IndexedStack(
+                               index: _tabController.index,
+                               children: [
+                                 _visitedTabs[0]
+                                     ? _buildDashboard()
+                                     : const SizedBox.shrink(),
+                                 _visitedTabs[1]
+                                     ? _buildLeaderboard()
+                                     : const SizedBox.shrink(),
+                               ],
+                             ),
+                           ),
+                         ],
+                       ),
+             ),
           ],
         ),
       ),
@@ -211,75 +273,280 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
   Widget _buildLeaderboard() {
     final currentUser = FirebaseAuth.instance.currentUser;
+    final examId = selectedExamId;
+    if (examId == null || examId.isEmpty) {
+      return const Center(child: Text('No leaderboard data'));
+    }
+    _ensureLeaderboardLoaded(examId);
 
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('results')
-          .where('examId', isEqualTo: selectedExamId)
-          .limit(300)
-          .snapshots(),
-      builder: (context, snap) {
-        if (snap.hasError) {
-          return const OfflineState(
-            message:
-                'Could not load leaderboard. Please check your connection and try again.',
-          );
-        }
-        if (!snap.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    final error = _leaderboardErrorByExam[examId];
+    if (error != null) {
+      return const OfflineState(
+        message:
+            'Could not load leaderboard. Please check your connection and try again.',
+      );
+    }
 
-        final docs = snap.data!.docs;
-        if (docs.isEmpty) {
-          return const Center(child: Text('No leaderboard data'));
-        }
+    final allRows = _leaderboardRowsByExam[examId] ?? const <_LeaderboardRow>[];
+    final isLoading = _leaderboardLoadingExams.contains(examId);
+    final isLoaded = _leaderboardLoadedExams.contains(examId);
+    if (!isLoaded && allRows.isEmpty) {
+      return _leaderboardSkeleton();
+    }
+    if (isLoaded && allRows.isEmpty) {
+      return const Center(child: Text('No leaderboard data'));
+    }
 
-        final entries = _aggregateLeaderboard(docs);
-        if (entries.isEmpty) {
-          return const Center(child: Text('No leaderboard data'));
-        }
-        _ensureLeaderboardDisplayNames(entries.map((entry) => entry.userId));
-        final allRows = _rowsFromEntries(entries);
-        final visibleRows = allRows.where(_matchesLeaderboardQuery).toList();
-
-        if (visibleRows.isEmpty) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Column(
-              children: [
-                _buildLeaderboardSearch(),
-                const Expanded(
-                  child: Center(child: Text('No leaderboard matches found')),
-                ),
-              ],
+    final visibleRows = allRows.where(_matchesLeaderboardQuery).toList();
+    if (visibleRows.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Column(
+          children: [
+            _buildLeaderboardSearch(),
+            const Expanded(
+              child: Center(child: Text('No leaderboard matches found')),
             ),
-          );
-        }
+          ],
+        ),
+      );
+    }
 
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            children: [
-              _buildLeaderboardSearch(),
-              const SizedBox(height: 14),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: visibleRows.length,
-                  itemBuilder: (context, index) {
-                    final row = visibleRows[index];
-                    return _buildLeaderboardCard(
-                      row: row,
-                      isCurrentUser:
-                          currentUser != null &&
-                          currentUser.uid == row.entry.userId,
-                    );
-                  },
-                ),
-              ),
-            ],
+    final hasMore = _leaderboardHasMoreExams.contains(examId);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        children: [
+          _buildLeaderboardSearch(),
+          const SizedBox(height: 14),
+          Expanded(
+            child: ListView.builder(
+              controller: _leaderboardScrollController,
+              itemCount: visibleRows.length + ((hasMore || isLoading) ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index >= visibleRows.length) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    child: Center(
+                      child: isLoading
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2.4),
+                            )
+                          : const Text('Loading more leaderboard entries...'),
+                    ),
+                  );
+                }
+                final row = visibleRows[index];
+                return _buildLeaderboardCard(
+                  row: row,
+                  isCurrentUser:
+                      currentUser != null &&
+                      currentUser.uid == row.entry.userId,
+                );
+              },
+            ),
           ),
-        );
-      },
+        ],
+      ),
+    );
+  }
+
+  void _handleLeaderboardScroll() {
+    final examId = selectedExamId;
+    if (examId == null || examId.isEmpty) return;
+    if (!_leaderboardHasMoreExams.contains(examId)) return;
+    if (_leaderboardLoadingExams.contains(examId)) return;
+    if (!_leaderboardScrollController.hasClients) return;
+    final position = _leaderboardScrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 320) {
+      _loadMoreLeaderboardRows(examId);
+    }
+  }
+
+  void _ensureLeaderboardLoaded(String examId) {
+    if (_leaderboardLoadedExams.contains(examId) ||
+        _leaderboardLoadingExams.contains(examId)) {
+      return;
+    }
+    _loadMoreLeaderboardRows(examId, reset: true);
+  }
+
+  void _resetLeaderboardPaging(String? examId) {
+    if (examId == null || examId.isEmpty) return;
+    _leaderboardRowsByExam.remove(examId);
+    _leaderboardLastDocsByExam.remove(examId);
+    _leaderboardLoadingExams.remove(examId);
+    _leaderboardLoadedExams.remove(examId);
+    _leaderboardHasMoreExams.remove(examId);
+    _leaderboardErrorByExam.remove(examId);
+  }
+
+  Future<void> _loadMoreLeaderboardRows(
+    String examId, {
+    bool reset = false,
+  }) async {
+    if (examId.isEmpty) return;
+    if (_leaderboardLoadingExams.contains(examId)) return;
+    if (!reset &&
+        _leaderboardLoadedExams.contains(examId) &&
+        !_leaderboardHasMoreExams.contains(examId)) {
+      return;
+    }
+
+    _leaderboardLoadingExams.add(examId);
+    _leaderboardErrorByExam.remove(examId);
+    if (mounted) {
+      setState(() {});
+    }
+
+    try {
+      final pageSize = reset ? 40 : 30;
+      final summaryRows = await _loadLeaderboardSummaryPage(
+        examId: examId,
+        pageSize: pageSize,
+        startAfter: reset ? null : _leaderboardLastDocsByExam[examId],
+      );
+      if (summaryRows != null) {
+        final rows = reset
+            ? summaryRows.rows
+            : <_LeaderboardRow>[
+                ...?_leaderboardRowsByExam[examId],
+                ...summaryRows.rows,
+              ];
+        _ensureLeaderboardDisplayNames(rows.map((row) => row.entry.userId));
+        _leaderboardRowsByExam[examId] = rows;
+        _leaderboardLastDocsByExam[examId] = summaryRows.lastDoc;
+        if (summaryRows.rows.length < pageSize) {
+          _leaderboardHasMoreExams.remove(examId);
+        } else {
+          _leaderboardHasMoreExams.add(examId);
+        }
+        _leaderboardLoadedExams.add(examId);
+      } else {
+        await _loadMoreLeaderboardRowsFromResults(examId, reset: reset);
+      }
+    } catch (_) {
+      _leaderboardErrorByExam[examId] = 'load_failed';
+    } finally {
+      _leaderboardLoadingExams.remove(examId);
+      if (mounted) {
+        setState(() {});
+      }
+    }
+  }
+
+  Future<void> _loadMoreLeaderboardRowsFromResults(
+    String examId, {
+    required bool reset,
+  }) async {
+    Query<Map<String, dynamic>> query = FirebaseFirestore.instance
+        .collection('results')
+        .where('examId', isEqualTo: examId)
+        .orderBy('createdAt', descending: true)
+        .limit(reset ? 40 : 30);
+    final lastDoc = reset ? null : _leaderboardLastDocsByExam[examId];
+    if (lastDoc != null) {
+      query = query.startAfterDocument(lastDoc);
+    }
+
+    final snap = await query.get();
+    final docs = snap.docs;
+    final fetchedEntries = _aggregateLeaderboard(docs);
+    await _loadUserDisplayNames(fetchedEntries.map((entry) => entry.userId));
+
+    final existingRows = reset
+        ? <_LeaderboardRow>[]
+        : List<_LeaderboardRow>.from(
+            _leaderboardRowsByExam[examId] ?? const <_LeaderboardRow>[],
+          );
+    final byUser = <String, _LeaderboardAgg>{
+      for (final row in existingRows) row.entry.userId: row.entry,
+    };
+    for (final entry in fetchedEntries) {
+      byUser[entry.userId] = entry;
+    }
+
+    final mergedEntries = byUser.values.toList()
+      ..sort((a, b) {
+        final scoreCompare = b.avgScore.compareTo(a.avgScore);
+        if (scoreCompare != 0) return scoreCompare;
+        final percentileCompare = b.avgPercentile.compareTo(a.avgPercentile);
+        if (percentileCompare != 0) return percentileCompare;
+        return a.userId.compareTo(b.userId);
+      });
+    _ensureLeaderboardDisplayNames(mergedEntries.map((entry) => entry.userId));
+    _leaderboardRowsByExam[examId] = _rowsFromEntries(mergedEntries);
+    _leaderboardLastDocsByExam[examId] = docs.isEmpty ? lastDoc : docs.last;
+    if (docs.length < (reset ? 40 : 30)) {
+      _leaderboardHasMoreExams.remove(examId);
+    } else {
+      _leaderboardHasMoreExams.add(examId);
+    }
+    _leaderboardLoadedExams.add(examId);
+  }
+
+  Future<_LeaderboardPage?> _loadLeaderboardSummaryPage({
+    required String examId,
+    required int pageSize,
+    required DocumentSnapshot<Map<String, dynamic>>? startAfter,
+  }) async {
+    try {
+      Query<Map<String, dynamic>> query = FirebaseFirestore.instance
+          .collection('exams')
+          .doc(examId)
+          .collection('leaderboard')
+          .orderBy('avgScore', descending: true)
+          .orderBy('avgPercentile', descending: true)
+          .limit(pageSize);
+      if (startAfter != null) {
+        query = query.startAfterDocument(startAfter);
+      }
+      final snap = await query.get();
+      if (snap.docs.isEmpty && startAfter == null) {
+        return null;
+      }
+      final rows = snap.docs
+          .map(_leaderboardRowFromSummaryDoc)
+          .whereType<_LeaderboardRow>()
+          .toList(growable: false);
+      if (rows.isEmpty && startAfter == null) {
+        return null;
+      }
+      await _loadUserDisplayNames(rows.map((row) => row.entry.userId));
+      return _LeaderboardPage(
+        rows: rows,
+        lastDoc: snap.docs.isEmpty ? startAfter : snap.docs.last,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  _LeaderboardRow? _leaderboardRowFromSummaryDoc(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data();
+    final userId = (data['userId'] ?? doc.id).toString().trim();
+    if (userId.isEmpty) return null;
+    final agg = _LeaderboardAgg(userId: userId)
+      ..testsTaken = _toInt(data['testsTaken']) ?? 0
+      ..totalScore =
+          (_toDouble(data['avgScore']) ?? 0) * (_toInt(data['testsTaken']) ?? 0)
+      ..totalPercentile =
+          (_toDouble(data['avgPercentile']) ?? 0) *
+          (_toInt(data['testsTaken']) ?? 0)
+      ..bestScore = _toDouble(data['bestScore']) ?? 0
+      ..avgScore = _toDouble(data['avgScore']) ?? 0
+      ..avgPercentile = _toDouble(data['avgPercentile']) ?? 0;
+    final displayName =
+        _compactLeaderboardName((data['displayName'] ?? userId).toString());
+    _userNameCache[userId] = displayName;
+    return _LeaderboardRow(
+      entry: agg,
+      rank: _toInt(data['rank']) ?? 0,
+      displayName: displayName,
     );
   }
 
@@ -580,13 +847,15 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                 _dashboardFutureCache.clear();
                 if (selectedExamId != null) {
                   _leaderboardFutureCache.remove(selectedExamId);
+                  _competitionFutureCache.remove(selectedExamId);
+                  _resetLeaderboardPaging(selectedExamId);
                 }
               });
             },
           );
         }
         if (!snap.hasData) {
-          return const Center(child: CircularProgressIndicator());
+          return _dashboardSkeleton();
         }
 
         final attempts =
@@ -633,16 +902,19 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                     _dashboardFutureCache.clear();
                     if (selectedExamId != null) {
                       _leaderboardFutureCache.remove(selectedExamId);
+                      _competitionFutureCache.remove(selectedExamId);
+                      _resetLeaderboardPaging(selectedExamId);
                     }
                   });
                 },
               );
             }
             if (!vmSnap.hasData) {
-              return const Center(child: CircularProgressIndicator());
+              return _dashboardSkeleton();
             }
 
             final vm = vmSnap.data!;
+            _scheduleDeferredDashboardSections(dashboardCacheKey);
 
             return RefreshIndicator(
               onRefresh: () async {
@@ -650,6 +922,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                 setState(() {});
                 _dashboardFutureCache.clear();
                 _leaderboardFutureCache.remove(selectedExamId);
+                _competitionFutureCache.remove(selectedExamId);
+                _resetLeaderboardPaging(selectedExamId);
+                _showDeferredDashboardSections = false;
+                _deferredDashboardKey = null;
               },
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 22),
@@ -659,18 +935,23 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                   _performanceTrendCard(vm),
                   const SizedBox(height: 14),
                   _subjectWiseCard(vm),
-                  const SizedBox(height: 14),
-                  _chapterHeatmapCard(vm),
-                  const SizedBox(height: 14),
-                  _timeAnalyticsCard(vm),
-                  const SizedBox(height: 14),
-                  _riskBehaviourCard(vm),
-                  const SizedBox(height: 14),
-                  _competitionComparisonCard(vm),
-                  const SizedBox(height: 14),
-                  _consistencyRadarCard(vm),
-                  const SizedBox(height: 14),
-                  _recommendationsCard(vm),
+                  if (_showDeferredDashboardSections) ...[
+                    const SizedBox(height: 14),
+                    _chapterHeatmapCard(vm),
+                    const SizedBox(height: 14),
+                    _timeAnalyticsCard(vm),
+                    const SizedBox(height: 14),
+                    _riskBehaviourCard(vm),
+                    const SizedBox(height: 14),
+                    _competitionComparisonCard(vm),
+                    const SizedBox(height: 14),
+                    _consistencyRadarCard(vm),
+                    const SizedBox(height: 14),
+                    _recommendationsCard(vm),
+                  ] else ...[
+                    const SizedBox(height: 14),
+                    _deferredSectionsPlaceholder(),
+                  ],
                 ],
               ),
             );
@@ -890,36 +1171,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       nextPage,
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOut,
-    );
-  }
-
-  Widget _heroMetric(String label, String value) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(color: Color(0xFFDCE4FF), fontSize: 11),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1455,6 +1706,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       valueListenable: _trendModeNotifier,
       builder: (context, trendMode, child) {
         final displayPoints = _displayTrendPoints(vm.trendPoints, trendMode);
+        final competitionFuture = _competitionFutureFor(vm);
         return _dashboardSection(
           title: 'Performance Trend',
           subtitle:
@@ -1475,9 +1727,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                     ? const Center(
                         child: Text('Need at least 2 attempts to show trend'),
                       )
-                    : _TrendChart(
-                        points: displayPoints,
-                        platformAvg: vm.platformAvg,
+                    : FutureBuilder<_CompetitionVm>(
+                        future: competitionFuture,
+                        builder: (context, competitionSnap) {
+                          final platformAvg =
+                              competitionSnap.data?.platformAvg ?? 0.0;
+                          return _TrendChart(
+                            points: displayPoints,
+                            platformAvg: platformAvg,
+                          );
+                        },
                       ),
               ),
               const SizedBox(height: 12),
@@ -1675,6 +1934,113 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _dashboardSkeleton() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 22),
+      children: const [
+        _DashboardSkeletonHero(),
+        SizedBox(height: 14),
+        _DashboardSkeletonCard(height: 260),
+        SizedBox(height: 14),
+        _DashboardSkeletonCard(height: 320),
+        SizedBox(height: 14),
+        _DashboardSkeletonCard(height: 220),
+      ],
+    );
+  }
+
+  Widget _deferredSectionsPlaceholder() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x120F172A),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: const Row(
+        children: [
+          SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2.2),
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Loading the rest of your analytics...',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF475569),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _leaderboardSkeleton() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        children: [
+          _buildLeaderboardSearch(),
+          const SizedBox(height: 14),
+          Expanded(
+            child: ListView.separated(
+              itemCount: 5,
+              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              itemBuilder: (context, index) => _leaderboardSkeletonCard(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _leaderboardSkeletonCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE4EAF8), width: 1.2),
+      ),
+      child: const Row(
+        children: [
+          _SkeletonBlock(width: 56, height: 56, radius: 28),
+          SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _SkeletonBlock(width: 150, height: 16),
+                SizedBox(height: 10),
+                _SkeletonBlock(width: 120, height: 12),
+              ],
+            ),
+          ),
+          SizedBox(width: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _SkeletonBlock(width: 42, height: 20),
+              SizedBox(height: 8),
+              _SkeletonBlock(width: 58, height: 12),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -1880,35 +2246,54 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   }
 
   Widget _competitionComparisonCard(_DashboardVm vm) {
+    final competitionFuture = _competitionFutureFor(vm);
     return _dashboardSection(
       title: 'Competition Comparison',
       subtitle:
           'Your exam-level standing against current live leaderboard stats',
-      child: Column(
-        children: [
-          ...vm.comparisonRows.map(
-            (row) => Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: _comparisonRow(row),
-            ),
-          ),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(13),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEFF4FF),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Text(
-              vm.rankGapText,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color(0xFF2846A3),
-                fontWeight: FontWeight.w600,
+      child: FutureBuilder<_CompetitionVm>(
+        future: competitionFuture,
+        builder: (context, competitionSnap) {
+          if (competitionSnap.connectionState == ConnectionState.waiting &&
+              !competitionSnap.hasData) {
+            return const _DashboardSkeletonCard(height: 180);
+          }
+
+          final competition = competitionSnap.data;
+          if (competition == null) {
+            return const Text(
+              'Competition data is not available right now.',
+              style: TextStyle(color: Color(0xFF6C748A)),
+            );
+          }
+
+          return Column(
+            children: [
+              ...competition.comparisonRows.map(
+                (row) => Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: _comparisonRow(row),
+                ),
               ),
-            ),
-          ),
-        ],
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(13),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF4FF),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Text(
+                  competition.rankGapText,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF2846A3),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -2506,6 +2891,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     String examId,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
   ) async {
+    final attemptSignature = _dashboardAttemptSignature(attempts);
+    final cachedVm = await _loadCachedDashboardVm(
+      userId: userId,
+      examId: examId,
+      attemptSignature: attemptSignature,
+    );
+    if (cachedVm != null) {
+      return cachedVm;
+    }
+
     final resultMap = await ResultDataService.loadResultsMap(
       attempts: attempts,
       userId: userId,
@@ -2514,17 +2909,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     final asyncDeps = await Future.wait<dynamic>([
       FirebaseFirestore.instance.collection('exams').doc(examId).get(),
       _loadQuestionDetails(attempts, resultMap),
-      _leaderboardFutureCache.putIfAbsent(
-        examId,
-        () => _loadExamLeaderboardRows(examId),
-      ),
       _loadTestConfigs(attempts),
     ]);
     final examDoc = asyncDeps[0] as DocumentSnapshot<Map<String, dynamic>>;
     final examName = (examDoc.data()?['name'] ?? 'Selected Exam').toString();
     final detail = asyncDeps[1] as _QuestionDetailBundle;
-    final leaderboardRows = asyncDeps[2] as List<_LeaderboardRow>;
-    final testConfigs = asyncDeps[3] as Map<String, Map<String, dynamic>>;
+    final testConfigs = asyncDeps[2] as Map<String, Map<String, dynamic>>;
 
     final trendPoints = <_TrendPoint>[];
     final riskBars = <double>[];
@@ -2636,19 +3026,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       ..sort((a, b) => a.proficiency.compareTo(b.proficiency));
     final chapterAttempts = detail.chapterAttempts;
 
-    final avgLeaderboardScore = leaderboardRows.isEmpty
-        ? 0.0
-        : leaderboardRows
-                  .map((row) => row.entry.avgScore)
-                  .reduce((a, b) => a + b) /
-              leaderboardRows.length;
-    final topLeaderboardScore = leaderboardRows.isEmpty
-        ? avgScore
-        : leaderboardRows.first.entry.avgScore;
-    final myLeaderboardRow = leaderboardRows
-        .cast<_LeaderboardRow?>()
-        .firstWhere((row) => row?.entry.userId == userId, orElse: () => null);
-
     final consistency = _consistencyScore(trendPoints);
     final scoreBalance = _scoreBalance(subjects);
     final frequency = _testFrequency(attempts);
@@ -2674,27 +3051,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     final focusSubject = subjects.isEmpty ? 'General' : subjects.last.name;
 
     final timeSlices = _timeSlicesForSubjects(subjects);
-
-    final comparisonRows = <_ComparisonRow>[
-      _ComparisonRow(
-        label: 'Overall Score',
-        totalLabel: '/ 100',
-        you: avgScore,
-        average: avgLeaderboardScore,
-        topper: topLeaderboardScore.clamp(0.0, 100.0),
-      ),
-      ...subjects
-          .take(4)
-          .map(
-            (subject) => _ComparisonRow(
-              label: subject.name,
-              totalLabel: '/ 100',
-              you: subject.accuracy,
-              average: (subject.accuracy * 0.88).clamp(0.0, 100.0),
-              topper: math.min(100.0, subject.accuracy + 12),
-            ),
-          ),
-    ];
 
     final weakChapters = chapters.take(3).toList();
     final fallbackRecommendations = weakChapters.isEmpty
@@ -2744,12 +3100,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       );
     }
 
-    final rankGapText = myLeaderboardRow == null
-        ? 'Keep attempting tests to enter the live ranking pool.'
-        : myLeaderboardRow.rank <= 3
-        ? 'You are already in the top tier for this exam.'
-        : 'You are ${myLeaderboardRow.rank - 3} places away from the Top 3.';
-
     final consistencyLabel = consistency >= 75
         ? 'Highly Consistent Performer'
         : consistency >= 55
@@ -2762,7 +3112,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         ? 'Your pacing is balanced, but a few quicker decisions can boost attempts.'
         : 'You spend too long on harder questions. Try a faster review loop.';
 
-    return _DashboardVm(
+    final vm = _DashboardVm(
       examName: examName,
       lastUpdated: lastUpdated == DateTime.fromMillisecondsSinceEpoch(0)
           ? DateTime.now()
@@ -2781,7 +3131,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       totalIncorrect: totalIncorrect,
       totalSkipped: totalSkipped,
       avgSecondsPerQuestion: avgSecondsPerQuestion,
-      platformAvg: avgLeaderboardScore,
       trendPoints: trendPoints,
       subjects: subjects,
       chapters: chapters,
@@ -2794,8 +3143,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       hasNegativeMarking: hasNegativeMarking,
       riskAccuracy: riskAccuracy,
       safeAttempts: safeAttempts,
-      comparisonRows: comparisonRows,
-      rankGapText: rankGapText,
       accuracyStability: accuracyStability,
       scoreBalance: scoreBalance,
       testFrequency: frequency,
@@ -2804,6 +3151,337 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       consistencyLabel: consistencyLabel,
       recommendations: recommendations,
       gainPotential: gainPotential,
+    );
+    _persistDashboardSummary(
+      userId: userId,
+      examId: examId,
+      attemptSignature: attemptSignature,
+      vm: vm,
+    );
+    return vm;
+  }
+
+  String _dashboardAttemptSignature(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
+  ) {
+    return attempts
+        .map((doc) {
+          final data = doc.data();
+          final stamp =
+              (_toDate(data['submittedAt']) ?? _toDate(data['startedAt']))
+                  ?.millisecondsSinceEpoch ??
+              0;
+          return '${doc.id}:$stamp:${(data['status'] ?? '').toString()}';
+        })
+        .join('|');
+  }
+
+  Future<_DashboardVm?> _loadCachedDashboardVm({
+    required String userId,
+    required String examId,
+    required String attemptSignature,
+  }) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('examAnalytics')
+          .doc(examId)
+          .get();
+      final data = doc.data();
+      if (data == null) return null;
+      if ((data['attemptSignature'] ?? '').toString() != attemptSignature) {
+        return null;
+      }
+      return _dashboardVmFromSummary(data);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _persistDashboardSummary({
+    required String userId,
+    required String examId,
+    required String attemptSignature,
+    required _DashboardVm vm,
+  }) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('examAnalytics')
+          .doc(examId)
+          .set({
+            'schemaVersion': 1,
+            'attemptSignature': attemptSignature,
+            'summary': _dashboardVmToSummary(vm),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+    } catch (_) {
+      // Keep analytics resilient if summary persistence fails.
+    }
+  }
+
+  _DashboardVm? _dashboardVmFromSummary(Map<String, dynamic> data) {
+    final summary = data['summary'];
+    if (summary is! Map) return null;
+    final map = Map<String, dynamic>.from(
+      summary.map((key, value) => MapEntry(key.toString(), value)),
+    );
+
+    final trendPoints = _mapList(map['trendPoints'])
+        .map(_trendPointFromMap)
+        .whereType<_TrendPoint>()
+        .toList(growable: false);
+    final subjects = _mapList(map['subjects'])
+        .map(_subjectMetricFromMap)
+        .whereType<_SubjectMetric>()
+        .toList(growable: false);
+    final chapters = _mapList(map['chapters'])
+        .map(_chapterMetricFromMap)
+        .whereType<_ChapterMetric>()
+        .toList(growable: false);
+    final chapterAttempts = _mapList(map['chapterAttempts'])
+        .map(_chapterAttemptMetricFromMap)
+        .whereType<_ChapterAttemptMetric>()
+        .toList(growable: false);
+    final timeSlices = _mapList(map['timeSlices'])
+        .map(_timeSliceFromMap)
+        .whereType<_TimeSlice>()
+        .toList(growable: false);
+    final recommendations = _mapList(map['recommendations'])
+        .map(_recommendationFromMap)
+        .whereType<_Recommendation>()
+        .toList(growable: false);
+
+    final examName = (map['examName'] ?? '').toString().trim();
+    if (examName.isEmpty) return null;
+
+    return _DashboardVm(
+      examName: examName,
+      lastUpdated:
+          _toDate(map['lastUpdated']) ?? DateTime.fromMillisecondsSinceEpoch(0),
+      testsTaken: _toInt(map['testsTaken']) ?? 0,
+      totalQuestions: _toInt(map['totalQuestions']) ?? 0,
+      totalMinutes: _toInt(map['totalMinutes']) ?? 0,
+      avgScore: _toDouble(map['avgScore']) ?? 0,
+      maxScore: _toDouble(map['maxScore']) ?? 0,
+      avgPercentile: _toDouble(map['avgPercentile']) ?? 0,
+      bestRank: _toInt(map['bestRank']) ?? 0,
+      readiness: _toDouble(map['readiness']) ?? 0,
+      delta: _toDouble(map['delta']) ?? 0,
+      focusSubject: (map['focusSubject'] ?? 'General').toString(),
+      totalCorrect: _toInt(map['totalCorrect']) ?? 0,
+      totalIncorrect: _toInt(map['totalIncorrect']) ?? 0,
+      totalSkipped: _toInt(map['totalSkipped']) ?? 0,
+      avgSecondsPerQuestion: _toDouble(map['avgSecondsPerQuestion']) ?? 0,
+      trendPoints: trendPoints,
+      subjects: subjects,
+      chapters: chapters,
+      chapterAttempts: chapterAttempts,
+      timeSlices: timeSlices,
+      timeScoreTrend: _doubleList(map['timeScoreTrend']),
+      timeInsight: (map['timeInsight'] ?? '').toString(),
+      riskBars: _doubleList(map['riskBars']),
+      marksLost: _toDouble(map['marksLost']) ?? 0,
+      hasNegativeMarking: map['hasNegativeMarking'] == true,
+      riskAccuracy: _toDouble(map['riskAccuracy']) ?? 0,
+      safeAttempts: _toDouble(map['safeAttempts']) ?? 0,
+      accuracyStability: _toDouble(map['accuracyStability']) ?? 0,
+      scoreBalance: _toDouble(map['scoreBalance']) ?? 0,
+      testFrequency: _toDouble(map['testFrequency']) ?? 0,
+      timeMgmt: _toDouble(map['timeMgmt']) ?? 0,
+      speed: _toDouble(map['speed']) ?? 0,
+      consistencyLabel: (map['consistencyLabel'] ?? '').toString(),
+      recommendations: recommendations,
+      gainPotential: _toDouble(map['gainPotential']) ?? 0,
+    );
+  }
+
+  Map<String, dynamic> _dashboardVmToSummary(_DashboardVm vm) {
+    return {
+      'examName': vm.examName,
+      'lastUpdated': Timestamp.fromDate(vm.lastUpdated),
+      'testsTaken': vm.testsTaken,
+      'totalQuestions': vm.totalQuestions,
+      'totalMinutes': vm.totalMinutes,
+      'avgScore': vm.avgScore,
+      'maxScore': vm.maxScore,
+      'avgPercentile': vm.avgPercentile,
+      'bestRank': vm.bestRank,
+      'readiness': vm.readiness,
+      'delta': vm.delta,
+      'focusSubject': vm.focusSubject,
+      'totalCorrect': vm.totalCorrect,
+      'totalIncorrect': vm.totalIncorrect,
+      'totalSkipped': vm.totalSkipped,
+      'avgSecondsPerQuestion': vm.avgSecondsPerQuestion,
+      'trendPoints': vm.trendPoints.map(_trendPointToMap).toList(),
+      'subjects': vm.subjects.map(_subjectMetricToMap).toList(),
+      'chapters': vm.chapters.map(_chapterMetricToMap).toList(),
+      'chapterAttempts':
+          vm.chapterAttempts.map(_chapterAttemptMetricToMap).toList(),
+      'timeSlices': vm.timeSlices.map(_timeSliceToMap).toList(),
+      'timeScoreTrend': vm.timeScoreTrend,
+      'timeInsight': vm.timeInsight,
+      'riskBars': vm.riskBars,
+      'marksLost': vm.marksLost,
+      'hasNegativeMarking': vm.hasNegativeMarking,
+      'riskAccuracy': vm.riskAccuracy,
+      'safeAttempts': vm.safeAttempts,
+      'accuracyStability': vm.accuracyStability,
+      'scoreBalance': vm.scoreBalance,
+      'testFrequency': vm.testFrequency,
+      'timeMgmt': vm.timeMgmt,
+      'speed': vm.speed,
+      'consistencyLabel': vm.consistencyLabel,
+      'recommendations':
+          vm.recommendations.map(_recommendationToMap).toList(),
+      'gainPotential': vm.gainPotential,
+    };
+  }
+
+  List<Map<String, dynamic>> _mapList(dynamic raw) {
+    if (raw is! List) return const <Map<String, dynamic>>[];
+    return raw
+        .whereType<Map>()
+        .map(
+          (item) => Map<String, dynamic>.from(
+            item.map((key, value) => MapEntry(key.toString(), value)),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  List<double> _doubleList(dynamic raw) {
+    if (raw is! List) return const <double>[];
+    return raw.map((item) => _toDouble(item) ?? 0).toList(growable: false);
+  }
+
+  Map<String, dynamic> _trendPointToMap(_TrendPoint point) => {
+    'label': point.label,
+    'score': point.score,
+    'date': Timestamp.fromDate(point.date),
+    'extra': point.extra,
+  };
+
+  _TrendPoint? _trendPointFromMap(Map<String, dynamic> map) {
+    final label = (map['label'] ?? '').toString();
+    final date = _toDate(map['date']);
+    if (label.isEmpty || date == null) return null;
+    return _TrendPoint(
+      label: label,
+      score: _toDouble(map['score']) ?? 0,
+      date: date,
+      extra: _toDouble(map['extra']) ?? 0,
+    );
+  }
+
+  Map<String, dynamic> _subjectMetricToMap(_SubjectMetric metric) => {
+    'name': metric.name,
+    'total': metric.total,
+    'attempted': metric.attempted,
+    'correct': metric.correct,
+    'totalSeconds': metric.totalSeconds,
+  };
+
+  _SubjectMetric? _subjectMetricFromMap(Map<String, dynamic> map) {
+    final name = (map['name'] ?? '').toString().trim();
+    if (name.isEmpty) return null;
+    final metric = _SubjectMetric(name);
+    metric.total = _toInt(map['total']) ?? 0;
+    metric.attempted = _toInt(map['attempted']) ?? 0;
+    metric.correct = _toInt(map['correct']) ?? 0;
+    metric.totalSeconds = _toDouble(map['totalSeconds']) ?? 0;
+    return metric;
+  }
+
+  Map<String, dynamic> _chapterMetricToMap(_ChapterMetric metric) => {
+    'name': metric.name,
+    'subject': metric.subject,
+    'total': metric.total,
+    'attempted': metric.attempted,
+    'correct': metric.correct,
+  };
+
+  _ChapterMetric? _chapterMetricFromMap(Map<String, dynamic> map) {
+    final name = (map['name'] ?? '').toString().trim();
+    final subject = (map['subject'] ?? '').toString().trim();
+    if (name.isEmpty || subject.isEmpty) return null;
+    final metric = _ChapterMetric(name: name, subject: subject);
+    metric.total = _toInt(map['total']) ?? 0;
+    metric.attempted = _toInt(map['attempted']) ?? 0;
+    metric.correct = _toInt(map['correct']) ?? 0;
+    return metric;
+  }
+
+  Map<String, dynamic> _chapterAttemptMetricToMap(_ChapterAttemptMetric metric) =>
+      {
+        'label': metric.label,
+        'date': Timestamp.fromDate(metric.date),
+        'subject': metric.subject,
+        'chapter': metric.chapter,
+        'accuracy': metric.accuracy,
+        'avgMinutesPerQuestion': metric.avgMinutesPerQuestion,
+        'totalQuestions': metric.totalQuestions,
+        'attempted': metric.attempted,
+        'correct': metric.correct,
+        'skipped': metric.skipped,
+      };
+
+  _ChapterAttemptMetric? _chapterAttemptMetricFromMap(
+    Map<String, dynamic> map,
+  ) {
+    final label = (map['label'] ?? '').toString().trim();
+    final subject = (map['subject'] ?? '').toString().trim();
+    final chapter = (map['chapter'] ?? '').toString().trim();
+    final date = _toDate(map['date']);
+    if (label.isEmpty || subject.isEmpty || chapter.isEmpty || date == null) {
+      return null;
+    }
+    return _ChapterAttemptMetric(
+      label: label,
+      date: date,
+      subject: subject,
+      chapter: chapter,
+      accuracy: _toDouble(map['accuracy']) ?? 0,
+      avgMinutesPerQuestion: _toDouble(map['avgMinutesPerQuestion']) ?? 0,
+      totalQuestions: _toInt(map['totalQuestions']) ?? 0,
+      attempted: _toInt(map['attempted']) ?? 0,
+      correct: _toInt(map['correct']) ?? 0,
+      skipped: _toInt(map['skipped']) ?? 0,
+    );
+  }
+
+  Map<String, dynamic> _timeSliceToMap(_TimeSlice slice) => {
+    'label': slice.label,
+    'value': slice.value,
+    'color': slice.color.value,
+  };
+
+  _TimeSlice? _timeSliceFromMap(Map<String, dynamic> map) {
+    final label = (map['label'] ?? '').toString().trim();
+    if (label.isEmpty) return null;
+    return _TimeSlice(
+      label: label,
+      value: _toDouble(map['value']) ?? 0,
+      color: Color(_toInt(map['color']) ?? 0xFF9AA5B1),
+    );
+  }
+
+  Map<String, dynamic> _recommendationToMap(_Recommendation item) => {
+    'title': item.title,
+    'subtitle': item.subtitle,
+    'icon': _recommendationIconName(item.icon),
+  };
+
+  _Recommendation? _recommendationFromMap(Map<String, dynamic> map) {
+    final title = (map['title'] ?? '').toString().trim();
+    if (title.isEmpty) return null;
+    return _Recommendation(
+      title: title,
+      subtitle: (map['subtitle'] ?? '').toString(),
+      icon: _recommendationIcon((map['icon'] ?? '').toString()),
     );
   }
 
@@ -2969,24 +3647,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         resultMap[attemptDoc.id]?['question'] ?? attempt['question'],
       );
       if (embeddedQuestions.isEmpty) {
-        questionLoads.putIfAbsent(cacheKey, () async {
-          if (_questionCache.containsKey(cacheKey)) {
-            return _questionCache[cacheKey] ?? const [];
-          }
-          try {
-            final snap = await FirebaseFirestore.instance
-                .collection('exams')
-                .doc(examId)
-                .collection('tests')
-                .doc(testId)
-                .collection('questions')
-                .get();
-            _questionCache[cacheKey] = snap.docs;
-          } catch (_) {
-            _questionCache[cacheKey] = const [];
-          }
-          return _questionCache[cacheKey] ?? const [];
-        });
+        questionLoads.putIfAbsent(
+          cacheKey,
+          () => ExamMetadataCacheService.getQuestions(examId, testId),
+        );
       }
       sectionNameLoads.putIfAbsent(
         cacheKey,
@@ -3013,7 +3677,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       List<QueryDocumentSnapshot<Map<String, dynamic>>> firestoreQuestions =
           const [];
       if (embeddedQuestions.isEmpty) {
-        firestoreQuestions = _questionCache[cacheKey] ?? const [];
+        firestoreQuestions = await questionLoads[cacheKey] ?? const [];
       }
 
       final sectionNames =
@@ -3156,35 +3820,18 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     String examId,
     String testId,
   ) async {
-    if (examId.isEmpty || testId.isEmpty) return const {};
-    final key = '$examId|$testId';
-    if (_sectionNameCache.containsKey(key)) {
-      return _sectionNameCache[key] ?? const {};
-    }
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection('exams')
-          .doc(examId)
-          .collection('tests')
-          .doc(testId)
-          .collection('sections')
-          .get();
-      final names = <String, String>{};
-      for (final doc in snap.docs) {
-        final name = (doc.data()['name'] ?? '').toString().trim();
-        if (name.isNotEmpty) {
-          names[doc.id] = name;
-        }
-      }
-      _sectionNameCache[key] = names;
-      return names;
-    } catch (_) {
-      _sectionNameCache[key] = const {};
-      return const {};
-    }
+    return ExamMetadataCacheService.getSectionNames(examId, testId);
   }
 
   Future<List<_LeaderboardRow>> _loadExamLeaderboardRows(String examId) async {
+    final summaryPage = await _loadLeaderboardSummaryPage(
+      examId: examId,
+      pageSize: 120,
+      startAfter: null,
+    );
+    if (summaryPage != null && summaryPage.rows.isNotEmpty) {
+      return summaryPage.rows;
+    }
     try {
       final snap = await FirebaseFirestore.instance
           .collection('results')
@@ -3198,6 +3845,78 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     } catch (_) {
       return const <_LeaderboardRow>[];
     }
+  }
+
+  Future<_CompetitionVm> _loadCompetitionVm({
+    required String userId,
+    required String examId,
+    required double avgScore,
+    required List<_SubjectMetric> subjects,
+  }) async {
+    final leaderboardRows = await _leaderboardFutureCache.putIfAbsent(
+      examId,
+      () => _loadExamLeaderboardRows(examId),
+    );
+    final avgLeaderboardScore = leaderboardRows.isEmpty
+        ? 0.0
+        : leaderboardRows
+                  .map((row) => row.entry.avgScore)
+                  .reduce((a, b) => a + b) /
+              leaderboardRows.length;
+    final topLeaderboardScore = leaderboardRows.isEmpty
+        ? avgScore
+        : leaderboardRows.first.entry.avgScore;
+    final myLeaderboardRow = leaderboardRows
+        .cast<_LeaderboardRow?>()
+        .firstWhere((row) => row?.entry.userId == userId, orElse: () => null);
+
+    final comparisonRows = <_ComparisonRow>[
+      _ComparisonRow(
+        label: 'Overall Score',
+        totalLabel: '/ 100',
+        you: avgScore,
+        average: avgLeaderboardScore,
+        topper: topLeaderboardScore.clamp(0.0, 100.0),
+      ),
+      ...subjects.take(4).map(
+        (subject) => _ComparisonRow(
+          label: subject.name,
+          totalLabel: '/ 100',
+          you: subject.accuracy,
+          average: (subject.accuracy * 0.88).clamp(0.0, 100.0),
+          topper: math.min(100.0, subject.accuracy + 12),
+        ),
+      ),
+    ];
+
+    final rankGapText = myLeaderboardRow == null
+        ? 'Keep attempting tests to enter the live ranking pool.'
+        : myLeaderboardRow.rank <= 3
+        ? 'You are already in the top tier for this exam.'
+        : 'You are ${myLeaderboardRow.rank - 3} places away from the Top 3.';
+
+    return _CompetitionVm(
+      platformAvg: avgLeaderboardScore,
+      comparisonRows: comparisonRows,
+      rankGapText: rankGapText,
+    );
+  }
+
+  Future<_CompetitionVm> _competitionFutureFor(_DashboardVm vm) {
+    final user = FirebaseAuth.instance.currentUser;
+    final examId = selectedExamId;
+    if (user == null || examId == null || examId.isEmpty) {
+      return Future.value(const _CompetitionVm.empty());
+    }
+    return _competitionFutureCache.putIfAbsent(
+      examId,
+      () => _loadCompetitionVm(
+        userId: user.uid,
+        examId: examId,
+        avgScore: vm.avgScore,
+        subjects: vm.subjects,
+      ),
+    );
   }
 
   Map<String, String> _answersMap(dynamic raw) {
@@ -3271,24 +3990,39 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
   ) async {
     final configs = <String, Map<String, dynamic>>{};
+    final lookups = <String, Future<DocumentSnapshot<Map<String, dynamic>>>>{};
     for (final attemptDoc in attempts) {
       final attempt = attemptDoc.data();
       final examId = (attempt['examId'] ?? '').toString();
       final testId = (attempt['testId'] ?? '').toString();
       if (examId.isEmpty || testId.isEmpty) continue;
       final key = '$examId|$testId';
-      if (configs.containsKey(key)) continue;
-      try {
-        final snap = await FirebaseFirestore.instance
-            .collection('exams')
-            .doc(examId)
-            .collection('tests')
-            .doc(testId)
-            .get();
-        configs[key] = snap.data() ?? const <String, dynamic>{};
-      } catch (_) {
-        configs[key] = const <String, dynamic>{};
-      }
+      lookups.putIfAbsent(
+        key,
+        () async =>
+            (await ExamMetadataCacheService.getTestDoc(examId, testId)) ??
+            FirebaseFirestore.instance
+                .collection('exams')
+                .doc(examId)
+                .collection('tests')
+                .doc(testId)
+                .get(),
+      );
+    }
+
+    final entries = await Future.wait(
+      lookups.entries.map((entry) async {
+        try {
+          final snap = await entry.value;
+          return MapEntry(entry.key, snap.data() ?? const <String, dynamic>{});
+        } catch (_) {
+          return MapEntry(entry.key, const <String, dynamic>{});
+        }
+      }),
+    );
+
+    for (final entry in entries) {
+      configs[entry.key] = entry.value;
     }
     return configs;
   }
@@ -3571,7 +4305,6 @@ class _DashboardVm {
   final int totalIncorrect;
   final int totalSkipped;
   final double avgSecondsPerQuestion;
-  final double platformAvg;
   final List<_TrendPoint> trendPoints;
   final List<_SubjectMetric> subjects;
   final List<_ChapterMetric> chapters;
@@ -3584,8 +4317,6 @@ class _DashboardVm {
   final bool hasNegativeMarking;
   final double riskAccuracy;
   final double safeAttempts;
-  final List<_ComparisonRow> comparisonRows;
-  final String rankGapText;
   final double accuracyStability;
   final double scoreBalance;
   final double testFrequency;
@@ -3615,7 +4346,6 @@ class _DashboardVm {
     required this.totalIncorrect,
     required this.totalSkipped,
     required this.avgSecondsPerQuestion,
-    required this.platformAvg,
     required this.trendPoints,
     required this.subjects,
     required this.chapters,
@@ -3628,8 +4358,6 @@ class _DashboardVm {
     required this.hasNegativeMarking,
     required this.riskAccuracy,
     required this.safeAttempts,
-    required this.comparisonRows,
-    required this.rankGapText,
     required this.accuracyStability,
     required this.scoreBalance,
     required this.testFrequency,
@@ -3639,6 +4367,136 @@ class _DashboardVm {
     required this.recommendations,
     required this.gainPotential,
   });
+}
+
+class _CompetitionVm {
+  final double platformAvg;
+  final List<_ComparisonRow> comparisonRows;
+  final String rankGapText;
+
+  const _CompetitionVm({
+    required this.platformAvg,
+    required this.comparisonRows,
+    required this.rankGapText,
+  });
+
+  const _CompetitionVm.empty()
+    : platformAvg = 0,
+      comparisonRows = const <_ComparisonRow>[],
+      rankGapText = 'Competition data is not available right now.';
+}
+
+class _LeaderboardPage {
+  final List<_LeaderboardRow> rows;
+  final DocumentSnapshot<Map<String, dynamic>>? lastDoc;
+
+  const _LeaderboardPage({required this.rows, required this.lastDoc});
+}
+
+class _SkeletonBlock extends StatelessWidget {
+  final double width;
+  final double height;
+  final double radius;
+
+  const _SkeletonBlock({
+    required this.width,
+    required this.height,
+    this.radius = 12,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: const Color(0xFFE9EEF8),
+        borderRadius: BorderRadius.circular(radius),
+      ),
+    );
+  }
+}
+
+class _DashboardSkeletonHero extends StatelessWidget {
+  const _DashboardSkeletonHero();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: const LinearGradient(
+          colors: [Color(0xFFF7FAFF), Color(0xFFEAF1FF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SkeletonBlock(width: 110, height: 12),
+          SizedBox(height: 14),
+          _SkeletonBlock(width: 190, height: 26),
+          SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: _SkeletonBlock(
+                  width: double.infinity,
+                  height: 90,
+                  radius: 18,
+                ),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: _SkeletonBlock(
+                  width: double.infinity,
+                  height: 90,
+                  radius: 18,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardSkeletonCard extends StatelessWidget {
+  final double height;
+
+  const _DashboardSkeletonCard({required this.height});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: const Color(0xFFE7ECF7)),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SkeletonBlock(width: 150, height: 18),
+          SizedBox(height: 10),
+          _SkeletonBlock(width: 220, height: 12),
+          SizedBox(height: 18),
+          Expanded(
+            child: _SkeletonBlock(
+              width: double.infinity,
+              height: double.infinity,
+              radius: 20,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _TrendPoint {

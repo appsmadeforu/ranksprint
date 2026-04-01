@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../examSummary/exam_summary_screen.dart';
 import '../../sections/section_bean.dart';
 import '../../sections/section_service.dart';
+import '../../services/exam_metadata_cache_service.dart';
 import '../../services/result_data_service.dart';
 
 class SubjectInsightsScreen extends StatefulWidget {
@@ -19,11 +20,6 @@ class SubjectInsightsScreen extends StatefulWidget {
 }
 
 class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
-  final Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>
-  _questionCache =
-      <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
-  final Map<String, Map<String, String>> _sectionNameCache =
-      <String, Map<String, String>>{};
   final Map<String, String> _testNameCache = <String, String>{};
   final ValueNotifier<_InsightMetric> _metricNotifier = ValueNotifier(
     _InsightMetric.score,
@@ -1065,54 +1061,11 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     String examId,
     String testId,
   ) async {
-    if (examId.isEmpty || testId.isEmpty) return const [];
-    final key = '$examId|$testId';
-    if (_questionCache.containsKey(key)) {
-      return _questionCache[key] ?? const [];
-    }
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection('exams')
-          .doc(examId)
-          .collection('tests')
-          .doc(testId)
-          .collection('questions')
-          .get();
-      _questionCache[key] = snap.docs;
-      return snap.docs;
-    } catch (_) {
-      _questionCache[key] = const [];
-      return const [];
-    }
+    return ExamMetadataCacheService.getQuestions(examId, testId);
   }
 
   Future<Map<String, String>> _loadSectionNames(String examId, String testId) async {
-    if (examId.isEmpty || testId.isEmpty) return const {};
-    final key = '$examId|$testId';
-    if (_sectionNameCache.containsKey(key)) {
-      return _sectionNameCache[key] ?? const {};
-    }
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection('exams')
-          .doc(examId)
-          .collection('tests')
-          .doc(testId)
-          .collection('sections')
-          .get();
-      final names = <String, String>{};
-      for (final doc in snap.docs) {
-        final name = (doc.data()['name'] ?? '').toString().trim();
-        if (name.isNotEmpty) {
-          names[doc.id] = name;
-        }
-      }
-      _sectionNameCache[key] = names;
-      return names;
-    } catch (_) {
-      _sectionNameCache[key] = const {};
-      return const {};
-    }
+    return ExamMetadataCacheService.getSectionNames(examId, testId);
   }
 
   Future<String> _testName(
@@ -1125,13 +1078,10 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     final cached = _testNameCache[key];
     if (cached != null) return cached;
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('exams')
-          .doc(examId)
-          .collection('tests')
-          .doc(testId)
-          .get();
-      final name = (doc.data()?['name'] ?? 'T$fallbackIndex').toString();
+      final name =
+          ((await ExamMetadataCacheService.getTestName(examId, testId)) ??
+                  'T$fallbackIndex')
+              .toString();
       _testNameCache[key] = name;
       return name;
     } catch (_) {
@@ -2114,7 +2064,7 @@ class _InsightTrendPainter extends CustomPainter {
       );
       final label = formatter(tick);
       if (lastPaintedY != null &&
-          (y - lastPaintedY!).abs() < 14 &&
+          (y - lastPaintedY).abs() < 14 &&
           lastPaintedLabel == label) {
         continue;
       }

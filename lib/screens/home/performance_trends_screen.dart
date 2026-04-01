@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../services/exam_metadata_cache_service.dart';
 import '../../services/result_data_service.dart';
 import '../../services/user_exam_preference_service.dart';
 import '../../widgets/offline_state.dart';
@@ -1113,18 +1114,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
       if (examId.isEmpty || testId.isEmpty) continue;
       final key = '$examId|$testId';
       questionFutures.putIfAbsent(key, () async {
-        try {
-          final qs = await FirebaseFirestore.instance
-              .collection('exams')
-              .doc(examId)
-              .collection('tests')
-              .doc(testId)
-              .collection('questions')
-              .get();
-          return qs.docs;
-        } catch (_) {
-          return const [];
-        }
+        return ExamMetadataCacheService.getQuestions(examId, testId);
       });
     }
 

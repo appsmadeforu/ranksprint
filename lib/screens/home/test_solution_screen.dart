@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:ranksprint/sections/section_bean.dart';
 import 'package:ranksprint/sections/section_service.dart';
+import 'package:ranksprint/services/exam_metadata_cache_service.dart';
 import 'package:ranksprint/services/result_data_service.dart';
 import 'package:share_plus/share_plus.dart' as share_plus;
 
@@ -49,7 +50,7 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
 
     final examId = (attempt['examId'] ?? '').toString();
     final testId = (attempt['testId'] ?? '').toString();
-    sectionBeans = await sectionService.getSections(examId, testId);
+    sectionBeans = await ExamMetadataCacheService.getSectionBeans(examId, testId);
     final answersRaw = attempt['answers'];
     final answers = <String, String>{};
     if (answersRaw is Map) {
@@ -70,15 +71,9 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
 
     final sectionStats = <String, _SectionStats>{};
     if (examId.isNotEmpty && testId.isNotEmpty) {
-      final qSnap = await FirebaseFirestore.instance
-          .collection('exams')
-          .doc(examId)
-          .collection('tests')
-          .doc(testId)
-          .collection('questions')
-          .get();
+      final qSnap = await ExamMetadataCacheService.getQuestions(examId, testId);
 
-      for (final q in qSnap.docs) {
+      for (final q in qSnap) {
         final qData = q.data();
         final section = _sectionName(qData);
         final st = sectionStats.putIfAbsent(
@@ -675,100 +670,6 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
             ),
           );
         }).toList(),
-      ),
-    );
-  }
-
-  Widget _accuracyComparison(_Vm vm) {
-    final sections = vm.sections;
-    if (sections.isEmpty) {
-      return _card(
-        title: 'Accuracy Comparison',
-        child: const Text(
-          'No accuracy data available yet.',
-          style: TextStyle(color: Color(0xFF6B7280)),
-        ),
-      );
-    }
-    return _card(
-      title: 'Accuracy Comparison',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEFF6FF),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Text(
-              'Overall attempted accuracy: ${vm.attemptedAccuracy.toStringAsFixed(0)}%',
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF1E3A8A),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          ...sections.map((s) {
-            final accuracy = s.attempted == 0 ? 0.0 : s.accuracy;
-            final delta = accuracy - vm.attemptedAccuracy;
-            final deltaColor = delta >= 0
-                ? const Color(0xFF16A34A)
-                : const Color(0xFFDC2626);
-            final deltaText = s.attempted == 0
-                ? 'No attempts yet'
-                : delta == 0
-                ? 'Matches overall'
-                : '${delta > 0 ? '+' : ''}${delta.toStringAsFixed(0)} pts vs overall';
-
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          s.name,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                      Text(
-                        s.attempted == 0
-                            ? '--'
-                            : '${accuracy.toStringAsFixed(0)}%',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF0F172A),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
-                    child: LinearProgressIndicator(
-                      minHeight: 8,
-                      value: s.attempted == 0
-                          ? 0
-                          : (accuracy / 100).clamp(0, 1),
-                      backgroundColor: const Color(0xFFE5E7EB),
-                      color: const Color(0xFF1E3A8A),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '$deltaText • ${s.attempted}/${s.total} attempted',
-                    style: TextStyle(fontSize: 11, color: deltaColor),
-                  ),
-                ],
-              ),
-            );
-          }),
-        ],
       ),
     );
   }

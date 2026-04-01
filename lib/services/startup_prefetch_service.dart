@@ -180,6 +180,12 @@ class StartupPrefetchService {
         FirebaseFirestore.instance
             .collection('users')
             .doc(userId)
+            .collection('examAnalytics')
+            .doc(examId)
+            .get(),
+        FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
             .collection('examRecommendations')
             .doc(examId)
             .get(),
