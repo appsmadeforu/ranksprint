@@ -31,6 +31,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   List<String> userExamIds = [];
   bool isDeletingAccount = false;
   String _appVersionLabel = 'Rank Sprint';
+  bool _showDeferredSubscriptionCard = false;
+  final Map<String, Future<_ProfileSubscriptionVm>> _subscriptionVmCache = {};
 
   Future<void> _clearAppCache() async {
     imageCache.clear();
@@ -64,6 +66,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
     _loadUserExams();
     _loadAppVersion();
+    _scheduleDeferredSections();
   }
 
   @override
@@ -72,6 +75,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _handlePreferredExamChanged,
     );
     super.dispose();
+  }
+
+  void _scheduleDeferredSections() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(milliseconds: 180), () {
+        if (!mounted) return;
+        setState(() {
+          _showDeferredSubscriptionCard = true;
+        });
+      });
+    });
   }
 
   Future<void> _loadUserExams() async {
@@ -108,6 +122,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() {
       selectedExamId = preferredExamId;
     });
+  }
+
+  Future<_ProfileSubscriptionVm> _getSubscriptionVm({
+    required String? examId,
+    required List<String> activePlanIds,
+    required List<String> subscriptionIds,
+  }) {
+    final cacheKey =
+        '${examId ?? ''}|${activePlanIds.join(',')}|${subscriptionIds.join(',')}';
+    return _subscriptionVmCache.putIfAbsent(
+      cacheKey,
+      () => _loadSubscriptionVm(
+        examId: examId,
+        activePlanIds: activePlanIds,
+        subscriptionIds: subscriptionIds,
+      ),
+    );
   }
 
   Future<void> _loadAppVersion() async {
@@ -170,6 +201,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _openEditProfile() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const EditProfileScreen()),
     );
   }
 
@@ -439,6 +476,67 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget _buildSubscriptionCardPlaceholder({bool showLoader = false}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF3A53B7), Color(0xFF1F3A8A)],
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: Colors.white24,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              showLoader ? Icons.hourglass_top_rounded : Icons.workspace_premium,
+              color: Colors.orange,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  showLoader ? 'Loading subscription details...' : 'Subscription',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  showLoader
+                      ? 'Fetching your plan info for the selected exam'
+                      : 'Plan details will appear here shortly',
+                  style: const TextStyle(color: Colors.white70),
+                ),
+              ],
+            ),
+          ),
+          if (showLoader)
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -498,8 +596,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 TopHeader(
                   selectedExamId: effectiveSelectedExamId,
                   userExamIds: selectedExams,
-                  onExamChanged: (examId) async {
-                    await UserExamPreferenceService.savePreferredExamId(examId);
+                  onExamChanged: (examId) {
                     if (!mounted) return;
                     setState(() {
                       selectedExamId = examId;
@@ -519,51 +616,99 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              GestureDetector(
-                                onTap: photoUrl.isNotEmpty
-                                    ? () => _showProfilePhotoPreview(photoUrl)
-                                    : null,
-                                child: Container(
-                                  width: 72,
-                                  height: 72,
-                                  decoration: const BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: Color(0xFF2F3E8F),
-                                  ),
-                                  alignment: Alignment.center,
-                                  clipBehavior: Clip.antiAlias,
-                                  child: photoUrl.isNotEmpty
-                                      ? Image.network(
-                                          photoUrl,
+                              Column(
+                                children: [
+                                  Stack(
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      GestureDetector(
+                                        onTap: photoUrl.isNotEmpty
+                                            ? () =>
+                                                _showProfilePhotoPreview(photoUrl)
+                                            : _openEditProfile,
+                                        child: Container(
                                           width: 72,
                                           height: 72,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (
-                                            context,
-                                            error,
-                                            stackTrace,
-                                          ) {
-                                            return Center(
-                                              child: Text(
-                                                _profileInitials(data),
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 20,
+                                          decoration: const BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: Color(0xFF2F3E8F),
+                                          ),
+                                          alignment: Alignment.center,
+                                          clipBehavior: Clip.antiAlias,
+                                          child: photoUrl.isNotEmpty
+                                              ? Image.network(
+                                                  photoUrl,
+                                                  width: 72,
+                                                  height: 72,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (
+                                                    context,
+                                                    error,
+                                                    stackTrace,
+                                                  ) {
+                                                    return Center(
+                                                      child: Text(
+                                                        _profileInitials(data),
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          fontSize: 20,
+                                                        ),
+                                                      ),
+                                                    );
+                                                  },
+                                                )
+                                              : Text(
+                                                  _profileInitials(data),
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 20,
+                                                  ),
                                                 ),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        right: -2,
+                                        bottom: -2,
+                                        child: Material(
+                                          color: Colors.white,
+                                          elevation: 3,
+                                          shape: const CircleBorder(),
+                                          child: InkWell(
+                                            customBorder: const CircleBorder(),
+                                            onTap: _openEditProfile,
+                                            child: Container(
+                                              width: 28,
+                                              height: 28,
+                                              decoration: const BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: Color(0xFFEEF2FF),
                                               ),
-                                            );
-                                          },
-                                        )
-                                      : Text(
-                                          _profileInitials(data),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 20,
+                                              child: Icon(
+                                                photoUrl.isNotEmpty
+                                                    ? Icons.edit_outlined
+                                                    : Icons.add_a_photo_outlined,
+                                                size: 16,
+                                                color: const Color(0xFF2F3E8F),
+                                              ),
+                                            ),
                                           ),
                                         ),
-                                ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    photoUrl.isNotEmpty ? 'Edit Photo' : 'Add Photo',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF475569),
+                                    ),
+                                  ),
+                                ],
                               ),
                               const SizedBox(width: 16),
                               Expanded(
@@ -586,13 +731,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         if (!isDeletingAccount)
                                           InkWell(
                                             onTap: () {
-                                              Navigator.push(
-                                                context,
-                                                MaterialPageRoute(
-                                                  builder: (_) =>
-                                                      const EditProfileScreen(),
-                                                ),
-                                              );
+                                              _openEditProfile();
                                             },
                                             borderRadius:
                                                 BorderRadius.circular(8),
@@ -645,116 +784,128 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   // Subscription card
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: FutureBuilder<_ProfileSubscriptionVm>(
-                      key: ValueKey<String?>(effectiveSelectedExamId),
-                      future: _loadSubscriptionVm(
-                        examId: effectiveSelectedExamId,
-                        activePlanIds: activePlanIds,
-                        subscriptionIds: subscriptionIds,
-                      ),
-                      builder: (context, subSnap) {
-                        if (!subSnap.hasData) {
-                          return const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(12),
-                              child: CircularProgressIndicator(),
+                    child: !_showDeferredSubscriptionCard
+                        ? _buildSubscriptionCardPlaceholder()
+                        : FutureBuilder<_ProfileSubscriptionVm>(
+                            key: ValueKey<String?>(
+                              'subscription-${effectiveSelectedExamId ?? 'none'}',
                             ),
-                          );
-                        }
-
-                        final vm = subSnap.data!;
-
-                        return Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(18),
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF3A53B7), Color(0xFF1F3A8A)],
+                            future: _getSubscriptionVm(
+                              examId: effectiveSelectedExamId,
+                              activePlanIds: activePlanIds,
+                              subscriptionIds: subscriptionIds,
                             ),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white24,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: const Icon(
-                                      Icons.workspace_premium,
-                                      color: Colors.orange,
-                                    ),
+                            builder: (context, subSnap) {
+                              if (!subSnap.hasData) {
+                                return _buildSubscriptionCardPlaceholder(
+                                  showLoader: true,
+                                );
+                              }
+
+                              final vm = subSnap.data!;
+
+                              return Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(18),
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [
+                                      Color(0xFF3A53B7),
+                                      Color(0xFF1F3A8A),
+                                    ],
                                   ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
                                       children: [
-                                        Text(
-                                          vm.title,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
+                                        Container(
+                                          padding: const EdgeInsets.all(10),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white24,
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                          child: const Icon(
+                                            Icons.workspace_premium,
+                                            color: Colors.orange,
                                           ),
                                         ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          vm.subtitle,
-                                          style: const TextStyle(
-                                            color: Colors.white70,
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                vm.title,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 6),
+                                              Text(
+                                                vm.subtitle,
+                                                style: const TextStyle(
+                                                  color: Colors.white70,
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       ],
                                     ),
-                                  ),
-                                ],
-                              ),
-                              if (vm.initialPlanId != null) ...[
-                                const SizedBox(height: 14),
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: OutlinedButton(
-                                    onPressed: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => SubscriptionScreen(
-                                            initialExamId:
-                                                effectiveSelectedExamId,
-                                            initialPlanId: vm.initialPlanId,
+                                    if (vm.initialPlanId != null) ...[
+                                      const SizedBox(height: 14),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: OutlinedButton(
+                                          onPressed: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    SubscriptionScreen(
+                                                      initialExamId:
+                                                          effectiveSelectedExamId,
+                                                      initialPlanId:
+                                                          vm.initialPlanId,
+                                                    ),
+                                              ),
+                                            );
+                                          },
+                                          style: OutlinedButton.styleFrom(
+                                            side: const BorderSide(
+                                              color: Colors.white24,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                          ),
+                                          child: const Padding(
+                                            padding: EdgeInsets.symmetric(
+                                              vertical: 12,
+                                            ),
+                                            child: Text(
+                                              'Manage Subscription',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                              ),
+                                            ),
                                           ),
                                         ),
-                                      );
-                                    },
-                                    style: OutlinedButton.styleFrom(
-                                      side: const BorderSide(
-                                        color: Colors.white24,
                                       ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                    ),
-                                    child: const Padding(
-                                      padding: EdgeInsets.symmetric(vertical: 12),
-                                      child: Text(
-                                        'Manage Subscription',
-                                        style: TextStyle(color: Colors.white),
-                                      ),
-                                    ),
-                                  ),
+                                    ],
+                                  ],
                                 ),
-                              ],
-                            ],
+                              );
+                            },
                           ),
-                        );
-                      },
-                    ),
                   ),
 
                   const SizedBox(height: 18),
@@ -845,12 +996,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   title: Text('Account Settings'),
                                   trailing: const Icon(Icons.chevron_right),
                                   onTap: () {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            const EditProfileScreen(),
-                                      ),
-                                    );
+                                    _openEditProfile();
                                   },
                                 ),
                               const Divider(height: 1),

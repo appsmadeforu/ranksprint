@@ -7,6 +7,9 @@ class ExamMetadataCacheService {
   ExamMetadataCacheService._();
 
   static final Map<String, Future<DocumentSnapshot<Map<String, dynamic>>>>
+      _examDocFutures =
+      <String, Future<DocumentSnapshot<Map<String, dynamic>>>>{};
+  static final Map<String, Future<DocumentSnapshot<Map<String, dynamic>>>>
       _testDocFutures =
       <String, Future<DocumentSnapshot<Map<String, dynamic>>>>{};
   static final Map<String, Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>>
@@ -16,6 +19,26 @@ class ExamMetadataCacheService {
       <String, Future<Map<String, String>>>{};
   static final Map<String, Future<List<SectionBean>>> _sectionBeansFutures =
       <String, Future<List<SectionBean>>>{};
+
+  static Future<DocumentSnapshot<Map<String, dynamic>>?> getExamDoc(
+    String examId,
+  ) async {
+    if (examId.isEmpty) return null;
+    try {
+      return await _examDocFutures.putIfAbsent(
+        examId,
+        () => FirebaseFirestore.instance.collection('exams').doc(examId).get(),
+      );
+    } catch (_) {
+      _examDocFutures.remove(examId);
+      return null;
+    }
+  }
+
+  static Future<String?> getExamName(String examId) async {
+    final doc = await getExamDoc(examId);
+    return (doc?.data()?['name'] ?? '').toString();
+  }
 
   static Future<DocumentSnapshot<Map<String, dynamic>>?> getTestDoc(
     String examId,
@@ -127,5 +150,10 @@ class ExamMetadataCacheService {
     _questionFutures.remove(key);
     _sectionNameFutures.remove(key);
     _sectionBeansFutures.remove(key);
+  }
+
+  static void invalidateExam(String examId) {
+    if (examId.isEmpty) return;
+    _examDocFutures.remove(examId);
   }
 }

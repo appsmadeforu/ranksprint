@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'result_data_service.dart';
+import 'performance_trends_data_service.dart';
 import 'user_exam_preference_service.dart';
 
 class StartupPrefetchService {
@@ -174,6 +175,11 @@ class StartupPrefetchService {
         attempts: attempts,
         userId: userId,
         examId: examId,
+      );
+      PerformanceTrendsDataService.prefetch(
+        userId: userId,
+        examId: examId,
+        window: PerformanceTrendsWindow.d30,
       );
       final futures = <Future<dynamic>>[
         FirebaseFirestore.instance.collection('exams').doc(examId).get(),

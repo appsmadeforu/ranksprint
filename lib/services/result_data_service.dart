@@ -11,6 +11,12 @@ import 'result_schema_contract.dart';
 class ResultDataService {
   const ResultDataService._();
 
+  static final Map<String, Map<String, dynamic>> _resultByAttemptIdCache =
+      <String, Map<String, dynamic>>{};
+  static final Map<String, Future<QuerySnapshot<Map<String, dynamic>>>>
+      _legacyResultsQueryCache =
+      <String, Future<QuerySnapshot<Map<String, dynamic>>>>{};
+
   static Map<String, int> normalizeCounts({
     required Map<String, dynamic> attempt,
     required Map<String, dynamic> result,
@@ -52,17 +58,30 @@ class ResultDataService {
 
     final ids = attempts.map((attempt) => attempt.id).toList();
     final out = <String, Map<String, dynamic>>{};
+    final unresolvedIds = <String>[];
+
+    for (final id in ids) {
+      final cached = _resultByAttemptIdCache[id];
+      if (cached != null) {
+        out[id] = cached;
+      } else {
+        unresolvedIds.add(id);
+      }
+    }
 
     try {
-      for (int i = 0; i < ids.length; i += 10) {
-        final end = (i + 10) > ids.length ? ids.length : (i + 10);
-        final chunk = ids.sublist(i, end);
+      for (int i = 0; i < unresolvedIds.length; i += 10) {
+        final end =
+            (i + 10) > unresolvedIds.length ? unresolvedIds.length : (i + 10);
+        final chunk = unresolvedIds.sublist(i, end);
         final snap = await FirebaseFirestore.instance
             .collection(ResultSchemaContract.resultCollection)
             .where(FieldPath.documentId, whereIn: chunk)
             .get();
         for (final doc in snap.docs) {
-          out[doc.id] = doc.data();
+          final data = doc.data();
+          out[doc.id] = data;
+          _resultByAttemptIdCache[doc.id] = data;
         }
       }
     } catch (_) {
@@ -72,15 +91,18 @@ class ResultDataService {
     final unresolved = attempts.where((attempt) => !out.containsKey(attempt.id)).toList();
     if (unresolved.isEmpty) return out;
 
+    final scopeKey = '$userId|${examId ?? ''}';
     QuerySnapshot<Map<String, dynamic>> allResults;
     try {
-      var query = FirebaseFirestore.instance
-          .collection(ResultSchemaContract.resultCollection)
-          .where('userId', isEqualTo: userId);
-      if (examId != null && examId.isNotEmpty) {
-        query = query.where('examId', isEqualTo: examId);
-      }
-      allResults = await query.get();
+      allResults = await _legacyResultsQueryCache.putIfAbsent(scopeKey, () {
+        var query = FirebaseFirestore.instance
+            .collection(ResultSchemaContract.resultCollection)
+            .where('userId', isEqualTo: userId);
+        if (examId != null && examId.isNotEmpty) {
+          query = query.where('examId', isEqualTo: examId);
+        }
+        return query.get();
+      });
     } catch (_) {
       allResults = await FirebaseFirestore.instance
           .collection(ResultSchemaContract.resultCollection)
@@ -127,12 +149,21 @@ class ResultDataService {
       }
 
       if (best != null) {
-        out[attempt.id] = best.data();
+        final data = best.data();
+        out[attempt.id] = data;
+        _resultByAttemptIdCache[attempt.id] = data;
         usedResultDocIds.add(best.id);
       }
     }
 
     return out;
+  }
+
+  static void invalidateUserScope({
+    required String userId,
+    String? examId,
+  }) {
+    _legacyResultsQueryCache.remove('$userId|${examId ?? ''}');
   }
 
   static Future<Map<String, dynamic>> resolveResultForAttempt({

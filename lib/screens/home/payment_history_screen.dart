@@ -75,7 +75,6 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                   selectedExamId: effectiveSelectedExamId,
                   userExamIds: vm.userExamIds,
                   onExamChanged: (examId) {
-                    UserExamPreferenceService.savePreferredExamId(examId);
                     setState(() => _selectedExamId = examId);
                   },
                 ),

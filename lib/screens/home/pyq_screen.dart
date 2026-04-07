@@ -181,8 +181,7 @@ class _PyqScreenState extends State<PyqScreen> {
               TopHeader(
                 selectedExamId: effectiveSelectedExamId,
                 userExamIds: userExamIds,
-                onExamChanged: (id) async {
-                  await UserExamPreferenceService.savePreferredExamId(id);
+                onExamChanged: (id) {
                   if (!mounted) return;
                   setState(() => selectedExamId = id);
                   _loadExamAccess(id);

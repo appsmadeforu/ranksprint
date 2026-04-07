@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_cropper/image_cropper.dart';
@@ -37,6 +38,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   bool _initialLoadComplete = false;
   bool _emailLocked = false;
   bool _phoneLocked = false;
+  bool _isProcessingPhoto = false;
   bool _isResolvingPincode = false;
   String? _pincodeLookupMessage;
   String _authEmail = '';
@@ -50,6 +52,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   static const List<String> _genderOptions = ['Male', 'Female', 'Other'];
   static const int _maxProfilePhotoBytes = 2 * 1024 * 1024;
+  static const double _pickedPhotoMaxDimension = 1600;
+  static const int _croppedPhotoMaxDimension = 1080;
 
   @override
   void initState() {
@@ -258,14 +262,25 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       middleName,
       lastName,
     ].where((part) => part.isNotEmpty).join(' ');
+    final requestedEmail = emailController.text.trim();
+    final requestedPhone = phoneController.text.trim();
+    final emailChanged =
+        !_emailLocked &&
+        requestedEmail.isNotEmpty &&
+        requestedEmail.toLowerCase() != _authEmail.trim().toLowerCase();
+    final phoneChanged =
+        !_phoneLocked &&
+        requestedPhone.isNotEmpty &&
+        _normalizePhoneForCompare(requestedPhone) !=
+            _normalizePhoneForCompare(_authPhone);
 
     final Map<String, dynamic> updateData = {
       'firstName': firstName,
       'middleName': middleName,
       'lastName': lastName,
       'name': fullName,
-      'email': _emailLocked ? _authEmail : emailController.text.trim(),
-      'phone': _phoneLocked ? _authPhone : phoneController.text.trim(),
+      'email': _emailLocked ? _authEmail : requestedEmail,
+      'phone': _phoneLocked ? _authPhone : requestedPhone,
       'pincode': pincodeController.text.trim(),
       'city': cityController.text.trim(),
       'state': stateController.text.trim(),
@@ -280,6 +295,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
 
     try {
+      if (emailChanged) {
+        final emailVerified = await _verifyAndUpdateEmail(
+          user: user,
+          newEmail: requestedEmail,
+        );
+        if (!emailVerified) return;
+        updateData['email'] = requestedEmail;
+      }
+
+      if (phoneChanged) {
+        final phoneVerified = await _verifyAndUpdatePhone(
+          user: user,
+          newPhone: requestedPhone,
+        );
+        if (!phoneVerified) return;
+        updateData['phone'] = requestedPhone;
+      }
+
       if (_selectedPhotoBytes != null) {
         final uploadedPhotoUrl = await _uploadProfilePhoto(
           userId: user.uid,
@@ -302,6 +335,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         await user.updatePhotoURL(nextPhotoUrl.isEmpty ? null : nextPhotoUrl);
       }
 
+      if (emailChanged) {
+        _authEmail = requestedEmail;
+      }
+      if (phoneChanged) {
+        _authPhone = requestedPhone;
+      }
+
       if (mounted) {
         _initialProfileSnapshot = _currentProfileSnapshot();
         Navigator.pop(context);
@@ -317,6 +357,227 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         setState(() => loading = false);
       }
     }
+  }
+
+  Future<bool> _verifyAndUpdateEmail({
+    required User user,
+    required String newEmail,
+  }) async {
+    try {
+      await user.verifyBeforeUpdateEmail(newEmail);
+      if (!mounted) return false;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            title: const Text('Verify New Email'),
+            content: Text(
+              'We sent a verification link to $newEmail.\n\nOpen that email, complete verification, then return here and save again.',
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2F3E8F),
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('OK'),
+              ),
+            ],
+          );
+        },
+      );
+      return false;
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? 'Could not verify new email.')),
+      );
+      return false;
+    } catch (_) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not verify new email.')),
+      );
+      return false;
+    }
+  }
+
+  Future<bool> _verifyAndUpdatePhone({
+    required User user,
+    required String newPhone,
+  }) async {
+    final phoneNumber = _phoneForVerification(newPhone);
+    if (phoneNumber == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enter a valid phone number.')),
+        );
+      }
+      return false;
+    }
+
+    if (kIsWeb) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Phone number verification from profile update is not supported on web yet.',
+            ),
+          ),
+        );
+      }
+      return false;
+    }
+
+    try {
+      final credential = await _requestPhoneUpdateCredential(phoneNumber);
+      if (credential == null) return false;
+      await user.updatePhoneNumber(credential);
+      return true;
+    } on _PhoneVerificationCancelled {
+      return false;
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return false;
+      final message = switch (e.code) {
+        'invalid-verification-code' => 'Incorrect OTP. Please try again.',
+        'session-expired' => 'OTP expired. Please request a new verification.',
+        'credential-already-in-use' =>
+          'This mobile number is already linked to another account.',
+        _ => e.message ?? 'Could not verify phone number.',
+      };
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+      return false;
+    } catch (_) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not verify phone number.')),
+      );
+      return false;
+    }
+  }
+
+  Future<PhoneAuthCredential?> _requestPhoneUpdateCredential(
+    String phoneNumber,
+  ) async {
+    final auth = FirebaseAuth.instance;
+    final completer = Completer<PhoneAuthCredential?>();
+    var cancelledByUser = false;
+
+    await auth.verifyPhoneNumber(
+      phoneNumber: phoneNumber,
+      verificationCompleted: (credential) {
+        if (!completer.isCompleted) {
+          completer.complete(credential);
+        }
+      },
+      verificationFailed: (e) {
+        if (!completer.isCompleted) {
+          completer.completeError(e);
+        }
+      },
+      codeSent: (verificationId, resendToken) async {
+        final smsCode = await _promptForOtp(phoneNumber);
+        if (smsCode == null || smsCode.length != 6) {
+          cancelledByUser = true;
+          if (!completer.isCompleted) {
+            completer.completeError(const _PhoneVerificationCancelled());
+          }
+          return;
+        }
+        if (!completer.isCompleted) {
+          completer.complete(
+            PhoneAuthProvider.credential(
+              verificationId: verificationId,
+              smsCode: smsCode,
+            ),
+          );
+        }
+      },
+      codeAutoRetrievalTimeout: (verificationId) {
+        if (!cancelledByUser && !completer.isCompleted) {
+          completer.complete(null);
+        }
+      },
+    );
+
+    return completer.future;
+  }
+
+  Future<String?> _promptForOtp(String phoneNumber) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        bool submitting = false;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Verify Mobile Number'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Enter the 6-digit OTP sent to $phoneNumber'),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: controller,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    enabled: !submitting,
+                    decoration: const InputDecoration(
+                      hintText: 'Enter OTP',
+                      counterText: '',
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: submitting
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(null),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: submitting
+                      ? null
+                      : () {
+                          final otp = controller.text.trim();
+                          if (otp.length != 6) return;
+                          setDialogState(() => submitting = true);
+                          Navigator.of(dialogContext).pop(otp);
+                        },
+                  child: const Text('Verify'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    controller.dispose();
+    return result;
+  }
+
+  String _normalizePhoneForCompare(String value) {
+    return value.replaceAll(RegExp(r'[^0-9]'), '');
+  }
+
+  String? _phoneForVerification(String value) {
+    final digits = _normalizePhoneForCompare(value);
+    if (digits.length == 10) return '+91$digits';
+    if (digits.length == 12 && digits.startsWith('91')) return '+$digits';
+    if (value.trim().startsWith('+') && digits.length >= 10) {
+      return value.trim();
+    }
+    return null;
   }
 
   Future<void> _pickDob() async {
@@ -338,17 +599,25 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _pickProfilePhoto() async {
+    if (_isProcessingPhoto) return;
     try {
+      if (mounted) {
+        setState(() => _isProcessingPhoto = true);
+      }
       final image = await ImagePicker().pickImage(
         source: ImageSource.gallery,
-        imageQuality: 85,
+        imageQuality: 82,
+        maxWidth: _pickedPhotoMaxDimension,
+        maxHeight: _pickedPhotoMaxDimension,
       );
       if (image == null) return;
 
       final croppedImage = await ImageCropper().cropImage(
         sourcePath: image.path,
         compressFormat: ImageCompressFormat.jpg,
-        compressQuality: 90,
+        compressQuality: 82,
+        maxWidth: _croppedPhotoMaxDimension,
+        maxHeight: _croppedPhotoMaxDimension,
         uiSettings: [
           AndroidUiSettings(
             toolbarTitle: 'Crop Photo',
@@ -357,7 +626,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             initAspectRatio: CropAspectRatioPreset.square,
             aspectRatioPresets: const [
               CropAspectRatioPreset.square,
-              CropAspectRatioPreset.ratio4x3,
               CropAspectRatioPreset.original,
             ],
             lockAspectRatio: false,
@@ -369,7 +637,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             resetAspectRatioEnabled: true,
             aspectRatioPresets: const [
               CropAspectRatioPreset.square,
-              CropAspectRatioPreset.ratio4x3,
               CropAspectRatioPreset.original,
             ],
           ),
@@ -399,6 +666,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Could not pick image: $e')),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessingPhoto = false);
+      }
     }
   }
 
@@ -565,26 +836,37 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return WillPopScope(
       onWillPop: () async => await _confirmDiscardChanges(),
       child: Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-      body: SafeArea(
-        child: Column(
+        backgroundColor: const Color(0xFFF5F6FA),
+        body: Stack(
           children: [
-            TopHeader(
-              selectedExamId: null,
-              userExamIds: const [],
-              onExamChanged: (_) {},
-              showExamDropdown: false,
-              showNotificationBell: false,
-              enableTitleNavigation: false,
-            ),
-            Expanded(
-              child: loading && !_initialLoadComplete
-                  ? const Center(child: CircularProgressIndicator())
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
+            SafeArea(
+              child: Column(
+                children: [
+                  TopHeader(
+                    selectedExamId: null,
+                    userExamIds: const [],
+                    onExamChanged: (_) {},
+                    showExamDropdown: false,
+                    showNotificationBell: false,
+                    enableTitleNavigation: false,
+                  ),
+                  Expanded(
+                    child: loading && !_initialLoadComplete
+                        ? const Center(child: CircularProgressIndicator())
+                        : IgnorePointer(
+                            ignoring: loading,
+                            child: Opacity(
+                              opacity: loading ? 0.72 : 1,
+                              child: SingleChildScrollView(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  12,
+                                  16,
+                                  24,
+                                ),
+                                child: Form(
+                                  key: _formKey,
+                                  child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                            children: [
                              const Text(
@@ -801,13 +1083,56 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               ),
                             ),
                           ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            if (_isProcessingPhoto)
+              Positioned.fill(
+                child: ColoredBox(
+                  color: Colors.black.withValues(alpha: 0.12),
+                  child: const Center(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.all(Radius.circular(18)),
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 16,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2.4),
+                            ),
+                            SizedBox(height: 12),
+                            Text(
+                              'Processing photo...',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF111827),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-            ),
+                  ),
+                ),
+              ),
           ],
         ),
-      ),
       ),
     );
   }
@@ -885,18 +1210,38 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ElevatedButton.icon(
-                onPressed: loading ? null : _pickProfilePhoto,
-                icon: const Icon(Icons.photo_library_outlined),
-                label: const Text('Upload Photo'),
+                onPressed: loading || _isProcessingPhoto ? null : _pickProfilePhoto,
+                icon: _isProcessingPhoto
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.photo_library_outlined),
+                label: Text(
+                  _isProcessingPhoto ? 'Processing...' : 'Upload Photo',
+                ),
               ),
               const SizedBox(height: 8),
               if (_selectedPhotoBytes != null ||
                   ((_photoUrl ?? '').isNotEmpty && !_removePhoto))
                 TextButton(
-                  onPressed: loading ? null : _removeProfilePhoto,
+                  onPressed:
+                      loading || _isProcessingPhoto ? null : _removeProfilePhoto,
                   child: const Text('Remove Photo'),
                 ),
               const SizedBox(height: 4),
+              if (_isProcessingPhoto) ...[
+                const Text(
+                  'Optimizing image for faster cropping...',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF2F3E8F),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+              ],
               const Text(
                 'JPG, PNG, or WebP. Maximum size 2 MB.',
                 style: TextStyle(
@@ -1195,6 +1540,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       lastName: parts.last,
     );
   }
+}
+
+class _PhoneVerificationCancelled implements Exception {
+  const _PhoneVerificationCancelled();
 }
 
 class _ResolvedNameParts {

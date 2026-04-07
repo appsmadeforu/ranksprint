@@ -4,13 +4,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import '../../services/exam_metadata_cache_service.dart';
-import '../../services/result_data_service.dart';
+import '../../services/performance_trends_data_service.dart';
 import '../../services/user_exam_preference_service.dart';
 import '../../widgets/offline_state.dart';
 import '../../widgets/top_header.dart';
 import 'main_navigation.dart';
 import 'test_solution_screen.dart';
+
+typedef _Vm = PerformanceTrendsVm;
+typedef _DeferredVmData = PerformanceTrendsDeferredVmData;
+typedef _Window = PerformanceTrendsWindow;
+typedef _P = PerformanceTrendsPoint;
+typedef _SubjectMetric = PerformanceTrendsSubjectMetric;
 
 class PerformanceTrendsScreen extends StatefulWidget {
   final String? initialExamId;
@@ -23,14 +28,11 @@ class PerformanceTrendsScreen extends StatefulWidget {
 }
 
 class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
-  static const int _platformAvgSampleSize = 250;
-  static const int _subjectStatsAttemptLimit = 8;
   String? _examId;
   List<String> _examIds = [];
   _Window _window = _Window.d30;
-  final Map<String, Future<_Vm>> _vmFutureCache = <String, Future<_Vm>>{};
-  final Map<String, Future<double>> _platformAvgFutureCache =
-      <String, Future<double>>{};
+  bool _showDeferredSections = false;
+  String? _deferredSectionsKey;
 
   @override
   void initState() {
@@ -84,25 +86,41 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
       return;
     }
 
-    setState(() {
-      _examId = preferredExamId;
-      _vmFutureCache.clear();
-      _platformAvgFutureCache.clear();
-    });
+      setState(() {
+        _examId = preferredExamId;
+      });
     _prefetchWindowData();
   }
 
   Future<_Vm> _vmFutureFor(String uid) {
-    final key = '$uid|${_examId ?? ''}|${_window.name}';
-    return _vmFutureCache.putIfAbsent(key, () => _loadVm(uid, _examId!, _window));
+    return PerformanceTrendsDataService.vmFuture(
+      userId: uid,
+      examId: _examId!,
+      window: _window,
+    );
   }
 
   Future<double> _platformAvgFutureFor() {
-    final key = '${_examId ?? ''}|${_window.name}';
-    return _platformAvgFutureCache.putIfAbsent(
-      key,
-      () => _platformAvg(_examId!, _window.cutoff(DateTime.now())),
+    return PerformanceTrendsDataService.platformAvgFuture(
+      examId: _examId!,
+      window: _window,
     );
+  }
+
+  Future<_DeferredVmData> _deferredVmFutureFor(_Vm vm) {
+    return PerformanceTrendsDataService.deferredVmFuture(vm);
+  }
+
+  void _scheduleDeferredSections(String contentKey) {
+    if (_deferredSectionsKey == contentKey && _showDeferredSections) return;
+    _deferredSectionsKey = contentKey;
+    _showDeferredSections = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _deferredSectionsKey != contentKey) return;
+      setState(() {
+        _showDeferredSections = true;
+      });
+    });
   }
 
   void _prefetchWindowData() {
@@ -110,16 +128,10 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
     final examId = _examId;
     if (uid == null || examId == null || examId.isEmpty) return;
 
-    final vmKey = '$uid|$examId|${_window.name}';
-    _vmFutureCache.putIfAbsent(
-      vmKey,
-      () => _loadVm(uid, examId, _window),
-    );
-
-    final platformKey = '$examId|${_window.name}';
-    _platformAvgFutureCache.putIfAbsent(
-      platformKey,
-      () => _platformAvg(examId, _window.cutoff(DateTime.now())),
+    PerformanceTrendsDataService.prefetch(
+      userId: uid,
+      examId: examId,
+      window: _window,
     );
   }
 
@@ -140,8 +152,8 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
               userExamIds: _examIds,
               onExamChanged: (id) => setState(() {
                 _examId = id;
-                _vmFutureCache.clear();
-                _platformAvgFutureCache.clear();
+                _showDeferredSections = false;
+                _deferredSectionsKey = null;
                 _prefetchWindowData();
               }),
             ),
@@ -149,71 +161,130 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
             Expanded(
               child: _examId == null
                   ? const Center(child: Text('No exam selected'))
-                  : FutureBuilder<_Vm>(
-                      key: ValueKey<String>('${_examId ?? ''}:${_window.name}'),
-                      future: _vmFutureFor(uid),
-                      builder: (context, snap) {
-                        if (snap.connectionState == ConnectionState.waiting) {
-                          return const Center(
-                            child: CircularProgressIndicator(),
-                          );
-                        }
-                        if (snap.hasError) {
-                          return OfflineState(
-                            message:
-                                'Could not load trends. Please check your connection and try again.',
-                            onRetry: () {
-                              if (!mounted) return;
-                              setState(() {
-                                _vmFutureCache.clear();
-                                _platformAvgFutureCache.clear();
-                              });
-                              _prefetchWindowData();
-                            },
-                          );
-                        }
-                        if (!snap.hasData) {
-                          return const Center(
-                            child: Text('No performance data available'),
-                          );
-                        }
-                        final vm = snap.data!;
-                        return RefreshIndicator(
-                          onRefresh: () async {
-                            if (!mounted) return;
-                            setState(() {
-                              _vmFutureCache.clear();
-                              _platformAvgFutureCache.clear();
-                            });
-                            _prefetchWindowData();
-                          },
-                          child: ListView(
-                            padding: const EdgeInsets.fromLTRB(10, 0, 10, 16),
-                            children: [
-                              _hero(vm),
-                              const SizedBox(height: 10),
-                              _windowRow(),
-                              const SizedBox(height: 10),
-                              FutureBuilder<double>(
-                                future: _platformAvgFutureFor(),
-                                builder: (context, platformSnap) {
-                                  return _scoreTrend(vm, platformSnap.data);
+                  : Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: _windowRow(),
+                        ),
+                        const SizedBox(height: 10),
+                        Expanded(
+                          child: FutureBuilder<_Vm>(
+                            key: ValueKey<String>('${_examId ?? ''}:${_window.name}'),
+                            future: _vmFutureFor(uid),
+                            builder: (context, snap) {
+                              if (snap.connectionState == ConnectionState.waiting) {
+                                return _performanceSkeleton();
+                              }
+                              if (snap.hasError) {
+                                return OfflineState(
+                                  message:
+                                      'Could not load trends. Please check your connection and try again.',
+                                  onRetry: () {
+                                    if (!mounted) return;
+                                    setState(() {
+                                      if (_examId != null && _examId!.isNotEmpty) {
+                                        PerformanceTrendsDataService.invalidate(
+                                          userId: uid,
+                                          examId: _examId!,
+                                          window: _window,
+                                        );
+                                      }
+                                      _showDeferredSections = false;
+                                      _deferredSectionsKey = null;
+                                    });
+                                    _prefetchWindowData();
+                                  },
+                                );
+                              }
+                              if (!snap.hasData) {
+                                return const Center(
+                                  child: Text('No performance data available'),
+                                );
+                              }
+                              final vm = snap.data!;
+                              final contentKey =
+                                  '${_examId ?? ''}:${_window.name}:${vm.tests}';
+                              _scheduleDeferredSections(contentKey);
+                              return RefreshIndicator(
+                                onRefresh: () async {
+                                  if (!mounted) return;
+                                  setState(() {
+                                    if (_examId != null && _examId!.isNotEmpty) {
+                                      PerformanceTrendsDataService.invalidate(
+                                        userId: uid,
+                                        examId: _examId!,
+                                        window: _window,
+                                      );
+                                    }
+                                    _showDeferredSections = false;
+                                    _deferredSectionsKey = null;
+                                  });
+                                  _prefetchWindowData();
                                 },
-                              ),
-                              const SizedBox(height: 10),
-                              _subjectCard(vm),
-                              const SizedBox(height: 10),
-                              _skills(vm),
-                              const SizedBox(height: 10),
-                              _weeklyActivity(vm),
-                              const SizedBox(height: 10),
-                              _performanceInsights(vm),
-                              const SizedBox(height: 10),
-                              _actionButtons(vm),
-                            ],
+                                child: ListView(
+                                  padding: const EdgeInsets.fromLTRB(10, 0, 10, 16),
+                                  children: [
+                                    FutureBuilder<_DeferredVmData>(
+                                      future: _deferredVmFutureFor(vm),
+                                      builder: (context, deferredSnap) {
+                                        return _hero(
+                                          vm,
+                                          bestSubject:
+                                              deferredSnap.data?.bestSubject ??
+                                              vm.bestSubject,
+                                        );
+                                      },
+                                    ),
+                                    const SizedBox(height: 10),
+                                    FutureBuilder<double>(
+                                      future: _platformAvgFutureFor(),
+                                      builder: (context, platformSnap) {
+                                        return _scoreTrend(vm, platformSnap.data);
+                                      },
+                                    ),
+                                    FutureBuilder<_DeferredVmData>(
+                                      future: _deferredVmFutureFor(vm),
+                                      builder: (context, deferredSnap) {
+                                        return _subjectCard(
+                                          deferredSnap.data?.subjects ?? const [],
+                                          isLoading: !deferredSnap.hasData,
+                                        );
+                                      },
+                                    ),
+                                    if (_showDeferredSections) ...[
+                                      const SizedBox(height: 10),
+                                      FutureBuilder<_DeferredVmData>(
+                                        future: _deferredVmFutureFor(vm),
+                                        builder: (context, deferredSnap) {
+                                          if (!deferredSnap.hasData) {
+                                            return _deferredSectionsPlaceholder();
+                                          }
+                                          final deferred = deferredSnap.data!;
+                                          return Column(
+                                            children: [
+                                              _skills(vm, deferred),
+                                              const SizedBox(height: 10),
+                                              _weeklyActivity(vm),
+                                              const SizedBox(height: 10),
+                                              _performanceInsights(vm, deferred),
+                                              const SizedBox(height: 10),
+                                              _actionButtons(vm),
+                                            ],
+                                          );
+                                        },
+                                      ),
+                                    ] else ...[
+                                      const SizedBox(height: 10),
+                                      _deferredSectionsPlaceholder(),
+                                    ],
+                                  ],
+                                ),
+                              );
+                            },
                           ),
-                        );
-                      },
+                        ),
+                      ],
                     ),
             ),
           ],
@@ -222,7 +293,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
     );
   }
 
-  Widget _hero(_Vm vm) {
+  Widget _hero(_Vm vm, {required String bestSubject}) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -290,7 +361,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
           const SizedBox(height: 8),
           Row(
             children: [
-              Expanded(child: _metric('Best Subject', vm.bestSubject, '')),
+                Expanded(child: _metric('Best Subject', bestSubject, '')),
               const SizedBox(width: 8),
               Expanded(
                 child: _metric('Total Time', _fmtMins(vm.totalMinutes), ''),
@@ -365,6 +436,9 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                   borderRadius: BorderRadius.circular(8),
                   onTap: () => setState(() {
                     _window = w;
+                    _showDeferredSections = false;
+                    _deferredSectionsKey = null;
+                    _prefetchWindowData();
                   }),
                   child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 7),
@@ -453,13 +527,18 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
     );
   }
 
-  Widget _subjectCard(_Vm vm) {
+  Widget _subjectCard(List<_SubjectMetric> subjects, {bool isLoading = false}) {
     return _card(
       'Subject-wise Performance',
-      vm.subjects.isEmpty
+      isLoading
+          ? const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : subjects.isEmpty
           ? const Text('No subject data available')
           : Column(
-              children: vm.subjects.map((s) {
+              children: subjects.map((s) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Row(
@@ -503,7 +582,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
     );
   }
 
-  Widget _skills(_Vm vm) {
+  Widget _skills(_Vm vm, _DeferredVmData deferred) {
     return _card(
       'Skills Assessment',
       Column(
@@ -516,7 +595,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                 _R('Accuracy', vm.skillAcc),
                 _R('Consistency', vm.consistency),
                 _R('Time Mgmt', vm.timeMgmt),
-                _R('Difficulty', vm.difficulty),
+                _R('Difficulty', deferred.difficulty),
               ],
             ),
           ),
@@ -541,7 +620,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        vm.bestSkill,
+                        deferred.bestSkill,
                         style: const TextStyle(
                           fontSize: 16,
                           color: Color(0xFF1E40AF),
@@ -571,7 +650,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        vm.focusArea,
+                        deferred.focusArea,
                         style: const TextStyle(
                           fontSize: 16,
                           color: Color(0xFFEA580C),
@@ -664,7 +743,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
     );
   }
 
-  Widget _performanceInsights(_Vm vm) {
+  Widget _performanceInsights(_Vm vm, _DeferredVmData deferred) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -698,7 +777,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
             style: const TextStyle(fontSize: 11, color: Color(0xFF374151)),
           ),
           const SizedBox(height: 8),
-          ...vm.insights.map(
+          ...deferred.insights.map(
             (i) => Padding(
               padding: const EdgeInsets.only(bottom: 5),
               child: Row(
@@ -796,120 +875,6 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
     );
   }
 
-  String _bestSkill({
-    required double speed,
-    required double acc,
-    required double consistency,
-    required double timeMgmt,
-    required double difficulty,
-  }) {
-    final map = <String, double>{
-      'Speed': speed,
-      'Accuracy': acc,
-      'Consistency': consistency,
-      'Time Mgmt': timeMgmt,
-      'Difficulty': difficulty,
-    };
-    final sorted = map.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    return sorted.first.key;
-  }
-
-  String _focusArea({
-    required double speed,
-    required double acc,
-    required double consistency,
-    required double timeMgmt,
-    required double difficulty,
-  }) {
-    final map = <String, double>{
-      'Speed': speed,
-      'Accuracy': acc,
-      'Consistency': consistency,
-      'Time Mgmt': timeMgmt,
-      'Difficulty': difficulty,
-    };
-    final sorted = map.entries.toList()
-      ..sort((a, b) => a.value.compareTo(b.value));
-    return sorted.first.key;
-  }
-
-  List<_WeeklyStat> _weeklyStats(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
-    Map<String, Map<String, dynamic>> results,
-  ) {
-    final now = DateTime.now();
-    final stats = <_WeeklyStat>[];
-    for (int i = 0; i < 4; i++) {
-      final start = now.subtract(Duration(days: (4 - i) * 7));
-      final end = now.subtract(Duration(days: (3 - i) * 7));
-      final windowAttempts = attempts.where((a) {
-        final d = _attemptDate(a.data());
-        if (d == null) return false;
-        if (i == 3) {
-          return !d.isBefore(start) && !d.isAfter(now);
-        }
-        return !d.isBefore(start) && d.isBefore(end);
-      }).toList();
-
-      int mins = 0;
-      double sum = 0;
-      for (final a in windowAttempts) {
-        mins += _attemptMins(a.data());
-        sum += _scorePct(a.data(), results[a.id] ?? const <String, dynamic>{});
-      }
-      final avg = windowAttempts.isEmpty ? 0.0 : sum / windowAttempts.length;
-      stats.add(
-        _WeeklyStat(
-          label: 'Week ${i + 1}',
-          attempts: windowAttempts.length,
-          minutes: mins,
-          score: avg,
-        ),
-      );
-    }
-    return stats;
-  }
-
-  List<String> _insightLines(
-    List<_SubjectMetric> subjects,
-    double delta,
-    List<_WeeklyStat> weekly,
-  ) {
-    final lines = <String>[];
-    if (subjects.isNotEmpty) {
-      lines.add(
-        '${subjects.first.name} is your strongest subject with ${subjects.first.accuracy.toStringAsFixed(0)}% accuracy.',
-      );
-    }
-    if (subjects.length > 1) {
-      final weak = subjects.last;
-      lines.add(
-        'Focus more on ${weak.name} to boost your overall score (currently ${weak.accuracy.toStringAsFixed(0)}%).',
-      );
-    }
-
-    final nonZeroWeeks = weekly.where((w) => w.score > 0).toList();
-    if (nonZeroWeeks.length >= 2) {
-      final trend = nonZeroWeeks.last.score - nonZeroWeeks.first.score;
-      if (trend > 0) {
-        lines.add(
-          'Your recent weekly score trend is up by ${trend.toStringAsFixed(0)}%.',
-        );
-      }
-    }
-
-    if (delta > 0 && lines.length < 3) {
-      lines.add(
-        'Your overall score improved by ${delta.toStringAsFixed(0)}% in this period.',
-      );
-    }
-    if (lines.isEmpty) {
-      lines.add('Attempt more tests to unlock personalized insights.');
-    }
-    return lines.take(3).toList();
-  }
-
   Widget _card(String title, Widget child) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -932,313 +897,47 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
     );
   }
 
-  Future<_Vm> _loadVm(String uid, String examId, _Window window) async {
-    final cutoff = window.cutoff(DateTime.now());
-    QuerySnapshot<Map<String, dynamic>> attemptSnap;
-    try {
-      attemptSnap = await FirebaseFirestore.instance
-          .collection('testAttempts')
-          .where('userId', isEqualTo: uid)
-          .where('examId', isEqualTo: examId)
-          .get();
-    } catch (_) {
-      attemptSnap = await FirebaseFirestore.instance
-          .collection('testAttempts')
-          .where('userId', isEqualTo: uid)
-          .get();
-    }
+  Widget _performanceSkeleton() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(10, 0, 10, 16),
+      children: const [
+        _PerformanceSkeletonHero(),
+        SizedBox(height: 10),
+        _PerformanceSkeletonCard(height: 54),
+        SizedBox(height: 10),
+        _PerformanceSkeletonCard(height: 280),
+        SizedBox(height: 10),
+        _PerformanceSkeletonCard(height: 190),
+      ],
+    );
+  }
 
-    final attempts =
-        attemptSnap.docs.where((d) {
-          final data = d.data();
-          final attemptExamId = (data['examId'] ?? '').toString();
-          final status = (data['status'] ?? 'completed').toString();
-          final date = _attemptDate(data);
-          if (attemptExamId != examId) return false;
-          if (status != 'completed' || date == null) return false;
-          if (cutoff == null) return true;
-          return !date.isBefore(cutoff);
-        }).toList()..sort(
-          (a, b) => (_attemptDate(a.data()) ?? DateTime(2000)).compareTo(
-            _attemptDate(b.data()) ?? DateTime(2000),
+  Widget _deferredSectionsPlaceholder() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: const Row(
+        children: [
+          _SkeletonBlock(width: 20, height: 20),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Loading the rest of your performance insights...',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF475569),
+              ),
+            ),
           ),
-        );
-
-    final results = await _loadResultMap(attempts, uid, examId);
-
-    final points = <_P>[];
-    int totalMinutes = 0;
-    double scoreSum = 0;
-    String? latestAttemptId;
-    Map<String, dynamic>? latestAttemptData;
-    Map<String, dynamic>? latestResultData;
-    for (final a in attempts) {
-      final data = a.data();
-      latestAttemptId = a.id;
-      latestAttemptData = data;
-      latestResultData = results[a.id];
-      final score = _scorePct(data, results[a.id] ?? const <String, dynamic>{});
-      points.add(_P(_attemptDate(data) ?? DateTime.now(), score));
-      scoreSum += score;
-      totalMinutes += _attemptMins(data);
-    }
-
-    final avg = attempts.isEmpty ? 0.0 : scoreSum / attempts.length;
-    final subjectMap = await _subjectStats(attempts);
-    final subjects = subjectMap.values.toList()
-      ..sort((a, b) => b.accuracy.compareTo(a.accuracy));
-
-    final first = _halfAvg(points, true);
-    final second = _halfAvg(points, false);
-    final delta = (second - first).clamp(-99.0, 99.0);
-
-    final avgMins = attempts.isEmpty ? 0.0 : totalMinutes / attempts.length;
-    final avgQ = _avgQuestions(attempts, results);
-    final mpq = avgQ <= 0 ? 0.0 : avgMins / avgQ;
-    final speed = (100 - (mpq * 8)).clamp(0.0, 100.0);
-    final skillAcc = avg.clamp(0.0, 100.0);
-    final consistency = (100 - (_std(points.map((e) => e.score).toList()) * 2))
-        .clamp(0.0, 100.0);
-    final coverage = subjects.isEmpty
-        ? 0.0
-        : (subjects.map((s) => s.coverage).reduce((a, b) => a + b) /
-                  subjects.length)
-              .clamp(0.0, 100.0);
-    final difficulty = _difficulty(subjects);
-    final timeMgmt = (100 - (mpq * 10)).clamp(0.0, 100.0);
-    final weekly = _weeklyStats(attempts, results);
-
-    return _Vm(
-      tests: attempts.length,
-      totalMinutes: totalMinutes,
-      avg: avg,
-      bestSubject: subjects.isEmpty ? '-' : subjects.first.name,
-      delta: delta,
-      points: points,
-      subjects: subjects,
-      strengths: List<_SubjectMetric>.from(subjects.take(4)),
-      improvements: List<_SubjectMetric>.from(
-        subjects.reversed.take(4).toList().reversed,
+        ],
       ),
-      speed: speed,
-      skillAcc: skillAcc,
-      consistency: consistency,
-      coverage: coverage,
-      difficulty: difficulty,
-      timeMgmt: timeMgmt,
-      bestSkill: _bestSkill(
-        speed: speed,
-        acc: skillAcc,
-        consistency: consistency,
-        timeMgmt: timeMgmt,
-        difficulty: difficulty,
-      ),
-      focusArea: _focusArea(
-        speed: speed,
-        acc: skillAcc,
-        consistency: consistency,
-        timeMgmt: timeMgmt,
-        difficulty: difficulty,
-      ),
-      weekly: weekly,
-      insights: _insightLines(subjects, delta, weekly),
-      latestAttemptId: latestAttemptId,
-      latestAttemptData: latestAttemptData,
-      latestResultData: latestResultData,
     );
   }
-
-  Future<Map<String, Map<String, dynamic>>> _loadResultMap(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
-    String uid,
-    String examId,
-  ) async {
-    return ResultDataService.loadResultsMap(
-      attempts: attempts,
-      userId: uid,
-      examId: examId,
-    );
-  }
-
-  Future<double> _platformAvg(String examId, DateTime? cutoff) async {
-    try {
-      Query<Map<String, dynamic>> q = FirebaseFirestore.instance
-          .collection('results')
-          .where('examId', isEqualTo: examId)
-          .limit(_platformAvgSampleSize);
-      if (cutoff != null) {
-        q = q.where(
-          'createdAt',
-          isGreaterThanOrEqualTo: Timestamp.fromDate(cutoff),
-        );
-      }
-      final s = await q.get();
-      if (s.docs.isEmpty) {
-        final fallback = await FirebaseFirestore.instance
-            .collection('results')
-            .where('examId', isEqualTo: examId)
-            .limit(_platformAvgSampleSize)
-            .get();
-        if (fallback.docs.isEmpty) return 0;
-        double fallbackSum = 0;
-        for (final d in fallback.docs) {
-          fallbackSum += _platformPct(d.data());
-        }
-        return fallbackSum / fallback.docs.length;
-      }
-      double sum = 0;
-      for (final d in s.docs) {
-        sum += _platformPct(d.data());
-      }
-      return sum / s.docs.length;
-    } catch (_) {
-      // If index/rules fail, return neutral platform average.
-      return 0;
-    }
-  }
-
-  Future<Map<String, _SubjectMetric>> _subjectStats(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
-  ) async {
-    final out = <String, _SubjectMetric>{};
-    final recentAttempts = attempts.length <= _subjectStatsAttemptLimit
-        ? attempts
-        : attempts.sublist(attempts.length - _subjectStatsAttemptLimit);
-    final questionFutures =
-        <String, Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>>{};
-
-    for (final aDoc in recentAttempts) {
-      final a = aDoc.data();
-      final examId = (a['examId'] ?? '').toString();
-      final testId = (a['testId'] ?? '').toString();
-      if (examId.isEmpty || testId.isEmpty) continue;
-      final key = '$examId|$testId';
-      questionFutures.putIfAbsent(key, () async {
-        return ExamMetadataCacheService.getQuestions(examId, testId);
-      });
-    }
-
-    final cache = <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
-    for (final entry in questionFutures.entries) {
-      cache[entry.key] = await entry.value;
-    }
-
-    for (final aDoc in recentAttempts) {
-      final a = aDoc.data();
-      final examId = (a['examId'] ?? '').toString();
-      final testId = (a['testId'] ?? '').toString();
-      if (examId.isEmpty || testId.isEmpty) continue;
-      final questions = cache['$examId|$testId'] ?? const [];
-
-      final answers = <String, String>{};
-      if (a['answers'] is Map) {
-        final m = a['answers'] as Map;
-        for (final e in m.entries) {
-          answers[e.key.toString()] = (e.value ?? '').toString();
-        }
-      }
-
-      final touched = <String>{};
-      for (final qDoc in questions) {
-        final q = qDoc.data();
-        final sub =
-            (q['subject'] ?? q['sectionName'] ?? q['section'] ?? 'General')
-                .toString();
-        final m = out.putIfAbsent(sub, () => _SubjectMetric(sub));
-        m.total++;
-        final sel = answers[qDoc.id] ?? '';
-        if (sel.isNotEmpty) m.attemptedQuestions++;
-        final corr = (q['correctOption'] ?? '').toString();
-        if (sel.isNotEmpty && sel == corr) m.correct++;
-        touched.add(sub);
-      }
-      for (final t in touched) {
-        out[t]?.attempted++;
-      }
-    }
-
-    return out;
-  }
-
-  double _platformPct(Map<String, dynamic> d) {
-    final c = _toInt(d['correct']) ?? 0;
-    final i = _toInt(d['incorrect']) ?? 0;
-    final u = _toInt(d['unanswered']) ?? 0;
-    final total = c + i + u;
-    if (total > 0) return (c * 100.0 / total).clamp(0.0, 100.0);
-    return (_toDouble(d['score']) ?? 0).clamp(0.0, 100.0);
-  }
-
-  double _scorePct(Map<String, dynamic> a, Map<String, dynamic> r) {
-    final c = _toInt(r['correct']) ?? (a['answers'] as Map?)?.length ?? 0;
-    final i = _toInt(r['incorrect']) ?? _toInt(a['wrong']) ?? 0;
-    final u = _toInt(r['unanswered']) ?? _toInt(a['skipped']) ?? 0;
-    final total = (c + i + u) > 0 ? (c + i + u) : 20;
-    return (c * 100.0 / total).clamp(0.0, 100.0);
-  }
-
-  DateTime? _attemptDate(Map<String, dynamic> d) =>
-      _toDate(d['submittedAt']) ?? _toDate(d['startedAt']);
-
-  int _attemptMins(Map<String, dynamic> d) {
-    final direct = _toInt(d['timeTaken']);
-    if (direct != null) return direct;
-    final s = _toDate(d['startedAt']);
-    final e = _toDate(d['submittedAt']);
-    if (s != null && e != null) {
-      return e.difference(s).inMinutes.clamp(0, 100000);
-    }
-    return 0;
-  }
-
-  double _halfAvg(List<_P> points, bool firstHalf) {
-    if (points.isEmpty) return 0;
-    final mid = points.length ~/ 2;
-    final seg = firstHalf
-        ? points.sublist(0, math.max(1, mid))
-        : points.sublist(mid);
-    if (seg.isEmpty) return 0;
-    return seg.map((e) => e.score).reduce((a, b) => a + b) / seg.length;
-  }
-
-  double _avgQuestions(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
-    Map<String, Map<String, dynamic>> r,
-  ) {
-    if (attempts.isEmpty) return 0;
-    double sum = 0;
-    for (final a in attempts) {
-      final d = a.data();
-      final res = r[a.id] ?? const <String, dynamic>{};
-      final c = _toInt(res['correct']) ?? (d['answers'] as Map?)?.length ?? 0;
-      final i = _toInt(res['incorrect']) ?? _toInt(d['wrong']) ?? 0;
-      final u = _toInt(res['unanswered']) ?? _toInt(d['skipped']) ?? 0;
-      sum += (c + i + u) > 0 ? (c + i + u) : 20;
-    }
-    return sum / attempts.length;
-  }
-
-  double _std(List<double> v) {
-    if (v.length <= 1) return 0;
-    final mean = v.reduce((a, b) => a + b) / v.length;
-    final varr =
-        v.map((e) => (e - mean) * (e - mean)).reduce((a, b) => a + b) /
-        v.length;
-    return math.sqrt(varr);
-  }
-
-  double _difficulty(List<_SubjectMetric> s) {
-    if (s.isEmpty) return 0;
-    final good = s.where((e) => e.total >= 10 && e.accuracy >= 65).length;
-    return ((good / s.length) * 100).clamp(0.0, 100.0);
-  }
-
-  int? _toInt(dynamic v) =>
-      v is int ? v : (v is num ? v.toInt() : int.tryParse(v?.toString() ?? ''));
-  double? _toDouble(dynamic v) => v is double
-      ? v
-      : (v is num ? v.toDouble() : double.tryParse(v?.toString() ?? ''));
-  DateTime? _toDate(dynamic v) => v is Timestamp ? v.toDate() : null;
 
   String _fmtMins(int mins) {
     if (mins <= 0) return '0m';
@@ -1248,110 +947,101 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
   }
 }
 
-enum _Window {
-  d7('Last 7 Days'),
-  d30('Last 30 Days'),
-  d90('3 Months'),
-  all('All Time');
+class _PerformanceSkeletonHero extends StatelessWidget {
+  const _PerformanceSkeletonHero();
 
-  const _Window(this.label);
-  final String label;
-
-  DateTime? cutoff(DateTime now) {
-    switch (this) {
-      case _Window.d7:
-        return now.subtract(const Duration(days: 7));
-      case _Window.d30:
-        return now.subtract(const Duration(days: 30));
-      case _Window.d90:
-        return now.subtract(const Duration(days: 90));
-      case _Window.all:
-        return null;
-    }
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF24439A), Color(0xFF3459B9)],
+        ),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(child: _SkeletonBlock(width: double.infinity, height: 18)),
+              const SizedBox(width: 12),
+              const _SkeletonBlock(width: 92, height: 30, color: Colors.white),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Row(
+            children: [
+              Expanded(child: _SkeletonBlock(width: double.infinity, height: 72)),
+              SizedBox(width: 8),
+              Expanded(child: _SkeletonBlock(width: double.infinity, height: 72)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Row(
+            children: [
+              Expanded(child: _SkeletonBlock(width: double.infinity, height: 72)),
+              SizedBox(width: 8),
+              Expanded(child: _SkeletonBlock(width: double.infinity, height: 72)),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 
-class _Vm {
-  final int tests;
-  final int totalMinutes;
-  final double avg;
-  final String bestSubject;
-  final double delta;
-  final List<_P> points;
-  final List<_SubjectMetric> subjects;
-  final List<_SubjectMetric> strengths;
-  final List<_SubjectMetric> improvements;
-  final double speed;
-  final double skillAcc;
-  final double consistency;
-  final double coverage;
-  final double difficulty;
-  final double timeMgmt;
-  final String bestSkill;
-  final String focusArea;
-  final List<_WeeklyStat> weekly;
-  final List<String> insights;
-  final String? latestAttemptId;
-  final Map<String, dynamic>? latestAttemptData;
-  final Map<String, dynamic>? latestResultData;
+class _PerformanceSkeletonCard extends StatelessWidget {
+  final double height;
 
-  _Vm({
-    required this.tests,
-    required this.totalMinutes,
-    required this.avg,
-    required this.bestSubject,
-    required this.delta,
-    required this.points,
-    required this.subjects,
-    required this.strengths,
-    required this.improvements,
-    required this.speed,
-    required this.skillAcc,
-    required this.consistency,
-    required this.coverage,
-    required this.difficulty,
-    required this.timeMgmt,
-    required this.bestSkill,
-    required this.focusArea,
-    required this.weekly,
-    required this.insights,
-    required this.latestAttemptId,
-    required this.latestAttemptData,
-    required this.latestResultData,
+  const _PerformanceSkeletonCard({required this.height});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SkeletonBlock(width: 160, height: 16),
+          const SizedBox(height: 12),
+          _SkeletonBlock(width: double.infinity, height: height),
+        ],
+      ),
+    );
+  }
+}
+
+class _SkeletonBlock extends StatelessWidget {
+  final double width;
+  final double height;
+  final Color color;
+
+  const _SkeletonBlock({
+    required this.width,
+    required this.height,
+    this.color = const Color(0xFFE2E8F0),
   });
-}
 
-class _P {
-  final DateTime date;
-  final double score;
-  const _P(this.date, this.score);
-}
-
-class _WeeklyStat {
-  final String label;
-  final int attempts;
-  final int minutes;
-  final double score;
-
-  const _WeeklyStat({
-    required this.label,
-    required this.attempts,
-    required this.minutes,
-    required this.score,
-  });
-}
-
-class _SubjectMetric {
-  final String name;
-  int attempted = 0;
-  int total = 0;
-  int attemptedQuestions = 0;
-  int correct = 0;
-
-  _SubjectMetric(this.name);
-
-  double get accuracy => total == 0 ? 0 : (correct * 100.0 / total);
-  double get coverage => total == 0 ? 0 : (attemptedQuestions * 100.0 / total);
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: color == Colors.white ? 0.2 : 1),
+          borderRadius: BorderRadius.circular(10),
+        ),
+      ),
+    );
+  }
 }
 
 class _TrendChart extends StatelessWidget {

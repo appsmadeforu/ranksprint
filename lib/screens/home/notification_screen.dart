@@ -198,15 +198,95 @@ class _NotificationScreenState extends State<NotificationScreen> {
     await UserExamPreferenceService.savePreferredExamId(examId);
   }
 
-  String _normalizeNotificationType(dynamic rawType) {
+  String _notificationExamId(Map<String, dynamic> data) {
+    const candidateKeys = <String>[
+      'examId',
+      'selectedExamId',
+      'targetExamId',
+      'initialExamId',
+    ];
+
+    for (final key in candidateKeys) {
+      final value = (data[key] ?? '').toString().trim();
+      if (value.isNotEmpty) {
+        return value;
+      }
+    }
+
+    return '';
+  }
+
+  Future<String> _resolveNotificationExamId(Map<String, dynamic> data) async {
+    final directExamId = _notificationExamId(data);
+    if (directExamId.isNotEmpty) {
+      return directExamId;
+    }
+
+    final preferredExamId = UserExamPreferenceService.preferredExamNotifier.value;
+    if (preferredExamId != null && preferredExamId.trim().isNotEmpty) {
+      return preferredExamId.trim();
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return '';
+
+    try {
+      final userSnap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      final userData = userSnap.data() ?? const <String, dynamic>{};
+
+      final lastSelectedExamId =
+          (userData['lastSelectedExamId'] ?? '').toString().trim();
+      if (lastSelectedExamId.isNotEmpty) {
+        return lastSelectedExamId;
+      }
+
+      final selectedExams = List<String>.from(
+        userData['selectedExams'] ?? const <String>[],
+      );
+      for (final examId in selectedExams) {
+        final normalized = examId.trim();
+        if (normalized.isNotEmpty) {
+          return normalized;
+        }
+      }
+    } catch (_) {
+      // Keep notification taps resilient even if the user profile read fails.
+    }
+
+    return '';
+  }
+
+  String _normalizeNotificationType(
+    dynamic rawType, {
+    Map<String, dynamic>? data,
+  }) {
     final value = (rawType ?? '').toString().trim().toLowerCase();
+    final title = (data?['title'] ?? '').toString().trim().toLowerCase();
+    final message = (data?['message'] ?? data?['msg'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    final combined = '$value $title $message';
+
     if (value == 'exam' || value == 'test alerts' || value == 'test_alerts') {
       return 'exam';
     }
     if (value == 'result' || value == 'results') {
       return 'result';
     }
-    if (value == 'offer' || value == 'offers') {
+    if (value == 'offer' ||
+        value == 'offers' ||
+        value == 'subscription' ||
+        value == 'subscriptions' ||
+        value == 'plan' ||
+        value == 'plans' ||
+        combined.contains('subscription') ||
+        combined.contains('subscribe') ||
+        combined.contains('plan renewal') ||
+        combined.contains('renewal')) {
       return 'offer';
     }
     return value;
@@ -300,8 +380,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
   }
 
   Future<void> _handleNotificationTap(Map<String, dynamic> data) async {
-    final examId = (data['examId'] ?? '').toString().trim();
-    final type = _normalizeNotificationType(data['type']);
+    final examId = await _resolveNotificationExamId(data);
+    final type = _normalizeNotificationType(data['type'], data: data);
     final notificationId = (data['id'] ?? '').toString();
 
     if (!(data['isRead'] ?? false) && notificationId.isNotEmpty) {
@@ -405,7 +485,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
                     }
                     // Apply client-side filtering based on selectedFilter
                     final filtered = docs.where((data) {
-                      final type = _normalizeNotificationType(data['type']);
+                      final type =
+                          _normalizeNotificationType(data['type'], data: data);
                       if (selectedFilter == 'All') return true;
                       if (selectedFilter == 'Unread') {
                         return !(data['isRead'] ?? false);

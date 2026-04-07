@@ -29,6 +29,8 @@ class TestSolutionScreen extends StatefulWidget {
 }
 
 class _TestSolutionScreenState extends State<TestSolutionScreen> {
+  static const String _playStoreUrl =
+      'https://play.google.com/store/apps/details?id=com.ranksprint.app';
   late final Future<_Vm> _future;
   SectionService sectionService = SectionService();
   List<SectionBean> sectionBeans = [];
@@ -50,6 +52,12 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
 
     final examId = (attempt['examId'] ?? '').toString();
     final testId = (attempt['testId'] ?? '').toString();
+    final examName =
+        ((await ExamMetadataCacheService.getExamName(examId)) ?? examId)
+            .trim();
+    final testName =
+        ((await ExamMetadataCacheService.getTestName(examId, testId)) ?? testId)
+            .trim();
     sectionBeans = await ExamMetadataCacheService.getSectionBeans(examId, testId);
     final answersRaw = attempt['answers'];
     final answers = <String, String>{};
@@ -110,6 +118,8 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
 
     return _Vm(
       examId: examId,
+      examName: examName,
+      testName: testName,
       resultData: result,
       correct: correct,
       incorrect: incorrect,
@@ -826,9 +836,14 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
       return best;
     });
     final latestTrend = vm.trend.isEmpty ? null : vm.trend.last;
+    final completedLabel = [vm.examName, vm.testName]
+        .where((value) => value.trim().isNotEmpty)
+        .join(' ')
+        .trim();
+    final title = completedLabel.isEmpty ? 'my test' : completedLabel;
 
     final buffer = StringBuffer()
-      ..writeln('I just completed a RankSprint test.')
+      ..writeln('I just completed $title on RankSprintAI')
       ..writeln(
         'Score: ${vm.correct}/${vm.total} (${vm.scorePct.toStringAsFixed(0)}%)',
       )
@@ -851,13 +866,17 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
       );
     }
 
-    buffer.write('#RankSprint');
+    buffer
+      ..writeln('#RankSprintAI')
+      ..write(_playStoreUrl);
     return buffer.toString();
   }
 }
 
 class _Vm {
   final String examId;
+  final String examName;
+  final String testName;
   final Map<String, dynamic> resultData;
   final int correct;
   final int incorrect;
@@ -873,6 +892,8 @@ class _Vm {
 
   _Vm({
     required this.examId,
+    required this.examName,
+    required this.testName,
     required this.resultData,
     required this.correct,
     required this.incorrect,

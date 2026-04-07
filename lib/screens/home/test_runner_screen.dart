@@ -1328,9 +1328,20 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
   @override
   Widget build(BuildContext context) {
     final hasAttempt = attemptId != null;
+    final canLeaveScreen = !hasAttempt && !_isSubmittingAttempt;
 
     return PopScope(
-      canPop: !_isSubmittingAttempt,
+      canPop: canLeaveScreen,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || canLeaveScreen || !mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'You cannot go back while a test is running. Please submit the test first.',
+            ),
+          ),
+        );
+      },
       child: Stack(
         children: [
           AbsorbPointer(

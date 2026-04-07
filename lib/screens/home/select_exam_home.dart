@@ -5,14 +5,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/content_access_service.dart';
+import '../../services/subscription_access_service.dart';
 import '../../services/user_exam_preference_service.dart';
 import '../../widgets/offline_state.dart';
 import '../../widgets/top_header.dart';
 import '../onboarding/select_exam_screen.dart';
 import 'main_navigation.dart';
 import 'pyq_screen.dart';
+import 'subject_insights_screen.dart';
 import 'subscription_screen.dart';
 import 'test_detail_screen.dart';
+import 'test_history_screen.dart';
 import 'tests_screen.dart';
 
 class SelectExamHome extends StatefulWidget {
@@ -78,185 +81,37 @@ class _SelectExamHomeState extends State<SelectExamHome> {
     required _GoalVm? goal,
     required _ExamCardVm? activeExam,
   }) async {
+    final activeExamId = activeExam?.examId.trim() ?? '';
+    if (activeExamId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select an exam before setting a goal.')),
+      );
+      return;
+    }
     final parentContext = context;
     final messenger = ScaffoldMessenger.of(parentContext);
-    final today = DateTime.now();
-    final todayDateOnly = DateTime(today.year, today.month, today.day);
-    final titleController = TextEditingController(
-      text: goal?.title ?? activeExam?.title ?? '',
-    );
-    final descriptionController = TextEditingController(
-      text:
-          goal?.description ??
-          activeExam?.description ??
-          'Add a goal description to stay focused.',
-    );
-    DateTime? selectedDate = goal?.targetDate;
-    bool isSaving = false;
 
     final saved = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Edit Current Goal'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextField(
-                      controller: titleController,
-                      decoration: const InputDecoration(
-                        labelText: 'Goal title',
-                        hintText: 'Crack JEE Main 2026',
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    TextField(
-                      controller: descriptionController,
-                      maxLines: 3,
-                      decoration: const InputDecoration(
-                        labelText: 'Goal description',
-                        hintText: 'Complete weekly mocks and revise weak areas.',
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    OutlinedButton.icon(
-                      onPressed: isSaving
-                          ? null
-                          : () async {
-                              final pickerInitialDate = selectedDate == null
-                                  ? todayDateOnly.add(const Duration(days: 30))
-                                  : DateTime(
-                                      selectedDate!.year,
-                                      selectedDate!.month,
-                                      selectedDate!.day,
-                                    );
-                              final safeInitialDate = pickerInitialDate.isBefore(
-                                    todayDateOnly,
-                                  )
-                                  ? todayDateOnly
-                                  : pickerInitialDate;
-                              final picked = await showDatePicker(
-                                context: parentContext,
-                                initialDate: safeInitialDate,
-                                firstDate: todayDateOnly,
-                                lastDate: DateTime(2100),
-                              );
-                              if (!dialogContext.mounted) return;
-                              if (picked != null) {
-                                setDialogState(() {
-                                  selectedDate = picked;
-                                });
-                              }
-                            },
-                      icon: const Icon(Icons.calendar_today_rounded, size: 18),
-                      label: Text(
-                        selectedDate == null
-                            ? 'Select target date'
-                            : _formatGoalDate(selectedDate!),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: isSaving
-                      ? null
-                      : () => Navigator.of(dialogContext).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                          setDialogState(() {
-                            isSaving = true;
-                          });
-                          try {
-                            final normalizedSelectedDate = selectedDate == null
-                                ? null
-                                : DateTime(
-                                    selectedDate!.year,
-                                    selectedDate!.month,
-                                    selectedDate!.day,
-                                  );
-                            if (normalizedSelectedDate != null &&
-                                normalizedSelectedDate.isBefore(todayDateOnly)) {
-                              if (!dialogContext.mounted) return;
-                              messenger.showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Goal target date cannot be in the past.',
-                                  ),
-                                ),
-                              );
-                              setDialogState(() {
-                                isSaving = false;
-                              });
-                              return;
-                            }
-                           await FirebaseFirestore.instance
-                               .collection('users')
-                               .doc(userId)
-                              .set({
-                                'currentGoal': {
-                                  'title': titleController.text.trim(),
-                                   'description': descriptionController.text.trim(),
-                                   'targetDate': normalizedSelectedDate == null
-                                       ? null
-                                       : Timestamp.fromDate(normalizedSelectedDate),
-                                   'examId': activeExam?.examId,
-                                   'updatedAt': FieldValue.serverTimestamp(),
-                                  },
-                                }, SetOptions(merge: true));
-                           if (!dialogContext.mounted) return;
-                           Navigator.of(dialogContext).pop(true);
-                         } on FirebaseException catch (e) {
-                           if (!dialogContext.mounted) return;
-                            messenger.showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  e.message ?? 'Unable to save goal right now.',
-                                ),
-                              ),
-                            );
-                            setDialogState(() {
-                              isSaving = false;
-                            });
-                          } catch (_) {
-                            if (!dialogContext.mounted) return;
-                            messenger.showSnackBar(
-                              const SnackBar(
-                                content: Text('Unable to save goal right now.'),
-                              ),
-                            );
-                            setDialogState(() {
-                              isSaving = false;
-                            });
-                          }
-                        },
-                  child: const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      builder: (dialogContext) => _EditGoalDialog(
+        userId: userId,
+        activeExamId: activeExamId,
+        activeExam: activeExam,
+        goal: goal,
+        messenger: messenger,
+        parentContext: parentContext,
+        formatGoalDate: _formatGoalDate,
+      ),
     );
-
-    titleController.dispose();
-    descriptionController.dispose();
 
     if (saved == true && mounted) {
       setState(() {});
     }
   }
 
-  Future<List<_ExamCardVm>> _loadSelectedExams(List<String> selectedExamIds) async {
+  Future<List<_ExamCardVm>> _loadSelectedExams(
+    List<String> selectedExamIds,
+  ) async {
     if (selectedExamIds.isEmpty) return const <_ExamCardVm>[];
     final examDocs = await Future.wait(
       selectedExamIds.map(
@@ -264,15 +119,17 @@ class _SelectExamHomeState extends State<SelectExamHome> {
             FirebaseFirestore.instance.collection('exams').doc(examId).get(),
       ),
     );
-    return examDocs.map((doc) {
-      final data = doc.data() ?? const <String, dynamic>{};
-      return _ExamCardVm(
-        examId: doc.id,
-        title: (data['name'] ?? doc.id).toString(),
-        description: (data['description'] ?? 'No description available.')
-            .toString(),
-      );
-    }).toList(growable: false);
+    return examDocs
+        .map((doc) {
+          final data = doc.data() ?? const <String, dynamic>{};
+          return _ExamCardVm(
+            examId: doc.id,
+            title: (data['name'] ?? doc.id).toString(),
+            description: (data['description'] ?? 'No description available.')
+                .toString(),
+          );
+        })
+        .toList(growable: false);
   }
 
   Future<_HomeStatsVm> _loadHomeStats({
@@ -289,15 +146,18 @@ class _SelectExamHomeState extends State<SelectExamHome> {
             .get();
         final summary = summaryDoc.data();
         if (summary != null) {
-          final testsAttended =
-              _asInt(summary['testsAttended'] ?? summary['completedAttempts']);
+          final testsAttended = _asInt(
+            summary['testsAttended'] ?? summary['completedAttempts'],
+          );
           final bestRank = _asInt(summary['bestRank']);
           final bestScore = _asDouble(summary['bestScorePercent']);
           if (testsAttended != null || bestRank != null || bestScore != null) {
             return _HomeStatsVm(
               testsAttended: testsAttended ?? 0,
               bestRank: bestRank,
-              bestScoreText: bestScore == null ? '--' : '${bestScore.round()}/100',
+              bestScoreText: bestScore == null
+                  ? '--'
+                  : '${bestScore.round()}/100',
             );
           }
         }
@@ -353,7 +213,9 @@ class _SelectExamHomeState extends State<SelectExamHome> {
     return _HomeStatsVm(
       testsAttended: completedAttempts,
       bestRank: bestRank,
-      bestScoreText: bestScorePct == null ? '--' : '${bestScorePct.round()}/100',
+      bestScoreText: bestScorePct == null
+          ? '--'
+          : '${bestScorePct.round()}/100',
     );
   }
 
@@ -364,7 +226,8 @@ class _SelectExamHomeState extends State<SelectExamHome> {
         .collection('home_config')
         .doc('featured')
         .get();
-    final featuredConfig = featuredConfigDoc.data() ?? const <String, dynamic>{};
+    final featuredConfig =
+        featuredConfigDoc.data() ?? const <String, dynamic>{};
     final featuredMockTestIds = List<String>.from(
       featuredConfig['featuredMockTestIds'] ?? const [],
     );
@@ -374,15 +237,15 @@ class _SelectExamHomeState extends State<SelectExamHome> {
 
     final featuredFetches =
         await Future.wait<List<QueryDocumentSnapshot<Map<String, dynamic>>>>([
-      _loadFeaturedCollectionDocs(
-        parentPath: 'exams/$activeExamId/tests',
-        docIds: featuredMockTestIds,
-      ),
-      _loadFeaturedCollectionDocs(
-        parentPath: 'exams/$activeExamId/pyqs',
-        docIds: featuredPyqIds,
-      ),
-    ]);
+          _loadFeaturedCollectionDocs(
+            parentPath: 'exams/$activeExamId/tests',
+            docIds: featuredMockTestIds,
+          ),
+          _loadFeaturedCollectionDocs(
+            parentPath: 'exams/$activeExamId/pyqs',
+            docIds: featuredPyqIds,
+          ),
+        ]);
 
     final featuredMockTests = featuredFetches[0]
         .where((doc) => ContentAccessService.isVisibleNow(doc.data()))
@@ -403,10 +266,8 @@ class _SelectExamHomeState extends State<SelectExamHome> {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => TestDetailScreen(
-                    examId: activeExamId,
-                    testId: test.id,
-                  ),
+                  builder: (_) =>
+                      TestDetailScreen(examId: activeExamId, testId: test.id),
                 ),
               );
             },
@@ -441,12 +302,51 @@ class _SelectExamHomeState extends State<SelectExamHome> {
     );
   }
 
+  Future<bool> _hasAvailablePlansForExam(String? examId) async {
+    final normalizedExamId = (examId ?? '').trim();
+    if (normalizedExamId.isEmpty) return false;
+
+    try {
+      final examDoc = await FirebaseFirestore.instance
+          .collection('exams')
+          .doc(normalizedExamId)
+          .get();
+      final examData = examDoc.data() ?? const <String, dynamic>{};
+      final examPlanIds = List<String>.from(
+        examData['subscriptionPlanIds'] ?? const <String>[],
+      ).where((id) => id.trim().isNotEmpty).toSet();
+
+      final plansSnap = await FirebaseFirestore.instance
+          .collection('subscriptionPlans')
+          .where('features.isActive', isEqualTo: true)
+          .get();
+
+      for (final doc in plansSnap.docs) {
+        final data = doc.data();
+        if (examPlanIds.contains(doc.id)) {
+          return true;
+        }
+        if (SubscriptionAccessService.planIncludesExam(
+          data['examsIncluded'],
+          normalizedExamId,
+        )) {
+          return true;
+        }
+      }
+    } catch (_) {
+      // Keep the home screen resilient if plan metadata cannot be loaded.
+    }
+
+    return false;
+  }
+
   Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
   _loadFeaturedCollectionDocs({
     required String parentPath,
     required List<String> docIds,
   }) async {
-    if (docIds.isEmpty) return const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+    if (docIds.isEmpty)
+      return const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
 
     final chunks = <List<String>>[];
     for (int i = 0; i < docIds.length; i += 10) {
@@ -502,19 +402,20 @@ class _SelectExamHomeState extends State<SelectExamHome> {
               description: 'Choose an exam to personalize your dashboard.',
             ),
     );
-    final stats = await _loadHomeStats(userId: userId, activeExamId: activeExamId);
+    final stats = await _loadHomeStats(
+      userId: userId,
+      activeExamId: activeExamId,
+    );
     final featured = activeExamId == null || activeExamId.isEmpty
         ? const _FeaturedContentVm.empty()
         : await _loadFeaturedContent(activeExamId);
+    final hasAvailablePlans = await _hasAvailablePlansForExam(activeExamId);
 
     final greetingName = _firstName(
       (userData['name'] ?? FirebaseAuth.instance.currentUser?.displayName ?? '')
           .toString(),
     );
-    final rawGoalData = userData['currentGoal'];
-    final goalData = rawGoalData is Map
-        ? Map<String, dynamic>.from(rawGoalData)
-        : null;
+    final goalData = _goalDataForExam(userData, activeExam.examId);
     final currentGoal = _GoalVm.fromMap(
       goalData,
       fallbackExam: activeExam.examId.isEmpty ? null : activeExam,
@@ -531,6 +432,7 @@ class _SelectExamHomeState extends State<SelectExamHome> {
       bestRank: stats.bestRank,
       bestScoreText: stats.bestScoreText,
       currentGoal: currentGoal,
+      hasAvailablePlans: hasAvailablePlans,
       featuredMockTests: featured.featuredMockTests,
       featuredPyqs: featured.featuredPyqs,
     );
@@ -544,15 +446,21 @@ class _SelectExamHomeState extends State<SelectExamHome> {
     final selectedExams = List<String>.from(
       userData['selectedExams'] ?? const [],
     );
-    final rawCurrentGoal = userData['currentGoal'];
-    final currentGoal = rawCurrentGoal is Map
-        ? Map<String, dynamic>.from(rawCurrentGoal)
-        : null;
+    final preferredExamId =
+        UserExamPreferenceService.preferredExamNotifier.value;
+    final activeExamId =
+        preferredExamId != null && selectedExams.contains(preferredExamId)
+        ? preferredExamId
+        : (selectedExams.isNotEmpty ? selectedExams.first : '');
+    final currentGoal = _goalDataForExam(userData, activeExamId);
     final signature =
-        '${(userData['name'] ?? '').toString()}|${selectedExams.join(',')}|'
+        '${(userData['name'] ?? '').toString()}|'
+        '$activeExamId|'
+        '${selectedExams.join(',')}|'
         '${(currentGoal?['title'] ?? '').toString()}|'
         '${(currentGoal?['description'] ?? '').toString()}|'
-        '${currentGoal?['targetDate'] ?? ''}';
+        '${currentGoal?['targetDate'] ?? ''}|'
+        '${currentGoal?['updatedAt'] ?? ''}';
     if (!force && _homeVmFuture != null && _homeVmSignature == signature) {
       return;
     }
@@ -624,18 +532,18 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                     TopHeader(
                       selectedExamId: vm.activeExam?.examId,
                       userExamIds: selectedExamIds,
-                      showExamDropdown: false,
-                      onExamChanged: (examId) async {
-                        await UserExamPreferenceService.savePreferredExamId(
-                          examId,
-                        );
+                      showExamDropdown: true,
+                      onExamChanged: (examId) {
                         if (!mounted) return;
-                        _ensureHomeVm(
-                          userId: user.uid,
-                          userData: userData,
-                          force: true,
-                        );
-                        setState(() {});
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (!mounted) return;
+                          _ensureHomeVm(
+                            userId: user.uid,
+                            userData: userData,
+                            force: true,
+                          );
+                          setState(() {});
+                        });
                       },
                     ),
                     Expanded(
@@ -663,9 +571,19 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                             const SizedBox(height: 18),
                             _buildQuoteCard(vm.quote),
                             const SizedBox(height: 22),
+                            const Text(
+                              'Current Goal',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
                             _buildGoalCard(
                               vm.currentGoal,
                               activeExam: vm.activeExam,
+                              showViewPlan: vm.hasAvailablePlans,
                               onEdit: () => _editGoal(
                                 userId: user.uid,
                                 goal: vm.currentGoal,
@@ -696,11 +614,14 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                               title: 'Quick Stats',
                               actionLabel: 'View Analytics',
                               onTap: () {
-                                final navState = MainNavigation.maybeOf(context);
+                                final navState = MainNavigation.maybeOf(
+                                  context,
+                                );
                                 if (navState != null) {
                                   navState.switchToTab(
                                     3,
                                     analyticsExamId: vm.activeExam?.examId,
+                                    analyticsTabIndex: 0,
                                   );
                                   return;
                                 }
@@ -711,6 +632,7 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                                       initialIndex: 3,
                                       initialAnalyticsExamId:
                                           vm.activeExam?.examId,
+                                      initialAnalyticsTabIndex: 0,
                                     ),
                                   ),
                                 );
@@ -833,14 +755,27 @@ class _SelectExamHomeState extends State<SelectExamHome> {
   Widget _buildGoalCard(
     _GoalVm? goal, {
     required _ExamCardVm? activeExam,
+    required bool showViewPlan,
     required VoidCallback onEdit,
   }) {
     final remainingDays = goal?.targetDate == null
         ? null
         : math.max(0, goal!.targetDate!.difference(DateTime.now()).inDays);
+    final title = goal?.title ?? activeExam?.title ?? 'Choose your target exam';
+    final description =
+        goal?.description ??
+        activeExam?.description ??
+        'Define your current preparation goal.';
+    final deadlineLabel = goal?.targetDate == null
+        ? null
+        : 'Ends on ${_formatGoalDate(goal!.targetDate!)}';
+    final daysLeftLabel = remainingDays == null
+        ? null
+        : '$remainingDays ${remainingDays == 1 ? 'day' : 'days'} left';
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(22),
         gradient: const LinearGradient(
@@ -862,89 +797,134 @@ class _SelectExamHomeState extends State<SelectExamHome> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'CURRENT GOAL',
-                  style: TextStyle(
-                    fontSize: 12,
-                    letterSpacing: 1.6,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFFD6DDFF),
+                  title,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
                   ),
                 ),
               ),
-              InkWell(
-                onTap: onEdit,
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.edit_rounded,
-                    color: Colors.white,
-                    size: 20,
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: onEdit,
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                padding: EdgeInsets.zero,
+                style: IconButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  backgroundColor: Colors.transparent,
+                  highlightColor: Colors.white.withValues(alpha: 0.14),
+                  hoverColor: Colors.transparent,
+                  splashFactory: InkRipple.splashFactory,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  alignment: Alignment.topRight,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
+                icon: const Icon(Icons.tune_rounded, size: 17),
+                tooltip: 'Edit goal',
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          Text(
-            goal?.title ?? activeExam?.title ?? 'Choose your target exam',
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Text(
             goal == null && activeExam == null
                 ? 'Pick an exam to unlock your personalized study journey.'
-                : remainingDays == null
-                ? (goal?.description ??
-                    activeExam?.description ??
-                    'Define your current preparation goal.')
-                : '${goal?.description ?? activeExam?.description ?? 'Stay on track with your study sprint.'} $remainingDays days remaining in this sprint.',
+                : description,
             style: const TextStyle(
               fontSize: 14,
               height: 1.6,
               color: Color(0xFFE6EBFF),
             ),
           ),
-          const SizedBox(height: 18),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) =>
-                      SubscriptionScreen(initialExamId: activeExam?.examId),
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: const Color(0xFF31459B),
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
+          if (deadlineLabel != null || daysLeftLabel != null) ...[
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'View Plan',
-                  style: TextStyle(fontWeight: FontWeight.w800),
-                ),
-                SizedBox(width: 10),
-                Icon(Icons.arrow_forward_rounded),
+                if (deadlineLabel != null)
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: _buildGoalMetaChip(
+                        icon: Icons.event_rounded,
+                        label: deadlineLabel,
+                      ),
+                    ),
+                  ),
+                if (daysLeftLabel != null)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: _buildGoalMetaChip(
+                      icon: Icons.timelapse_rounded,
+                      label: daysLeftLabel,
+                    ),
+                  ),
               ],
+            ),
+          ],
+          if (showViewPlan) ...[
+            const SizedBox(height: 14),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        SubscriptionScreen(initialExamId: activeExam?.examId),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF31459B),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 14,
+                ),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'View Plan',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  SizedBox(width: 10),
+                  Icon(Icons.arrow_forward_rounded),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGoalMetaChip({required IconData icon, required String label}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.white),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
             ),
           ),
         ],
@@ -1067,24 +1047,81 @@ class _SelectExamHomeState extends State<SelectExamHome> {
   }
 
   Widget _buildStatsRow(_HomeVm vm) {
+    final resolvedExamId = vm.activeExam?.examId.isNotEmpty == true
+        ? vm.activeExam!.examId
+        : (vm.selectedExams.isNotEmpty ? vm.selectedExams.first.examId : null);
+
     final cards = [
       _StatCardVm(
         icon: Icons.event_available_rounded,
         iconColor: const Color(0xFF31459B),
         value: vm.testsAttended.toString(),
         label: 'Tests Attended',
+        onTap: () {
+          if (resolvedExamId == null || resolvedExamId.isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Please select an exam first')),
+            );
+            return;
+          }
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => TestHistoryScreen(initialExamId: resolvedExamId),
+            ),
+          );
+        },
       ),
       _StatCardVm(
         icon: Icons.workspace_premium_rounded,
         iconColor: const Color(0xFF16A34A),
         value: vm.bestRank == null ? '--' : '#${vm.bestRank}',
         label: 'Best Rank',
+        onTap: () {
+          if (resolvedExamId == null || resolvedExamId.isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Please select an exam first')),
+            );
+            return;
+          }
+          final navState = MainNavigation.maybeOf(context);
+          if (navState != null) {
+            navState.switchToTab(
+              3,
+              analyticsExamId: resolvedExamId,
+              analyticsTabIndex: 1,
+            );
+            return;
+          }
+
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => MainNavigation(
+                initialIndex: 3,
+                initialAnalyticsExamId: resolvedExamId,
+                initialAnalyticsTabIndex: 1,
+              ),
+            ),
+          );
+        },
       ),
       _StatCardVm(
         icon: Icons.stars_rounded,
         iconColor: const Color(0xFFF97316),
         value: vm.bestScoreText,
         label: 'Best Score',
+        onTap: () {
+          if (resolvedExamId == null || resolvedExamId.isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Please select an exam first')),
+            );
+            return;
+          }
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => SubjectInsightsScreen(examId: resolvedExamId),
+            ),
+          );
+        },
       ),
     ];
 
@@ -1093,10 +1130,7 @@ class _SelectExamHomeState extends State<SelectExamHome> {
         return Expanded(
           child: Padding(
             padding: EdgeInsets.only(right: card == cards.last ? 0 : 12),
-            child: SizedBox(
-              height: 146,
-              child: _buildStatCard(card),
-            ),
+            child: SizedBox(height: 146, child: _buildStatCard(card)),
           ),
         );
       }).toList(),
@@ -1104,7 +1138,7 @@ class _SelectExamHomeState extends State<SelectExamHome> {
   }
 
   Widget _buildStatCard(_StatCardVm vm) {
-    return Container(
+    final child = Container(
       height: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1137,6 +1171,19 @@ class _SelectExamHomeState extends State<SelectExamHome> {
             ),
           ),
         ],
+      ),
+    );
+
+    if (vm.onTap == null) {
+      return child;
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: vm.onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: child,
       ),
     );
   }
@@ -1242,7 +1289,8 @@ class _SelectExamHomeState extends State<SelectExamHome> {
   }
 
   Widget _buildEmptyFeaturedCard({
-    String message = 'No featured practice items available for your selected exam yet.',
+    String message =
+        'No featured practice items available for your selected exam yet.',
   }) {
     return Container(
       width: double.infinity,
@@ -1251,10 +1299,7 @@ class _SelectExamHomeState extends State<SelectExamHome> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(
-        message,
-        style: const TextStyle(color: Color(0xFF64748B)),
-      ),
+      child: Text(message, style: const TextStyle(color: Color(0xFF64748B))),
     );
   }
 
@@ -1292,9 +1337,9 @@ class _SelectExamHomeState extends State<SelectExamHome> {
       final rawQuotes = data?['quote_list'];
       final quotes = rawQuotes is Iterable
           ? rawQuotes
-              .map((item) => item?.toString().trim() ?? '')
-              .where((item) => item.isNotEmpty)
-              .toList()
+                .map((item) => item?.toString().trim() ?? '')
+                .where((item) => item.isNotEmpty)
+                .toList()
           : _fallbackQuotes;
       return _quoteForDate(quotes);
     } catch (_) {
@@ -1320,7 +1365,8 @@ class _SelectExamHomeState extends State<SelectExamHome> {
   }
 
   int _dailyQuoteIndex(DateTime date, int length) {
-    final dayNumber = date.millisecondsSinceEpoch ~/ Duration.millisecondsPerDay;
+    final dayNumber =
+        date.millisecondsSinceEpoch ~/ Duration.millisecondsPerDay;
     final seededValue = (dayNumber * 1103515245 + 12345) & 0x7fffffff;
     return seededValue % length;
   }
@@ -1378,6 +1424,34 @@ class _SelectExamHomeState extends State<SelectExamHome> {
     final count = data['paperCount'] ?? data['count'];
     return count?.toString() ?? 'Practice';
   }
+
+  Map<String, dynamic>? _goalDataForExam(
+    Map<String, dynamic> userData,
+    String? examId,
+  ) {
+    final normalizedExamId = (examId ?? '').trim();
+    if (normalizedExamId.isNotEmpty) {
+      final rawExamGoals = userData['examGoals'];
+      if (rawExamGoals is Map) {
+        final goalForExam = rawExamGoals[normalizedExamId];
+        if (goalForExam is Map) {
+          return Map<String, dynamic>.from(goalForExam);
+        }
+      }
+    }
+
+    final legacyGoal = userData['currentGoal'];
+    if (legacyGoal is! Map) return null;
+
+    final mappedLegacyGoal = Map<String, dynamic>.from(legacyGoal);
+    final legacyExamId = (mappedLegacyGoal['examId'] ?? '').toString().trim();
+    if (normalizedExamId.isEmpty ||
+        legacyExamId.isEmpty ||
+        legacyExamId == normalizedExamId) {
+      return mappedLegacyGoal;
+    }
+    return null;
+  }
 }
 
 class _HomeVm {
@@ -1390,6 +1464,7 @@ class _HomeVm {
     required this.bestRank,
     required this.bestScoreText,
     required this.currentGoal,
+    required this.hasAvailablePlans,
     required this.featuredMockTests,
     required this.featuredPyqs,
   });
@@ -1402,8 +1477,315 @@ class _HomeVm {
   final int? bestRank;
   final String bestScoreText;
   final _GoalVm? currentGoal;
+  final bool hasAvailablePlans;
   final List<_FeaturedCardVm> featuredMockTests;
   final List<_FeaturedCardVm> featuredPyqs;
+}
+
+class _EditGoalDialog extends StatefulWidget {
+  const _EditGoalDialog({
+    required this.userId,
+    required this.activeExamId,
+    required this.activeExam,
+    required this.goal,
+    required this.messenger,
+    required this.parentContext,
+    required this.formatGoalDate,
+  });
+
+  final String userId;
+  final String activeExamId;
+  final _ExamCardVm? activeExam;
+  final _GoalVm? goal;
+  final ScaffoldMessengerState messenger;
+  final BuildContext parentContext;
+  final String Function(DateTime value) formatGoalDate;
+
+  @override
+  State<_EditGoalDialog> createState() => _EditGoalDialogState();
+}
+
+class _EditGoalDialogState extends State<_EditGoalDialog> {
+  late final TextEditingController _titleController;
+  late final TextEditingController _descriptionController;
+  late DateTime? _selectedDate;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(
+      text: widget.goal?.title ?? widget.activeExam?.title ?? '',
+    );
+    _descriptionController = TextEditingController(
+      text:
+          widget.goal?.description ??
+          widget.activeExam?.description ??
+          'Add a goal description to stay focused.',
+    );
+    _selectedDate = widget.goal?.targetDate;
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    if (_isSaving) return;
+    final today = DateTime.now();
+    final todayDateOnly = DateTime(today.year, today.month, today.day);
+    final pickerInitialDate = _selectedDate == null
+        ? todayDateOnly.add(const Duration(days: 30))
+        : DateTime(
+            _selectedDate!.year,
+            _selectedDate!.month,
+            _selectedDate!.day,
+          );
+    final safeInitialDate = pickerInitialDate.isBefore(todayDateOnly)
+        ? todayDateOnly
+        : pickerInitialDate;
+    final picked = await showDatePicker(
+      context: widget.parentContext,
+      initialDate: safeInitialDate,
+      firstDate: todayDateOnly,
+      lastDate: DateTime(2100),
+    );
+    if (!mounted || picked == null) return;
+    setState(() {
+      _selectedDate = picked;
+    });
+  }
+
+  Future<void> _save() async {
+    if (_isSaving) return;
+    final today = DateTime.now();
+    final todayDateOnly = DateTime(today.year, today.month, today.day);
+    final normalizedSelectedDate = _selectedDate == null
+        ? null
+        : DateTime(
+            _selectedDate!.year,
+            _selectedDate!.month,
+            _selectedDate!.day,
+          );
+    if (normalizedSelectedDate != null &&
+        normalizedSelectedDate.isBefore(todayDateOnly)) {
+      widget.messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Goal target date cannot be in the past.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.userId)
+          .set({
+            'examGoals': {
+              widget.activeExamId: {
+                'title': _titleController.text.trim(),
+                'description': _descriptionController.text.trim(),
+                'targetDate': normalizedSelectedDate == null
+                    ? null
+                    : Timestamp.fromDate(normalizedSelectedDate),
+                'examId': widget.activeExamId,
+                'updatedAt': FieldValue.serverTimestamp(),
+              },
+            },
+          }, SetOptions(merge: true));
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+      widget.messenger.showSnackBar(
+        SnackBar(content: Text(e.message ?? 'Unable to save goal right now.')),
+      );
+      setState(() {
+        _isSaving = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      widget.messenger.showSnackBar(
+        const SnackBar(content: Text('Unable to save goal right now.')),
+      );
+      setState(() {
+        _isSaving = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFFF8FAFF),
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      titlePadding: const EdgeInsets.fromLTRB(22, 20, 22, 0),
+      contentPadding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Edit Goal',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF31459B),
+            ),
+          ),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _titleController,
+              decoration: InputDecoration(
+                labelText: 'Goal title',
+                hintText: 'Crack JEE Main 2026',
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Color(0xFFDCE4F5)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Color(0xFFDCE4F5)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(
+                    color: Color(0xFF31459B),
+                    width: 1.5,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _descriptionController,
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: 'Goal description',
+                hintText: 'Complete weekly mocks and revise weak areas.',
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Color(0xFFDCE4F5)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Color(0xFFDCE4F5)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(
+                    color: Color(0xFF31459B),
+                    width: 1.5,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Deadline',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF374151),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              child: InkWell(
+                onTap: _isSaving ? null : _pickDate,
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFDCE4F5)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.calendar_today_rounded,
+                        size: 18,
+                        color: Color(0xFF31459B),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _selectedDate == null
+                              ? 'Select target date'
+                              : widget.formatGoalDate(_selectedDate!),
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: _selectedDate == null
+                                ? const Color(0xFF6B7280)
+                                : const Color(0xFF111827),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isSaving ? null : () => Navigator.of(context).pop(false),
+          style: TextButton.styleFrom(
+            foregroundColor: const Color(0xFF64748B),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          ),
+          child: const Text(
+            'Cancel',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
+        ElevatedButton(
+          onPressed: _isSaving ? null : _save,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF31459B),
+            foregroundColor: Colors.white,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+          child: const Text(
+            'Save',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _HomeStatsVm {
@@ -1450,10 +1832,13 @@ class _GoalVm {
     required _ExamCardVm? fallbackExam,
   }) {
     if (data == null && fallbackExam == null) return null;
-    final title = (data?['title'] ?? fallbackExam?.title ?? '').toString().trim();
-    final description = (data?['description'] ?? fallbackExam?.description ?? '')
+    final title = (data?['title'] ?? fallbackExam?.title ?? '')
         .toString()
         .trim();
+    final description =
+        (data?['description'] ?? fallbackExam?.description ?? '')
+            .toString()
+            .trim();
     final targetDateValue = data?['targetDate'];
     final targetDate = targetDateValue is Timestamp
         ? targetDateValue.toDate()
@@ -1489,12 +1874,14 @@ class _StatCardVm {
     required this.iconColor,
     required this.value,
     required this.label,
+    this.onTap,
   });
 
   final IconData icon;
   final Color iconColor;
   final String value;
   final String label;
+  final VoidCallback? onTap;
 }
 
 class _FeaturedCardVm {

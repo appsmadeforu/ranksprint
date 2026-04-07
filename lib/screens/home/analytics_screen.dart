@@ -69,8 +69,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   void initState() {
     super.initState();
     final initialTabIndex = widget.initialTabIndex.clamp(0, 1);
-    _tabController = TabController(length: 2, vsync: this, initialIndex: initialTabIndex)
-      ..addListener(_handleTabChanged);
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: initialTabIndex,
+    )..addListener(_handleTabChanged);
     _visitedTabs = List<bool>.filled(2, false);
     _visitedTabs[initialTabIndex] = true;
     _liveBlinkController = AnimationController(
@@ -109,6 +112,30 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       selectedExamId = resolvedExamId;
     });
     _prefetchDashboardForSelectedExam();
+  }
+
+  @override
+  void didUpdateWidget(covariant AnalyticsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    final nextTabIndex = widget.initialTabIndex.clamp(0, 1);
+    if (_tabController.index != nextTabIndex) {
+      _tabController.animateTo(nextTabIndex);
+      _visitedTabs[nextTabIndex] = true;
+    }
+
+    final nextExamId = widget.initialExamId;
+    if (nextExamId != null &&
+        nextExamId.isNotEmpty &&
+        nextExamId != selectedExamId &&
+        userExamIds.contains(nextExamId)) {
+      setState(() {
+        selectedExamId = nextExamId;
+        _showDeferredDashboardSections = false;
+        _deferredDashboardKey = null;
+      });
+      _prefetchDashboardForSelectedExam();
+    }
   }
 
   @override
@@ -169,7 +196,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   }
 
   void _scheduleDeferredDashboardSections(String dashboardKey) {
-    if (_deferredDashboardKey == dashboardKey && _showDeferredDashboardSections) {
+    if (_deferredDashboardKey == dashboardKey &&
+        _showDeferredDashboardSections) {
       return;
     }
     _deferredDashboardKey = dashboardKey;
@@ -192,8 +220,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             TopHeader(
               selectedExamId: selectedExamId,
               userExamIds: userExamIds,
-              onExamChanged: (examId) async {
-                await UserExamPreferenceService.savePreferredExamId(examId);
+              onExamChanged: (examId) {
                 if (!mounted) return;
                 setState(() {
                   selectedExamId = examId;
@@ -213,58 +240,58 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
               child: selectedExamId == null
                   ? const Center(child: Text('No exam selected'))
                   : Column(
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(18),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Color(0x120F172A),
-                                    blurRadius: 18,
-                                    offset: Offset(0, 8),
-                                  ),
-                                ],
-                              ),
-                              child: TabBar(
-                                controller: _tabController,
-                                indicator: BoxDecoration(
-                                  color: Color(0xFF263D9A),
-                                  borderRadius: BorderRadius.all(
-                                    Radius.circular(14),
-                                  ),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(18),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x120F172A),
+                                  blurRadius: 18,
+                                  offset: Offset(0, 8),
                                 ),
-                                indicatorSize: TabBarIndicatorSize.tab,
-                                labelColor: Colors.white,
-                                unselectedLabelColor: Color(0xFF67728A),
-                                dividerColor: Colors.transparent,
-                                tabs: [
-                                  Tab(text: 'Dashboard'),
-                                  Tab(text: 'Leaderboard'),
-                                ],
+                              ],
+                            ),
+                            child: TabBar(
+                              controller: _tabController,
+                              indicator: BoxDecoration(
+                                color: Color(0xFF263D9A),
+                                borderRadius: BorderRadius.all(
+                                  Radius.circular(14),
+                                ),
                               ),
+                              indicatorSize: TabBarIndicatorSize.tab,
+                              labelColor: Colors.white,
+                              unselectedLabelColor: Color(0xFF67728A),
+                              dividerColor: Colors.transparent,
+                              tabs: [
+                                Tab(text: 'Dashboard'),
+                                Tab(text: 'Leaderboard'),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 14),
-                          Expanded(
-                             child: IndexedStack(
-                               index: _tabController.index,
-                               children: [
-                                 _visitedTabs[0]
-                                     ? _buildDashboard()
-                                     : const SizedBox.shrink(),
-                                 _visitedTabs[1]
-                                     ? _buildLeaderboard()
-                                     : const SizedBox.shrink(),
-                               ],
-                             ),
-                           ),
-                         ],
-                       ),
-             ),
+                        ),
+                        const SizedBox(height: 14),
+                        Expanded(
+                          child: IndexedStack(
+                            index: _tabController.index,
+                            children: [
+                              _visitedTabs[0]
+                                  ? _buildDashboard()
+                                  : const SizedBox.shrink(),
+                              _visitedTabs[1]
+                                  ? _buildLeaderboard()
+                                  : const SizedBox.shrink(),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
           ],
         ),
       ),
@@ -332,7 +359,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                           ? const SizedBox(
                               width: 24,
                               height: 24,
-                              child: CircularProgressIndicator(strokeWidth: 2.4),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.4,
+                              ),
                             )
                           : const Text('Loading more leaderboard entries...'),
                     ),
@@ -540,8 +569,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       ..bestScore = _toDouble(data['bestScore']) ?? 0
       ..avgScore = _toDouble(data['avgScore']) ?? 0
       ..avgPercentile = _toDouble(data['avgPercentile']) ?? 0;
-    final displayName =
-        _compactLeaderboardName((data['displayName'] ?? userId).toString());
+    final displayName = _compactLeaderboardName(
+      (data['displayName'] ?? userId).toString(),
+    );
     _userNameCache[userId] = displayName;
     return _LeaderboardRow(
       entry: agg,
@@ -3229,10 +3259,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       summary.map((key, value) => MapEntry(key.toString(), value)),
     );
 
-    final trendPoints = _mapList(map['trendPoints'])
-        .map(_trendPointFromMap)
-        .whereType<_TrendPoint>()
-        .toList(growable: false);
+    final trendPoints = _mapList(
+      map['trendPoints'],
+    ).map(_trendPointFromMap).whereType<_TrendPoint>().toList(growable: false);
     final subjects = _mapList(map['subjects'])
         .map(_subjectMetricFromMap)
         .whereType<_SubjectMetric>()
@@ -3245,10 +3274,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         .map(_chapterAttemptMetricFromMap)
         .whereType<_ChapterAttemptMetric>()
         .toList(growable: false);
-    final timeSlices = _mapList(map['timeSlices'])
-        .map(_timeSliceFromMap)
-        .whereType<_TimeSlice>()
-        .toList(growable: false);
+    final timeSlices = _mapList(
+      map['timeSlices'],
+    ).map(_timeSliceFromMap).whereType<_TimeSlice>().toList(growable: false);
     final recommendations = _mapList(map['recommendations'])
         .map(_recommendationFromMap)
         .whereType<_Recommendation>()
@@ -3319,8 +3347,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       'trendPoints': vm.trendPoints.map(_trendPointToMap).toList(),
       'subjects': vm.subjects.map(_subjectMetricToMap).toList(),
       'chapters': vm.chapters.map(_chapterMetricToMap).toList(),
-      'chapterAttempts':
-          vm.chapterAttempts.map(_chapterAttemptMetricToMap).toList(),
+      'chapterAttempts': vm.chapterAttempts
+          .map(_chapterAttemptMetricToMap)
+          .toList(),
       'timeSlices': vm.timeSlices.map(_timeSliceToMap).toList(),
       'timeScoreTrend': vm.timeScoreTrend,
       'timeInsight': vm.timeInsight,
@@ -3335,8 +3364,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       'timeMgmt': vm.timeMgmt,
       'speed': vm.speed,
       'consistencyLabel': vm.consistencyLabel,
-      'recommendations':
-          vm.recommendations.map(_recommendationToMap).toList(),
+      'recommendations': vm.recommendations.map(_recommendationToMap).toList(),
       'gainPotential': vm.gainPotential,
     };
   }
@@ -3415,19 +3443,20 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     return metric;
   }
 
-  Map<String, dynamic> _chapterAttemptMetricToMap(_ChapterAttemptMetric metric) =>
-      {
-        'label': metric.label,
-        'date': Timestamp.fromDate(metric.date),
-        'subject': metric.subject,
-        'chapter': metric.chapter,
-        'accuracy': metric.accuracy,
-        'avgMinutesPerQuestion': metric.avgMinutesPerQuestion,
-        'totalQuestions': metric.totalQuestions,
-        'attempted': metric.attempted,
-        'correct': metric.correct,
-        'skipped': metric.skipped,
-      };
+  Map<String, dynamic> _chapterAttemptMetricToMap(
+    _ChapterAttemptMetric metric,
+  ) => {
+    'label': metric.label,
+    'date': Timestamp.fromDate(metric.date),
+    'subject': metric.subject,
+    'chapter': metric.chapter,
+    'accuracy': metric.accuracy,
+    'avgMinutesPerQuestion': metric.avgMinutesPerQuestion,
+    'totalQuestions': metric.totalQuestions,
+    'attempted': metric.attempted,
+    'correct': metric.correct,
+    'skipped': metric.skipped,
+  };
 
   _ChapterAttemptMetric? _chapterAttemptMetricFromMap(
     Map<String, dynamic> map,
@@ -3878,15 +3907,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         average: avgLeaderboardScore,
         topper: topLeaderboardScore.clamp(0.0, 100.0),
       ),
-      ...subjects.take(4).map(
-        (subject) => _ComparisonRow(
-          label: subject.name,
-          totalLabel: '/ 100',
-          you: subject.accuracy,
-          average: (subject.accuracy * 0.88).clamp(0.0, 100.0),
-          topper: math.min(100.0, subject.accuracy + 12),
-        ),
-      ),
+      ...subjects
+          .take(4)
+          .map(
+            (subject) => _ComparisonRow(
+              label: subject.name,
+              totalLabel: '/ 100',
+              you: subject.accuracy,
+              average: (subject.accuracy * 0.88).clamp(0.0, 100.0),
+              topper: math.min(100.0, subject.accuracy + 12),
+            ),
+          ),
     ];
 
     final rankGapText = myLeaderboardRow == null
@@ -6014,43 +6045,65 @@ class _ExplorerGroupedBarChart extends StatelessWidget {
                 ),
                 Expanded(
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: List.generate(labels.length, (index) {
-                      return Column(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: safeSeries.map((item) {
-                              final point = item.points[index];
-                              final heightFactor = (point.value / maxY)
-                                  .clamp(0.0, 1.0)
-                                  .toDouble();
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 2,
+                      return Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final slotWidth = constraints.maxWidth;
+                            final seriesCount = math.max(1, safeSeries.length);
+                            final gap = slotWidth >= 28
+                                ? 4.0
+                                : slotWidth >= 18
+                                ? 2.0
+                                : 1.0;
+                            final computedBarWidth =
+                                (slotWidth - (gap * (seriesCount - 1))) /
+                                seriesCount;
+                            final barWidth = computedBarWidth.clamp(1.5, 10.0);
+
+                            return Column(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: safeSeries.asMap().entries.map((entry) {
+                                    final item = entry.value;
+                                    final point = item.points[index];
+                                    final heightFactor = (point.value / maxY)
+                                        .clamp(0.0, 1.0)
+                                        .toDouble();
+                                    final isLast = entry.key == safeSeries.length - 1;
+                                    return Padding(
+                                      padding: EdgeInsets.only(
+                                        right: isLast ? 0 : gap,
+                                      ),
+                                      child: Container(
+                                        width: barWidth,
+                                        height: 130 * heightFactor,
+                                        decoration: BoxDecoration(
+                                          color: item.color,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                      ),
+                                    );
+                                  }).toList(),
                                 ),
-                                child: Container(
-                                  width: 10,
-                                  height: 130 * heightFactor,
-                                  decoration: BoxDecoration(
-                                    color: item.color,
-                                    borderRadius: BorderRadius.circular(4),
+                                const SizedBox(height: 8),
+                                Text(
+                                  labels[index],
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 9,
+                                    color: Color(0xFF8C96AF),
                                   ),
                                 ),
-                              );
-                            }).toList(),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            labels[index],
-                            style: const TextStyle(
-                              fontSize: 9,
-                              color: Color(0xFF8C96AF),
-                            ),
-                          ),
-                        ],
+                              ],
+                            );
+                          },
+                        ),
                       );
                     }),
                   ),

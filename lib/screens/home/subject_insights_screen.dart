@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 
 import '../../examSummary/exam_summary_screen.dart';
 import '../../sections/section_bean.dart';
-import '../../sections/section_service.dart';
 import '../../services/exam_metadata_cache_service.dart';
 import '../../services/result_data_service.dart';
 
@@ -21,11 +20,29 @@ class SubjectInsightsScreen extends StatefulWidget {
 
 class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
   final Map<String, String> _testNameCache = <String, String>{};
+  final Map<String, Future<_AttemptMetadataBundle>> _attemptMetadataFutureCache =
+      <String, Future<_AttemptMetadataBundle>>{};
+  final Map<String, Future<Map<String, Map<String, dynamic>>>> _resultMapFutureCache =
+      <String, Future<Map<String, Map<String, dynamic>>>>{};
+  final Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+      _normalizedAttemptsCache =
+      <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+  final Map<String, _SubjectInsightsVmBundle> _vmCache =
+      <String, _SubjectInsightsVmBundle>{};
   final ValueNotifier<_InsightMetric> _metricNotifier = ValueNotifier(
     _InsightMetric.score,
   );
+  final ValueNotifier<_SubjectInsightsVm?> _detailedVmNotifier =
+      ValueNotifier<_SubjectInsightsVm?>(null);
   late final PageController _metricPageController;
   double? _competitionAverageCache;
+  Future<double>? _competitionAverageFuture;
+  String? _activeVmKey;
+  String? _queuedVmKey;
+  _SubjectInsightsVm? _summaryVm;
+  Object? _vmError;
+  bool _isLoadingVm = false;
+  int _vmLoadGeneration = 0;
 
   @override
   void initState() {
@@ -39,6 +56,7 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
   void dispose() {
     _metricPageController.dispose();
     _metricNotifier.dispose();
+    _detailedVmNotifier.dispose();
     super.dispose();
   }
 
@@ -49,11 +67,53 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
         .where('examId', isEqualTo: widget.examId);
   }
 
-  Query<Map<String, dynamic>> _resultsQuery(String userId) {
-    return FirebaseFirestore.instance
-        .collection('results')
-        .where('userId', isEqualTo: userId)
-        .where('examId', isEqualTo: widget.examId);
+  String _attemptsSignature(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
+  ) {
+    return attempts
+        .map((doc) {
+          final data = doc.data();
+          final date = _attemptDate(data)?.millisecondsSinceEpoch ?? 0;
+          return '${doc.id}:$date';
+        })
+        .join('|');
+  }
+
+  String _attemptSnapshotSignature(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    return docs
+        .map((doc) {
+          final data = doc.data();
+          final status = (data['status'] ?? 'completed').toString();
+          final date = _attemptDate(data)?.millisecondsSinceEpoch ?? 0;
+          return '${doc.id}:$status:$date';
+        })
+        .join('|');
+  }
+
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _normalizeAttempts(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    final signature = _attemptSnapshotSignature(docs);
+    final cached = _normalizedAttemptsCache[signature];
+    if (cached != null) return cached;
+
+    final normalized = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
+      docs,
+    ).where((doc) {
+      final data = doc.data();
+      final status = (data['status'] ?? 'completed').toString();
+      return status == 'completed' && _attemptDate(data) != null;
+    }).toList()
+      ..sort((a, b) {
+        final aDate = _attemptDate(a.data()) ?? DateTime(2000);
+        final bDate = _attemptDate(b.data()) ?? DateTime(2000);
+        return aDate.compareTo(bDate);
+      });
+
+    _normalizedAttemptsCache[signature] = normalized;
+    return normalized;
   }
 
   @override
@@ -70,50 +130,35 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
           stream: _attemptsQuery(userId).snapshots(),
           builder: (context, attemptSnap) {
             if (attemptSnap.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return _subjectInsightsSkeleton();
             }
             if (!attemptSnap.hasData || attemptSnap.data!.docs.isEmpty) {
               return _emptyState(context);
             }
 
-            final attempts =
-                List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
-                  attemptSnap.data!.docs,
-                ).where((doc) {
-                  final data = doc.data();
-                  final status = (data['status'] ?? 'completed').toString();
-                  return status == 'completed' && _attemptDate(data) != null;
-                }).toList()..sort((a, b) {
-                  final aDate = _attemptDate(a.data()) ?? DateTime(2000);
-                  final bDate = _attemptDate(b.data()) ?? DateTime(2000);
-                  return aDate.compareTo(bDate);
-                });
+            final attempts = _normalizeAttempts(attemptSnap.data!.docs);
 
-            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: _resultsQuery(userId).snapshots(),
-              builder: (context, resultSnap) {
-                final streamedResultCount = resultSnap.data?.docs.length ?? 0;
-                return FutureBuilder<_SubjectInsightsVm>(
-                  key: ValueKey(
-                    '${widget.examId}:${attempts.length}:$streamedResultCount',
-                  ),
-                  future: _loadVm(userId, attempts),
-                  builder: (context, vmSnap) {
-                    if (vmSnap.connectionState == ConnectionState.waiting &&
-                        !vmSnap.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    if (vmSnap.hasError) {
-                      return _errorState(context);
-                    }
-                    final vm = vmSnap.data;
-                    if (vm == null || vm.attempts.isEmpty) {
-                      return _emptyState(context);
-                    }
-                    return _body(context, vm);
-                  },
-                );
-              },
+            final vmCacheKey =
+                '${widget.examId}:${_attemptsSignature(attempts)}';
+            _ensureVmLoaded(vmCacheKey, userId, attempts);
+
+            final cachedBundle = _vmCache[vmCacheKey];
+            final summaryVm = _activeVmKey == vmCacheKey
+                ? (_summaryVm ?? cachedBundle?.summaryVm)
+                : cachedBundle?.summaryVm;
+            if (summaryVm == null && _isLoadingVm) {
+              return _subjectInsightsSkeleton();
+            }
+            if (summaryVm == null && _vmError != null) {
+              return _errorState(context);
+            }
+            if (summaryVm == null || summaryVm.attempts.isEmpty) {
+              return _subjectInsightsSkeleton();
+            }
+            return _body(
+              context,
+              summaryVm,
+              cachedDetailedVm: cachedBundle?.detailedVm,
             );
           },
         ),
@@ -121,7 +166,106 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     );
   }
 
-  Widget _body(BuildContext context, _SubjectInsightsVm vm) {
+  void _ensureVmLoaded(
+    String vmCacheKey,
+    String userId,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
+  ) {
+    final cachedVm = _vmCache[vmCacheKey];
+    if (cachedVm != null) {
+      return;
+    }
+    if (_activeVmKey == vmCacheKey || _queuedVmKey == vmCacheKey) return;
+    _queuedVmKey = vmCacheKey;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _queuedVmKey != vmCacheKey) return;
+      _queuedVmKey = null;
+      _startVmLoad(vmCacheKey, userId, attempts);
+    });
+  }
+
+  Future<void> _startVmLoad(
+    String vmCacheKey,
+    String userId,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
+  ) async {
+    final generation = ++_vmLoadGeneration;
+    final shouldClearCurrentVm = _activeVmKey == null;
+    setState(() {
+      _activeVmKey = vmCacheKey;
+      if (shouldClearCurrentVm) {
+        _summaryVm = null;
+      }
+      _vmError = null;
+      _isLoadingVm = true;
+    });
+    _detailedVmNotifier.value = null;
+
+    try {
+      final summaryVm = await _loadSummaryVm(vmCacheKey, userId, attempts);
+      if (!mounted || generation != _vmLoadGeneration) return;
+      setState(() {
+        _summaryVm = summaryVm;
+        _vmCache[vmCacheKey] = _SubjectInsightsVmBundle(summaryVm: summaryVm);
+        _isLoadingVm = false;
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || generation != _vmLoadGeneration) return;
+        _startDeferredVmLoad(
+          generation,
+          vmCacheKey,
+          userId,
+          attempts,
+          summaryVm,
+        );
+      });
+    } catch (error) {
+      if (!mounted || generation != _vmLoadGeneration) return;
+      setState(() {
+        _vmError = error;
+        _isLoadingVm = false;
+        if (_summaryVm == null) {
+          _activeVmKey = null;
+        }
+      });
+    }
+  }
+
+  Future<void> _startDeferredVmLoad(
+    int generation,
+    String vmCacheKey,
+    String userId,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
+    _SubjectInsightsVm summaryVm,
+  ) async {
+    if (!summaryVm.needsDetailedRebuild) return;
+    try {
+      final detailedVm = await _loadDetailedVm(
+        vmCacheKey,
+        userId,
+        attempts,
+        summaryVm,
+      );
+      if (!mounted || generation != _vmLoadGeneration) return;
+      final cachedSummaryVm = _vmCache[vmCacheKey]?.summaryVm ?? _summaryVm;
+      if (cachedSummaryVm != null) {
+        _vmCache[vmCacheKey] = _SubjectInsightsVmBundle(
+          summaryVm: cachedSummaryVm,
+          detailedVm: detailedVm,
+        );
+      }
+      _detailedVmNotifier.value = detailedVm;
+    } catch (_) {
+      // Keep the summary VM on screen if deferred enrichment fails.
+    }
+  }
+
+  Widget _body(
+    BuildContext context,
+    _SubjectInsightsVm summaryVm, {
+    _SubjectInsightsVm? cachedDetailedVm,
+  }) {
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
@@ -137,17 +281,17 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                     Expanded(
                       child: _statCard(
                         label: 'Latest Score',
-                        value: vm.latestScore.toStringAsFixed(0),
-                        change: _scoreHeadlineChange(vm),
-                        positive: vm.scoreGrowth >= 0,
+                        value: summaryVm.latestScore.toStringAsFixed(0),
+                        change: _scoreHeadlineChange(summaryVm),
+                        positive: summaryVm.scoreGrowth >= 0,
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: _statCard(
                         label: 'Best Score',
-                        value: vm.bestScore.toStringAsFixed(0),
-                        change: vm.bestScoreContext,
+                        value: summaryVm.bestScore.toStringAsFixed(0),
+                        change: summaryVm.bestScoreContext,
                         positive: true,
                       ),
                     ),
@@ -155,9 +299,9 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                     Expanded(
                       child: _statCard(
                         label: 'Total Growth',
-                        value: _scoreGrowthValue(vm),
-                        change: vm.scoreGrowthContext,
-                        positive: vm.scoreGrowth >= 0,
+                        value: _scoreGrowthValue(summaryVm),
+                        change: summaryVm.scoreGrowthContext,
+                        positive: summaryVm.scoreGrowth >= 0,
                       ),
                     ),
                   ],
@@ -166,12 +310,25 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                 ValueListenableBuilder<_InsightMetric>(
                   valueListenable: _metricNotifier,
                   builder: (context, metric, child) {
-                    return Column(
-                      children: [
-                        _metricTabs(metric),
-                        const SizedBox(height: 14),
-                        _trendCard(vm, metric),
-                      ],
+                    return ValueListenableBuilder<_SubjectInsightsVm?>(
+                      valueListenable: _detailedVmNotifier,
+                      builder: (context, detailedVm, _) {
+                        final effectiveDetailedVm =
+                            detailedVm ??
+                            (_activeVmKey == null ? cachedDetailedVm : null) ??
+                            cachedDetailedVm;
+                        return Column(
+                          children: [
+                            _metricTabs(metric),
+                            const SizedBox(height: 14),
+                            _trendCard(
+                              summaryVm,
+                              metric,
+                              detailedVm: effectiveDetailedVm,
+                            ),
+                          ],
+                        );
+                      },
                     );
                   },
                 ),
@@ -191,11 +348,57 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
         ),
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(14, 0, 14, 18),
-          sliver: SliverList.builder(
-            itemCount: vm.attempts.length,
-            itemBuilder: (context, index) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _attemptCard(vm.attempts[index]),
+          sliver: ValueListenableBuilder<_SubjectInsightsVm?>(
+            valueListenable: _detailedVmNotifier,
+            builder: (context, detailedVm, _) {
+              final effectiveVm =
+                  detailedVm ??
+                  (_activeVmKey == null ? cachedDetailedVm : null) ??
+                  cachedDetailedVm ??
+                  summaryVm;
+              return SliverList.builder(
+                itemCount: effectiveVm.attempts.length,
+                itemBuilder: (context, index) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _attemptCard(effectiveVm.attempts[index]),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _subjectInsightsSkeleton() {
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                _SubjectInsightsSkeletonHeader(),
+                SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(child: _SubjectInsightsSkeletonCard(height: 90)),
+                    SizedBox(width: 10),
+                    Expanded(child: _SubjectInsightsSkeletonCard(height: 90)),
+                    SizedBox(width: 10),
+                    Expanded(child: _SubjectInsightsSkeletonCard(height: 90)),
+                  ],
+                ),
+                SizedBox(height: 14),
+                _SubjectInsightsSkeletonCard(height: 320),
+                SizedBox(height: 14),
+                _SkeletonBlock(width: 100, height: 18),
+                SizedBox(height: 10),
+                _SubjectInsightsSkeletonCard(height: 120),
+                SizedBox(height: 10),
+                _SubjectInsightsSkeletonCard(height: 120),
+              ],
             ),
           ),
         ),
@@ -353,7 +556,11 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     );
   }
 
-  Widget _trendCard(_SubjectInsightsVm vm, _InsightMetric metric) {
+  Widget _trendCard(
+    _SubjectInsightsVm summaryVm,
+    _InsightMetric metric, {
+    _SubjectInsightsVm? detailedVm,
+  }) {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
       decoration: BoxDecoration(
@@ -381,7 +588,11 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                 final pageMetric = _InsightMetric.values[index];
                 return AnimatedSwitcher(
                   duration: const Duration(milliseconds: 220),
-                  child: _trendCardPage(vm, pageMetric),
+                  child: _trendCardPage(
+                    summaryVm,
+                    pageMetric,
+                    detailedVm: detailedVm,
+                  ),
                 );
               },
             ),
@@ -391,7 +602,15 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     );
   }
 
-  Widget _trendCardPage(_SubjectInsightsVm vm, _InsightMetric metric) {
+  Widget _trendCardPage(
+    _SubjectInsightsVm summaryVm,
+    _InsightMetric metric, {
+    _SubjectInsightsVm? detailedVm,
+  }) {
+    final subjectsLoading =
+        metric == _InsightMetric.subjects &&
+        (detailedVm == null || detailedVm.subjectSeries.isEmpty);
+    final displayVm = subjectsLoading ? summaryVm : (detailedVm ?? summaryVm);
     return Column(
       key: ValueKey(metric),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -400,7 +619,7 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
           metric == _InsightMetric.rank
               ? 'Rank Trend'
               : metric == _InsightMetric.subjects
-              ? _subjectTrendTitle(vm)
+              ? _subjectTrendTitle(displayVm)
               : 'Score Trend',
           style: const TextStyle(
             fontSize: 13,
@@ -413,26 +632,31 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
           metric == _InsightMetric.rank
               ? 'Lower rank is better across your recent attempts'
               : metric == _InsightMetric.subjects
-              ? _subjectTrendSubtitle(vm)
+              ? _subjectTrendSubtitle(displayVm)
               : '',
           style: const TextStyle(fontSize: 10, color: Color(0xFF97A1BA)),
         ),
         SizedBox(height: metric == _InsightMetric.score ? 8 : 12),
         Expanded(
-          child: _InsightTrendChart(
-            points: vm.points,
-            metric: metric,
-            comparisonValue: vm.comparisonValue(metric),
-            subjectSeries: vm.subjectSeries,
-          ),
+          child: subjectsLoading
+              ? const _SubjectTrendInlineSkeleton()
+              : _InsightTrendChart(
+                  points: displayVm.points,
+                  metric: metric,
+                  comparisonValue: displayVm.comparisonValue(metric),
+                  subjectSeries: displayVm.subjectSeries,
+                ),
         ),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 12,
-          runSpacing: 6,
-          alignment: WrapAlignment.center,
-          children: _buildLegendItems(vm, metric),
-        ),
+        if (subjectsLoading)
+          const _SubjectTrendLegendSkeleton()
+        else
+          Wrap(
+            spacing: 12,
+            runSpacing: 6,
+            alignment: WrapAlignment.center,
+            children: _buildLegendItems(displayVm, metric),
+          ),
       ],
     );
   }
@@ -726,7 +950,7 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                               )
                             : ListView.separated(
                          itemCount: attempt.subjectBreakdown.length,
-                         separatorBuilder: (_, __) => const SizedBox(height: 14),
+                         separatorBuilder: (_, _) => const SizedBox(height: 14),
                          itemBuilder: (context, index) {
                            final subject = attempt.subjectBreakdown[index];
                           return Column(
@@ -895,31 +1119,31 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
   }
 
   Future<_SubjectInsightsVm> _loadVm(
+    String vmCacheKey,
     String userId,
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
-  ) async {
-    final resultMap = await ResultDataService.loadResultsMap(
-      attempts: attempts,
-      userId: userId,
-      examId: widget.examId,
-    );
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts, {
+    Map<String, Map<String, dynamic>>? resultMap,
+  }) async {
+    final resolvedResultMap =
+        resultMap ??
+        await _loadResultMap(vmCacheKey, userId, attempts);
     final competitionAverage = await _competitionAverage();
     final overallSubjects = <String, _SubjectMetric>{};
     final points = <_InsightPoint>[];
     final attemptCards = <_AttemptInsight>[];
-    final computedAttempts = <_ComputedAttemptInsight>[];
-    for (final entry in attempts.asMap().entries) {
-      try {
-        final computed = await _buildAttemptInsight(
-          entry.key,
-          entry.value,
-          resultMap[entry.value.id] ?? const <String, dynamic>{},
-        );
-        computedAttempts.add(computed);
-      } catch (_) {
-        // Skip malformed attempts instead of crashing the whole screen.
-      }
-    }
+    final computedAttempts = (await Future.wait<_ComputedAttemptInsight?>(
+      attempts.asMap().entries.map((entry) async {
+        try {
+          return await _buildAttemptInsight(
+            entry.key,
+            entry.value,
+            resolvedResultMap[entry.value.id] ?? const <String, dynamic>{},
+          );
+        } catch (_) {
+          return null;
+        }
+      }),
+    )).whereType<_ComputedAttemptInsight>().toList();
 
     double previousScore = 0;
     double previousSubjectAverage = 0;
@@ -1054,6 +1278,7 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
       scoreGrowthContext: '${attempts.length} score snapshots analyzed',
       rankGrowthContext: '${attemptCards.where((attempt) => attempt.rank > 0).length} ranked tests analyzed',
       subjectGrowthContext: '${topSubjects.length} tracked subjects across ${attempts.length} tests',
+      needsDetailedRebuild: false,
     );
   }
 
@@ -1062,6 +1287,188 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     String testId,
   ) async {
     return ExamMetadataCacheService.getQuestions(examId, testId);
+  }
+
+  Future<_AttemptMetadataBundle> _loadAttemptMetadata(
+    String examId,
+    String testId, {
+    required int fallbackIndex,
+  }) {
+    final key = '$examId|$testId';
+    return _attemptMetadataFutureCache.putIfAbsent(
+      key,
+      () async {
+        final futures = await Future.wait<dynamic>([
+          _loadQuestions(examId, testId),
+          _loadSectionNames(examId, testId),
+          _testName(examId, testId, fallbackIndex: fallbackIndex),
+        ]);
+        return _AttemptMetadataBundle(
+          questions:
+              futures[0] as List<QueryDocumentSnapshot<Map<String, dynamic>>>,
+          sectionNames: futures[1] as Map<String, String>,
+          testName: futures[2] as String,
+        );
+      },
+    );
+  }
+
+  Future<Map<String, Map<String, dynamic>>> _loadResultMap(
+    String cacheKey,
+    String userId,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
+  ) {
+    return _resultMapFutureCache.putIfAbsent(
+      cacheKey,
+      () => ResultDataService.loadResultsMap(
+        attempts: attempts,
+        userId: userId,
+        examId: widget.examId,
+      ),
+    );
+  }
+
+  Future<_SubjectInsightsVm> _loadSummaryVm(
+    String vmCacheKey,
+    String userId,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
+  ) async {
+    final resultMap = await _loadResultMap(vmCacheKey, userId, attempts);
+    final points = <_InsightPoint>[];
+    final attemptCards = <_AttemptInsight>[];
+    final testNames = await Future.wait<String>(
+      attempts.asMap().entries.map(
+        (entry) => _testName(
+          (entry.value.data()['examId'] ?? '').toString(),
+          (entry.value.data()['testId'] ?? '').toString(),
+          fallbackIndex: entry.key + 1,
+        ),
+      ),
+    );
+
+    double previousScore = 0;
+    int previousRank = 0;
+
+    for (final entry in attempts.asMap().entries) {
+      final attempt = entry.value.data();
+      final result = resultMap[entry.value.id] ?? const <String, dynamic>{};
+      final date = _attemptDate(attempt) ?? DateTime.now();
+      final score = _scoreValue(attempt, result);
+      final rank = _toInt(result['rank']) ?? _toInt(attempt['rank']) ?? 0;
+      final accuracyPercent = _accuracyPercent(attempt, result);
+      final percentile =
+          (_toDouble(result['percentile']) ?? accuracyPercent).clamp(0.0, 100.0);
+      final testName = testNames[entry.key];
+
+      points.add(
+        _InsightPoint(
+          label: 'T${entry.key + 1}',
+          date: date,
+          score: score,
+          rank: rank,
+          subjectAverage: 0,
+          coverage: 0,
+          subjectScores: const <String, double>{},
+        ),
+      );
+      attemptCards.add(
+        _AttemptInsight(
+          id: entry.value.id,
+          testName: testName,
+          date: date,
+          score: score,
+          scoreOutOf: _summaryScoreOutOf(attempt, result),
+          scoreDelta: entry.key == 0 ? 0 : score - previousScore,
+          rank: rank,
+          rankDelta: entry.key == 0 || rank == 0 || previousRank == 0
+              ? 0
+              : rank - previousRank,
+          percentile: percentile,
+          subjectAverage: 0,
+          subjectDelta: 0,
+          bestSubject: 'General',
+          focusSubject: 'General',
+          subjectCount: 0,
+          subjectBreakdown: const <_AttemptSubjectBreakdown>[],
+          attemptData: attempt,
+          resultData: result,
+        ),
+      );
+
+      previousScore = score;
+      previousRank = rank == 0 ? previousRank : rank;
+    }
+
+    final latest = points.isEmpty ? null : points.last;
+    final first = points.isEmpty ? null : points.first;
+    final scoredAttempts = attemptCards.reversed.toList();
+    final bestScore = points.isEmpty
+        ? 0.0
+        : points.map((point) => point.score).reduce(math.max);
+    final bestScoreAttempt = attemptCards.isEmpty
+        ? null
+        : attemptCards.reduce((a, b) => a.score >= b.score ? a : b);
+    final bestRankAttempt = attemptCards.where((attempt) => attempt.rank > 0).fold<
+      _AttemptInsight?
+    >(
+      null,
+      (best, attempt) =>
+          best == null || attempt.rank < best.rank ? attempt : best,
+    );
+    final rankValues = points
+        .map((point) => point.rank)
+        .where((rank) => rank > 0);
+    final bestRank = rankValues.isEmpty ? 0 : rankValues.reduce(math.min);
+
+    return _SubjectInsightsVm(
+      points: points,
+      attempts: scoredAttempts,
+      topSubjects: const <_SubjectMetric>[],
+      subjectSeries: const <_SubjectSeries>[],
+      latestScore: latest?.score ?? 0,
+      bestScore: bestScore,
+      latestRank: latest?.rank ?? 0,
+      bestRank: bestRank,
+      latestSubjectAverage: 0,
+      bestSubjectAverage: 0,
+      scoreGrowth: (latest?.score ?? 0) - (first?.score ?? 0),
+      rankGrowth: (first?.rank ?? 0) == 0 || (latest?.rank ?? 0) == 0
+          ? 0
+          : (first!.rank - latest!.rank).toDouble(),
+      subjectGrowth: 0,
+      competitionAverage: 0,
+      bestScoreContext: bestScoreAttempt == null
+          ? 'No score record yet'
+          : '${bestScoreAttempt.testName} · ${bestScoreAttempt.dateLabel}',
+      bestRankContext: bestRankAttempt == null
+          ? 'No ranked tests yet'
+          : '${bestRankAttempt.testName} · ${bestRankAttempt.percentileLabel}',
+      bestSubjectContext: 'Loading subject insights...',
+      scoreGrowthContext: '${attempts.length} score snapshots analyzed',
+      rankGrowthContext:
+          '${attemptCards.where((attempt) => attempt.rank > 0).length} ranked tests analyzed',
+      subjectGrowthContext: 'Subject insights loading in background',
+      needsDetailedRebuild: true,
+    );
+  }
+
+  Future<_SubjectInsightsVm> _loadDetailedVm(
+    String vmCacheKey,
+    String userId,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
+    _SubjectInsightsVm summaryVm,
+  ) async {
+    final competitionAverage = await _competitionAverage();
+    final detailedVm = await _loadVm(
+      vmCacheKey,
+      userId,
+      attempts,
+      resultMap: await _loadResultMap(vmCacheKey, userId, attempts),
+    );
+    return detailedVm.copyWith(
+      competitionAverage: competitionAverage,
+      needsDetailedRebuild: false,
+    );
   }
 
   Future<Map<String, String>> _loadSectionNames(String examId, String testId) async {
@@ -1093,25 +1500,35 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
 
   Future<double> _competitionAverage() async {
     if (_competitionAverageCache != null) return _competitionAverageCache!;
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection('results')
-          .where('examId', isEqualTo: widget.examId)
-          .get();
-      if (snap.docs.isEmpty) {
+    final pending = _competitionAverageFuture;
+    if (pending != null) return pending;
+    final future = () async {
+      try {
+        final snap = await FirebaseFirestore.instance
+            .collection('results')
+            .where('examId', isEqualTo: widget.examId)
+            .get();
+        if (snap.docs.isEmpty) {
+          _competitionAverageCache = 0;
+          return 0.0;
+        }
+        final total = snap.docs.fold<double>(
+          0,
+          (runningTotal, doc) =>
+              runningTotal +
+              _platformScore(const <String, dynamic>{}, doc.data()),
+        );
+        _competitionAverageCache = total / snap.docs.length;
+        return _competitionAverageCache!;
+      } catch (_) {
         _competitionAverageCache = 0;
-        return 0;
+        return 0.0;
+      } finally {
+        _competitionAverageFuture = null;
       }
-      final total = snap.docs.fold<double>(
-        0,
-        (sum, doc) => sum + _platformScore(const <String, dynamic>{}, doc.data()),
-      );
-      _competitionAverageCache = total / snap.docs.length;
-      return _competitionAverageCache!;
-    } catch (_) {
-      _competitionAverageCache = 0;
-      return 0;
-    }
+    }();
+    _competitionAverageFuture = future;
+    return future;
   }
 
   Map<String, String> _answersMap(dynamic raw) {
@@ -1142,7 +1559,8 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
   ) {
     final questionMarks = questions.fold<double>(
       0,
-      (sum, qDoc) => sum + (_toDouble(qDoc.data()['marks']) ?? 0),
+      (runningTotal, qDoc) =>
+          runningTotal + (_toDouble(qDoc.data()['marks']) ?? 0),
     );
     if (questionMarks > 0) {
       return questionMarks;
@@ -1159,6 +1577,21 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
         _toDouble(result['score']) ?? _toDouble(attempt['score']);
     if (directScore == null || directScore <= 0) {
       return 100;
+    }
+    return 0;
+  }
+
+  double _summaryScoreOutOf(
+    Map<String, dynamic> attempt,
+    Map<String, dynamic> result,
+  ) {
+    final explicitTotal =
+        _toDouble(result['totalMarks']) ??
+        _toDouble(attempt['totalMarks']) ??
+        _toDouble(result['maxScore']) ??
+        _toDouble(attempt['maxScore']);
+    if (explicitTotal != null && explicitTotal > 0) {
+      return explicitTotal;
     }
     return 0;
   }
@@ -1208,15 +1641,14 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     final data = doc.data();
     final examId = (data['examId'] ?? '').toString();
     final testId = (data['testId'] ?? '').toString();
-    final futures = await Future.wait<dynamic>([
-      _loadQuestions(examId, testId),
-      _loadSectionNames(examId, testId),
-      _testName(examId, testId, fallbackIndex: index + 1),
-    ]);
-    final questions =
-        futures[0] as List<QueryDocumentSnapshot<Map<String, dynamic>>>;
-    final sectionNames = futures[1] as Map<String, String>;
-    final testName = futures[2] as String;
+    final metadata = await _loadAttemptMetadata(
+      examId,
+      testId,
+      fallbackIndex: index + 1,
+    );
+    final questions = metadata.questions;
+    final sectionNames = metadata.sectionNames;
+    final testName = metadata.testName;
 
     final localSubjects = <String, _SubjectMetric>{};
     final answers = _answersMap(data['answers']);
@@ -1289,7 +1721,7 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     final testId = (attempt.attemptData['testId'] ?? '').toString();
     final sections = examId.isEmpty || testId.isEmpty
         ? <SectionBean>[]
-        : await SectionService().getSections(examId, testId);
+        : await ExamMetadataCacheService.getSectionBeans(examId, testId);
     if (!mounted) return;
 
     Navigator.of(context).push(
@@ -1447,6 +1879,7 @@ class _SubjectInsightsVm {
   final String scoreGrowthContext;
   final String rankGrowthContext;
   final String subjectGrowthContext;
+  final bool needsDetailedRebuild;
 
   const _SubjectInsightsVm({
     required this.points,
@@ -1469,7 +1902,56 @@ class _SubjectInsightsVm {
     required this.scoreGrowthContext,
     required this.rankGrowthContext,
     required this.subjectGrowthContext,
+    required this.needsDetailedRebuild,
   });
+
+  _SubjectInsightsVm copyWith({
+    List<_InsightPoint>? points,
+    List<_AttemptInsight>? attempts,
+    List<_SubjectMetric>? topSubjects,
+    List<_SubjectSeries>? subjectSeries,
+    double? latestScore,
+    double? bestScore,
+    int? latestRank,
+    int? bestRank,
+    double? latestSubjectAverage,
+    double? bestSubjectAverage,
+    double? scoreGrowth,
+    double? rankGrowth,
+    double? subjectGrowth,
+    double? competitionAverage,
+    String? bestScoreContext,
+    String? bestRankContext,
+    String? bestSubjectContext,
+    String? scoreGrowthContext,
+    String? rankGrowthContext,
+    String? subjectGrowthContext,
+    bool? needsDetailedRebuild,
+  }) {
+    return _SubjectInsightsVm(
+      points: points ?? this.points,
+      attempts: attempts ?? this.attempts,
+      topSubjects: topSubjects ?? this.topSubjects,
+      subjectSeries: subjectSeries ?? this.subjectSeries,
+      latestScore: latestScore ?? this.latestScore,
+      bestScore: bestScore ?? this.bestScore,
+      latestRank: latestRank ?? this.latestRank,
+      bestRank: bestRank ?? this.bestRank,
+      latestSubjectAverage: latestSubjectAverage ?? this.latestSubjectAverage,
+      bestSubjectAverage: bestSubjectAverage ?? this.bestSubjectAverage,
+      scoreGrowth: scoreGrowth ?? this.scoreGrowth,
+      rankGrowth: rankGrowth ?? this.rankGrowth,
+      subjectGrowth: subjectGrowth ?? this.subjectGrowth,
+      competitionAverage: competitionAverage ?? this.competitionAverage,
+      bestScoreContext: bestScoreContext ?? this.bestScoreContext,
+      bestRankContext: bestRankContext ?? this.bestRankContext,
+      bestSubjectContext: bestSubjectContext ?? this.bestSubjectContext,
+      scoreGrowthContext: scoreGrowthContext ?? this.scoreGrowthContext,
+      rankGrowthContext: rankGrowthContext ?? this.rankGrowthContext,
+      subjectGrowthContext: subjectGrowthContext ?? this.subjectGrowthContext,
+      needsDetailedRebuild: needsDetailedRebuild ?? this.needsDetailedRebuild,
+    );
+  }
 
   double comparisonValue(_InsightMetric metric) {
     switch (metric) {
@@ -1633,6 +2115,28 @@ class _ComputedAttemptInsight {
   });
 }
 
+class _AttemptMetadataBundle {
+  final List<QueryDocumentSnapshot<Map<String, dynamic>>> questions;
+  final Map<String, String> sectionNames;
+  final String testName;
+
+  const _AttemptMetadataBundle({
+    required this.questions,
+    required this.sectionNames,
+    required this.testName,
+  });
+}
+
+class _SubjectInsightsVmBundle {
+  final _SubjectInsightsVm summaryVm;
+  final _SubjectInsightsVm? detailedVm;
+
+  const _SubjectInsightsVmBundle({
+    required this.summaryVm,
+    this.detailedVm,
+  });
+}
+
 class _SubjectMetric {
   final String name;
   int total = 0;
@@ -1675,6 +2179,40 @@ class _LegendDot extends StatelessWidget {
           label,
           style: const TextStyle(fontSize: 10, color: Color(0xFF7A849B)),
         ),
+      ],
+    );
+  }
+}
+
+class _SubjectTrendInlineSkeleton extends StatelessWidget {
+  const _SubjectTrendInlineSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: const [
+        _SkeletonBlock(width: double.infinity, height: 150),
+        SizedBox(height: 12),
+        _SkeletonBlock(width: 180, height: 12),
+      ],
+    );
+  }
+}
+
+class _SubjectTrendLegendSkeleton extends StatelessWidget {
+  const _SubjectTrendLegendSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _SkeletonBlock(width: 70, height: 12),
+        SizedBox(width: 12),
+        _SkeletonBlock(width: 70, height: 12),
+        SizedBox(width: 12),
+        _SkeletonBlock(width: 70, height: 12),
       ],
     );
   }
@@ -2161,6 +2699,75 @@ String _formatDate(DateTime date) {
     'Dec',
   ];
   return '${months[date.month - 1]} ${date.day}';
+}
+
+class _SubjectInsightsSkeletonHeader extends StatelessWidget {
+  const _SubjectInsightsSkeletonHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SkeletonBlock(width: 28, height: 28),
+        SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _SkeletonBlock(width: 190, height: 18),
+              SizedBox(height: 6),
+              _SkeletonBlock(width: 240, height: 12),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SubjectInsightsSkeletonCard extends StatelessWidget {
+  final double height;
+
+  const _SubjectInsightsSkeletonCard({required this.height});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFDCE3F4)),
+      ),
+      child: _SkeletonBlock(width: double.infinity, height: height),
+    );
+  }
+}
+
+class _SkeletonBlock extends StatelessWidget {
+  final double width;
+  final double height;
+
+  const _SkeletonBlock({
+    required this.width,
+    required this.height,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: const Color(0xFFE2E8F0),
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
+  }
 }
 
 Color _subjectColor(String subject) {

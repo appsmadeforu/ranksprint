@@ -111,6 +111,8 @@ class _TestsScreenState extends State<TestsScreen> {
           .doc(examId)
           .get();
 
+      if (!mounted || selectedExamId != examId) return;
+
       final data = doc.data();
       final examPlanIds = SubscriptionAccessService.readPlanIds(data);
 
@@ -122,6 +124,7 @@ class _TestsScreenState extends State<TestsScreen> {
         _examSubscriptionPlanIds = examPlanIds;
       });
     } catch (_) {
+      if (!mounted || selectedExamId != examId) return;
       setState(() {
         _examIsPremium = false;
         _examSubscriptionPlanIds = const [];
@@ -146,8 +149,7 @@ class _TestsScreenState extends State<TestsScreen> {
             TopHeader(
               selectedExamId: selectedExamId,
               userExamIds: userExamIds,
-              onExamChanged: (value) async {
-                await UserExamPreferenceService.savePreferredExamId(value);
+              onExamChanged: (value) {
                 if (!mounted) return;
                 setState(() {
                   selectedExamId = value;
@@ -257,6 +259,7 @@ class _TestsScreenState extends State<TestsScreen> {
             // =======================
             Expanded(
               child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                key: ValueKey('attempts-$selectedExamId'),
                 stream: FirebaseFirestore.instance
                     .collection('testAttempts')
                     .where(
@@ -285,6 +288,7 @@ class _TestsScreenState extends State<TestsScreen> {
                   }
 
                   return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    key: ValueKey('tests-$selectedExamId'),
                     stream: ContentAccessService.publishedTestsQuery(
                       selectedExamId!,
                     ).snapshots(),
