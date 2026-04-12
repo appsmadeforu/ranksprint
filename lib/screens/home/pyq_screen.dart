@@ -3,12 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../services/content_access_service.dart';
-import '../../services/subscription_access_service.dart';
 import '../../services/user_exam_preference_service.dart';
 import '../../widgets/offline_state.dart';
 import '../../widgets/top_header.dart';
 import 'pyq_chapters_screen.dart';
-import 'subscription_screen.dart';
 
 class PyqScreen extends StatefulWidget {
   const PyqScreen({super.key});
@@ -20,10 +18,8 @@ class PyqScreen extends StatefulWidget {
 class _PyqScreenState extends State<PyqScreen> {
   String? selectedExamId;
   List<String> userExamIds = [];
-  Set<String> _userGroupIds = <String>{};
-  Set<String> _activePlanIds = <String>{};
-  List<String> _examSubscriptionPlanIds = const [];
   final Map<String, Future<Map<String, int>>> _subjectPaperCountsFutures = {};
+  int _reloadTick = 0;
 
   @override
   void initState() {
@@ -59,13 +55,8 @@ class _PyqScreenState extends State<PyqScreen> {
     if (!mounted) return;
     setState(() {
       userExamIds = exams;
-      _userGroupIds = ContentAccessService.readUserGroupIds(doc.data());
       selectedExamId = preferredExamId;
     });
-
-    if (selectedExamId != null) {
-      await _loadExamAccess(selectedExamId!);
-    }
   }
 
   void _handlePreferredExamChanged() {
@@ -81,25 +72,6 @@ class _PyqScreenState extends State<PyqScreen> {
     setState(() {
       selectedExamId = preferredExamId;
     });
-    _loadExamAccess(preferredExamId);
-  }
-
-  Future<void> _loadExamAccess(String examId) async {
-    final activePlanIds =
-        await SubscriptionAccessService.getCurrentUserActivePlanIds();
-    final examDoc = await FirebaseFirestore.instance
-        .collection('exams')
-        .doc(examId)
-        .get();
-
-    if (!mounted) return;
-
-    setState(() {
-      _activePlanIds = activePlanIds;
-      _examSubscriptionPlanIds = SubscriptionAccessService.readPlanIds(
-        examDoc.data(),
-      );
-    });
   }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> _getPyqs(String examId) {
@@ -113,20 +85,16 @@ class _PyqScreenState extends State<PyqScreen> {
     return _subjectPaperCountsFutures.putIfAbsent(examId, () async {
       final countEntries = await Future.wait(
         subjects.map((subject) async {
-          final snapshot = await ContentAccessService.publishedPyqChaptersQuery(
-            examId: examId,
-            subjectId: subject.id,
-          ).get();
+          final snapshot = await FirebaseFirestore.instance
+              .collection('exams')
+              .doc(examId)
+              .collection('pyqs')
+              .doc(subject.id)
+              .collection('chapters')
+              .get();
           var total = 0;
           for (final doc in snapshot.docs) {
             final data = doc.data();
-            if (!ContentAccessService.isVisibleToUser(
-              itemData: data,
-              userId: FirebaseAuth.instance.currentUser?.uid,
-              userGroupIds: _userGroupIds,
-            )) {
-              continue;
-            }
             total += _readCount(
               data['questionCount'] ?? data['paperCount'] ?? data['count'],
             );
@@ -144,24 +112,16 @@ class _PyqScreenState extends State<PyqScreen> {
     return int.tryParse(value.toString()) ?? 0;
   }
 
-  void _openSubscription({
-    required List<String> requiredPlanIds,
-    required String itemLabel,
-    required String itemType,
-  }) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => SubscriptionScreen(
-          initialExamId: selectedExamId,
-          initialPlanId: requiredPlanIds.isNotEmpty
-              ? requiredPlanIds.first
-              : null,
-          lockedItemLabel: itemLabel,
-          lockedItemType: itemType,
-        ),
-      ),
-    );
+  void _retryLoad({String? examId}) {
+    if (!mounted) return;
+    setState(() {
+      if (examId == null) {
+        _subjectPaperCountsFutures.clear();
+      } else {
+        _subjectPaperCountsFutures.remove(examId);
+      }
+      _reloadTick++;
+    });
   }
 
   @override
@@ -184,7 +144,6 @@ class _PyqScreenState extends State<PyqScreen> {
                 onExamChanged: (id) {
                   if (!mounted) return;
                   setState(() => selectedExamId = id);
-                  _loadExamAccess(id);
                 },
               ),
               const SizedBox(height: 8),
@@ -192,12 +151,18 @@ class _PyqScreenState extends State<PyqScreen> {
                 child: effectiveSelectedExamId == null
                     ? const Center(child: Text("No exam selected"))
                     : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                        key: ValueKey(
+                          'pyq-stream-$effectiveSelectedExamId-$_reloadTick',
+                        ),
                         stream: _getPyqs(effectiveSelectedExamId),
                         builder: (context, snapshot) {
                           if (snapshot.hasError) {
-                            return const OfflineState(
+                            return OfflineState(
                               message:
                                   'Could not load PYQs. Please check your connection and try again.',
+                              onRetry: () => _retryLoad(
+                                examId: effectiveSelectedExamId,
+                              ),
                             );
                           }
                           if (!snapshot.hasData) {
@@ -206,9 +171,7 @@ class _PyqScreenState extends State<PyqScreen> {
                             );
                           }
 
-                           final docs = snapshot.data!.docs
-                               .where(_isPublishedPyq)
-                               .toList()
+                           final docs = snapshot.data!.docs.toList()
                              ..sort(ContentAccessService.compareCreatedAtAsc);
 
                           if (docs.isEmpty) {
@@ -216,15 +179,21 @@ class _PyqScreenState extends State<PyqScreen> {
                           }
 
                            return FutureBuilder<Map<String, int>>(
+                              key: ValueKey(
+                                'pyq-counts-$effectiveSelectedExamId-$_reloadTick',
+                              ),
                               future: _loadSubjectQuestionCounts(
                                 effectiveSelectedExamId,
                                 docs,
                               ),
                              builder: (context, countsSnapshot) {
                                if (countsSnapshot.hasError) {
-                                 return const OfflineState(
+                                 return OfflineState(
                                    message:
                                        'Could not load PYQ details. Please check your connection and try again.',
+                                   onRetry: () => _retryLoad(
+                                     examId: effectiveSelectedExamId,
+                                   ),
                                  );
                                }
                                 final questionCounts =
@@ -265,20 +234,9 @@ class _PyqScreenState extends State<PyqScreen> {
                                              itemBuilder: (context, index) {
                                                final doc = docs[index];
                                                final title = doc['name'] ?? doc.id;
-                                               final data = doc.data();
-                                               final access =
-                                                   ContentAccessService.resolveAccess(
-                                                     itemData: data,
-                                                     examPlanIds:
-                                                         _examSubscriptionPlanIds,
-                                                     activePlanIds: _activePlanIds,
-                                                   );
-                                               final requiredPlanIds =
-                                                   access.requiredPlanIds;
-                                               final isLocked = access.isLocked;
-                                               final questionCount =
-                                                   questionCounts[doc.id] ?? 0;
-                                               return Container(
+                                                final questionCount =
+                                                    questionCounts[doc.id] ?? 0;
+                                                return Container(
                                                  margin: const EdgeInsets.only(
                                                    bottom: 16,
                                                  ),
@@ -293,30 +251,22 @@ class _PyqScreenState extends State<PyqScreen> {
                                                      splashColor: const Color(
                                                        0xFF2F6FEB,
                                                      ).withValues(alpha: 0.1),
-                                                     onTap: isLocked
-                                                         ? () => _openSubscription(
-                                                               requiredPlanIds:
-                                                                   requiredPlanIds,
-                                                               itemLabel:
-                                                                   title.toString(),
-                                                               itemType: 'pyq',
-                                                             )
-                                                         : () {
-                                                             Navigator.push(
-                                                               context,
-                                                               MaterialPageRoute(
-                                                                 builder: (_) =>
-                                                                     PyqChaptersScreen(
-                                                                       examId:
-                                                                           effectiveSelectedExamId,
-                                                                       subjectId:
-                                                                           doc.id,
-                                                                       subjectName:
-                                                                           title,
-                                                                     ),
-                                                               ),
-                                                             );
-                                                           },
+                                                      onTap: () {
+                                                        Navigator.push(
+                                                          context,
+                                                          MaterialPageRoute(
+                                                            builder: (_) =>
+                                                                PyqChaptersScreen(
+                                                                  examId:
+                                                                      effectiveSelectedExamId,
+                                                                  subjectId:
+                                                                      doc.id,
+                                                                  subjectName:
+                                                                      title,
+                                                                ),
+                                                          ),
+                                                        );
+                                                      },
                                                      child: Padding(
                                                        padding:
                                                            const EdgeInsets.all(18),
@@ -334,13 +284,11 @@ class _PyqScreenState extends State<PyqScreen> {
                                                                      14,
                                                                    ),
                                                              ),
-                                                             child: Icon(
-                                                               isLocked
-                                                                   ? Icons.lock_outline
-                                                                   : Icons.menu_book,
-                                                               color: const Color(
-                                                                 0xFF2F6FEB,
-                                                               ),
+                                                              child: Icon(
+                                                                Icons.menu_book,
+                                                                color: const Color(
+                                                                  0xFF2F6FEB,
+                                                                ),
                                                              ),
                                                            ),
                                                            const SizedBox(width: 16),
@@ -376,21 +324,6 @@ class _PyqScreenState extends State<PyqScreen> {
                                                                ],
                                                              ),
                                                            ),
-                                                           Text(
-                                                             isLocked
-                                                                 ? 'Unlock'
-                                                                 : 'Open',
-                                                             style: TextStyle(
-                                                               fontSize: 12,
-                                                               fontWeight:
-                                                                   FontWeight.w600,
-                                                               color: isLocked
-                                                                   ? const Color(
-                                                                       0xFFF37A1C,
-                                                                     )
-                                                                   : Colors.grey,
-                                                             ),
-                                                           ),
                                                          ],
                                                        ),
                                                      ),
@@ -417,12 +350,4 @@ class _PyqScreenState extends State<PyqScreen> {
     );
   }
 
-  bool _isPublishedPyq(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data();
-    return ContentAccessService.isVisibleToUser(
-      itemData: data,
-      userId: FirebaseAuth.instance.currentUser?.uid,
-      userGroupIds: _userGroupIds,
-    );
-  }
 }

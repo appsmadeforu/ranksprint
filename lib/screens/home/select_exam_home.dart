@@ -34,6 +34,16 @@ class _SelectExamHomeState extends State<SelectExamHome> {
   ];
   Future<_HomeVm>? _homeVmFuture;
   String _homeVmSignature = '';
+  int _reloadTick = 0;
+
+  void _retryHomeLoad() {
+    if (!mounted) return;
+    setState(() {
+      _homeVmFuture = null;
+      _homeVmSignature = '';
+      _reloadTick++;
+    });
+  }
   Future<void> _removeExam(String examId) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -479,6 +489,7 @@ class _SelectExamHomeState extends State<SelectExamHome> {
       backgroundColor: const Color(0xFFF5F6FA),
       body: SafeArea(
         child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          key: ValueKey('select-exam-home-${user.uid}-$_reloadTick'),
           stream: FirebaseFirestore.instance
               .collection('users')
               .doc(user.uid)
@@ -488,13 +499,7 @@ class _SelectExamHomeState extends State<SelectExamHome> {
               return OfflineState(
                 message:
                     'Could not load your home screen. Please check your connection and try again.',
-                onRetry: () {
-                  if (!mounted) return;
-                  setState(() {
-                    _homeVmFuture = null;
-                    _homeVmSignature = '';
-                  });
-                },
+                onRetry: _retryHomeLoad,
               );
             }
             if (!snapshot.hasData) {
@@ -510,13 +515,7 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                   return OfflineState(
                     message:
                         'Could not load your home screen. Please check your connection and try again.',
-                    onRetry: () {
-                      if (!mounted) return;
-                      setState(() {
-                        _homeVmFuture = null;
-                        _homeVmSignature = '';
-                      });
-                    },
+                    onRetry: _retryHomeLoad,
                   );
                 }
                 if (!vmSnap.hasData) {
