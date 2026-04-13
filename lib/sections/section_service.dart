@@ -25,10 +25,57 @@ class SectionService {
     return SectionSplit(lockedSections: locked, unlockedSections: unlocked);
   }
 
+  static String questionSectionKey(Map<String, dynamic> question) {
+    return (question['sectionId'] ??
+            question['sectionName'] ??
+            question['section'] ??
+            question['subject'] ??
+            '')
+        .toString()
+        .trim()
+        .toLowerCase();
+  }
+
+  static List<String> sectionKeys(SectionBean section) {
+    final keys = <String>{};
+    final rawId = (section.id ?? '').toString().trim().toLowerCase();
+    final rawName = (section.name ?? '').toString().trim().toLowerCase();
+
+    if (rawId.isNotEmpty) {
+      keys.add(rawId);
+    }
+    if (rawName.isNotEmpty) {
+      keys.add(rawName);
+      for (final part in rawName.split(RegExp(r'\s*(?:&|,|/|\band\b)\s*'))) {
+        final normalized = part.trim();
+        if (normalized.isNotEmpty) {
+          keys.add(normalized);
+        }
+      }
+    }
+
+    return keys.toList();
+  }
+
   List<Map<String, dynamic>> rearrangeQuestionsLikeDrawer({
     required List<Map<String, dynamic>> questions,
     required List<SectionBean> sections,
   }) {
+    unlockedSectionLength = 0;
+    totalQuestionLength = questions.isEmpty ? 0 : questions.length - 1;
+    unlockedTime = 0;
+    lockedTime = 0;
+    isLock = true;
+
+    if (questions.isEmpty) {
+      return questions;
+    }
+
+    if (sections.isEmpty) {
+      unlockedSectionLength = questions.length - 1;
+      return questions;
+    }
+
     final sectionService = SectionService();
     final sectionSplit = sectionService.getSectionsSplit(sections);
 
@@ -39,32 +86,47 @@ class SectionService {
     final Map<String, List<Map<String, dynamic>>> grouped = {};
 
     for (final q in questions) {
-      final sectionId = q['sectionId']?.toString();
-      if (sectionId == null) continue;
-      grouped.putIfAbsent(sectionId, () => []);
-      grouped[sectionId]!.add(q);
+      final sectionKey = questionSectionKey(q);
+      if (sectionKey.isEmpty) continue;
+      grouped.putIfAbsent(sectionKey, () => []);
+      grouped[sectionKey]!.add(q);
     }
 
     final List<Map<String, dynamic>> arranged = [];
 
     // 1️⃣ Add unlocked section questions first
     for (final section in unlockedSections) {
-      final sectionId = section.id?.toString();
-      unlockedTime += section.sectionDurationMinutes!;
-      if (sectionId != null && grouped.containsKey(sectionId)) {
-        arranged.addAll(grouped[sectionId]!);
+      final keys = sectionKeys(section);
+      unlockedTime += section.sectionDurationMinutes ?? 0;
+      for (final key in keys) {
+        if (grouped.containsKey(key)) {
+          arranged.addAll(grouped.remove(key)!);
+        }
       }
     }
-    unlockedSectionLength = arranged.length - 1;
+    unlockedSectionLength = arranged.isEmpty ? questions.length - 1 : arranged.length - 1;
 
     // 2️⃣ Then add locked section questions
     for (final section in lockedSections) {
-      final sectionId = section.id?.toString();
-      lockedTime += section.sectionDurationMinutes!;
-      if (sectionId != null && grouped.containsKey(sectionId)) {
-        arranged.addAll(grouped[sectionId]!);
+      final keys = sectionKeys(section);
+      lockedTime += section.sectionDurationMinutes ?? 0;
+      for (final key in keys) {
+        if (grouped.containsKey(key)) {
+          arranged.addAll(grouped.remove(key)!);
+        }
       }
     }
+    if (grouped.isNotEmpty) {
+      for (final leftovers in grouped.values) {
+        arranged.addAll(leftovers);
+      }
+    }
+    if (arranged.isEmpty) {
+      unlockedSectionLength = questions.length - 1;
+      totalQuestionLength = questions.length - 1;
+      return questions;
+    }
+
     totalQuestionLength = arranged.length - 1;
 
     return arranged;

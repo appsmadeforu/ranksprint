@@ -15,6 +15,7 @@ class TopHeader extends StatefulWidget {
   final bool showNotificationBell;
   final VoidCallback? onBellTap;
   final bool enableTitleNavigation;
+  final Widget? trailingAction;
 
   const TopHeader({
     super.key,
@@ -25,6 +26,7 @@ class TopHeader extends StatefulWidget {
     this.showNotificationBell = true,
     this.onBellTap,
     this.enableTitleNavigation = true,
+    this.trailingAction,
   });
 
   @override
@@ -320,6 +322,10 @@ class _TopHeaderState extends State<TopHeader> {
                       ),
                     ),
                    if (widget.showExamDropdown) const SizedBox(width: 12),
+                   if (widget.trailingAction != null) ...[
+                     widget.trailingAction!,
+                     const SizedBox(width: 8),
+                   ],
                    if (widget.showNotificationBell)
                     StreamBuilder<QuerySnapshot>(
                       stream: FirebaseAuth.instance.currentUser == null

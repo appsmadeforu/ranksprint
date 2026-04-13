@@ -35,6 +35,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
   String? testName;
   String? examName;
   List<Map<String, dynamic>> questions = [];
+  int _testDurationMinutes = 0;
   int currentIndex = 0;
   Map<String, String> answers = {}; // questionId -> selected option id
   Set<String> markedForReview = {};
@@ -199,6 +200,14 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
       _allowedAppSwitch = _asInt(securityConfig['allowedAppSwitch']) ?? 1;
       _autoSubmitOnViolation =
           _asBool(securityConfig['autoSubmitOnViolation']) ?? true;
+      _testDurationMinutes =
+          _asInt(
+            (testData['timing'] is Map)
+                ? (testData['timing'] as Map)['totalDurationMinutes']
+                : null,
+          ) ??
+          _asInt(testData['totalDurationMinutes']) ??
+          0;
     });
     if (!loading && attemptId == null) {
       unawaited(_startAttempt());
@@ -320,8 +329,13 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
 
     setState(() {
       attemptId = ref.id;
+      final sectionBasedDurationMinutes =
+          SectionService.unlockedTime + SectionService.lockedTime;
       remainingSeconds =
-          (SectionService.unlockedTime + SectionService.lockedTime) * 60;
+          (sectionBasedDurationMinutes > 0
+                  ? sectionBasedDurationMinutes
+                  : _testDurationMinutes) *
+              60;
       loading = false;
       currentIndex = 0;
       answers = {};
@@ -1716,15 +1730,15 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                           side: const BorderSide(
                                             color: Color(0xFFCBD5E1),
                                           ),
-                                          minimumSize: const Size(58, 48),
+                                          minimumSize: const Size(68, 56),
                                           padding: const EdgeInsets.symmetric(
-                                            horizontal: 14,
-                                            vertical: 12,
+                                            horizontal: 16,
+                                            vertical: 14,
                                           ),
                                         ),
                                         child: const Icon(
                                           Icons.arrow_back,
-                                          size: 18,
+                                          size: 24,
                                           color: Color(0xFF475569),
                                         ),
                                       ),
@@ -1749,11 +1763,14 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                         side: const BorderSide(
                                           color: Color(0xFF2F6FEB),
                                         ),
-                                      ),
-                                      child: const Padding(
-                                        padding: EdgeInsets.symmetric(
+                                        minimumSize: const Size.fromHeight(56),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
                                           vertical: 14,
                                         ),
+                                      ),
+                                      child: const Padding(
+                                        padding: EdgeInsets.zero,
                                         child: Text(
                                           'Review Later',
                                           style: TextStyle(
@@ -1845,17 +1862,17 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                               borderRadius:
                                                   BorderRadius.circular(12),
                                             ),
-                                            minimumSize: const Size(58, 48),
+                                            minimumSize: const Size(68, 56),
                                             padding: const EdgeInsets.symmetric(
-                                              horizontal: 14,
-                                              vertical: 12,
+                                              horizontal: 16,
+                                              vertical: 14,
                                             ),
                                           ),
                                           child: const Padding(
                                             padding: EdgeInsets.zero,
                                             child: Icon(
                                               Icons.arrow_forward,
-                                              size: 18,
+                                              size: 24,
                                             ),
                                           ),
                                         ),

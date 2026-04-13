@@ -31,6 +31,7 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
       }
     }
 
+    if (!mounted) return;
     setState(() {
       initialized = true;
     });
@@ -67,6 +68,7 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
       "updatedAt": FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
+    if (!mounted) return;
     setState(() => loading = false);
 
     if (mounted && Navigator.canPop(context)) Navigator.pop(context);

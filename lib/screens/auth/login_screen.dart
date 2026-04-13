@@ -1,10 +1,13 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+
+import '../../services/auth_session_coordinator.dart';
+import '../../services/single_device_session_service.dart';
 import 'otp_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -19,24 +22,45 @@ class _LoginScreenState extends State<LoginScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   bool _loading = false;
+  bool _logoutNoticeShown = false;
 
-  // =========================
-  // PHONE OTP
-  // =========================
+  void _log(String message) {
+    debugPrint('LoginScreen: $message');
+  }
+
+  void _showMessage(String message) {
+    if (!mounted || message.trim().isEmpty) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_logoutNoticeShown) return;
+    _logoutNoticeShown = true;
+    final pendingMessage =
+        SingleDeviceSessionService.consumePendingLogoutMessage();
+    if (pendingMessage == null || pendingMessage.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showMessage(pendingMessage);
+    });
+  }
 
   Future<void> _sendOtp() async {
     if (_phoneController.text.trim().isEmpty) return;
 
     setState(() => _loading = true);
     final phoneNumber = "+91${_phoneController.text.trim()}";
+    _log('sendOtp start phone=$phoneNumber');
 
     try {
       if (kIsWeb) {
         final confirmationResult = await _auth.signInWithPhoneNumber(
           phoneNumber,
-        );
+        ).timeout(const Duration(seconds: 30));
         if (!mounted) return;
         setState(() => _loading = false);
+        _log('sendOtp web confirmation ready phone=$phoneNumber');
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -52,36 +76,23 @@ class _LoginScreenState extends State<LoginScreen> {
       await _auth.verifyPhoneNumber(
         phoneNumber: phoneNumber,
         verificationCompleted: (PhoneAuthCredential credential) async {
-          await _auth.signInWithCredential(credential);
-
-          final user = FirebaseAuth.instance.currentUser;
+          _log('sendOtp verificationCompleted phone=$phoneNumber');
+          final userCredential = await _auth.signInWithCredential(credential);
+          final user = userCredential.user;
           if (user != null) {
-            final userDoc = FirebaseFirestore.instance
-                .collection('users')
-                .doc(user.uid);
-
-            final snapshot = await userDoc.get();
-
-            if (!snapshot.exists) {
-              await userDoc.set({
-                'email': user.email ?? '',
-                'selectedExams': [],
-                'activePlanIds': [],
-                'subscriptionIds': [],
-                'createdAt': Timestamp.now(),
-              });
-            }
+            await AuthSessionCoordinator.completePostLogin(
+              user,
+              fallbackPhoneNumber: phoneNumber,
+            );
           }
         },
         verificationFailed: (FirebaseAuthException e) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(e.message ?? "Verification Failed")),
-            );
-          }
+          _log('sendOtp verificationFailed code=${e.code} message=${e.message}');
+          _showMessage(e.message ?? "Verification Failed");
           if (mounted) setState(() => _loading = false);
         },
         codeSent: (String verificationId, int? resendToken) {
+          _log('sendOtp codeSent verificationId=$verificationId');
           if (mounted) {
             Navigator.push(
               context,
@@ -97,44 +108,49 @@ class _LoginScreenState extends State<LoginScreen> {
           if (mounted) setState(() => _loading = false);
         },
         codeAutoRetrievalTimeout: (String verificationId) {
+          _log('sendOtp autoRetrievalTimeout verificationId=$verificationId');
           if (mounted) setState(() => _loading = false);
         },
       );
     } on FirebaseAuthException catch (e) {
+      _log('sendOtp auth error code=${e.code} message=${e.message}');
       if (mounted) {
         setState(() => _loading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message ?? "Verification Failed")),
-        );
+        _showMessage(e.message ?? "Verification Failed");
+      }
+    } on TimeoutException {
+      _log('sendOtp timeout phone=$phoneNumber');
+      if (mounted) {
+        setState(() => _loading = false);
+        _showMessage("OTP request timed out. Please try again.");
       }
     } catch (_) {
+      _log('sendOtp unknown failure phone=$phoneNumber');
       if (mounted) {
         setState(() => _loading = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("Verification Failed")));
+        _showMessage("Verification Failed");
       }
     }
   }
 
-  // =========================
-  // GOOGLE SIGN IN
-  // =========================
-
   Future<void> _signInWithGoogle() async {
     try {
       setState(() => _loading = true);
+      _log('google sign-in start');
 
       late final UserCredential userCredential;
       if (kIsWeb) {
         final provider = GoogleAuthProvider();
         provider.addScope('email');
         provider.addScope('profile');
-        userCredential = await _auth.signInWithPopup(provider);
+        userCredential = await _auth
+            .signInWithPopup(provider)
+            .timeout(const Duration(seconds: 45));
       } else {
         final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
 
         if (googleUser == null) {
+          _log('google sign-in cancelled by user');
           setState(() => _loading = false);
           return;
         }
@@ -147,59 +163,38 @@ class _LoginScreenState extends State<LoginScreen> {
           idToken: googleAuth.idToken,
         );
 
-        userCredential = await _auth.signInWithCredential(credential);
+        userCredential = await _auth
+            .signInWithCredential(credential)
+            .timeout(const Duration(seconds: 45));
       }
 
       final user = userCredential.user;
-
       if (user != null) {
-        final userDoc = FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid);
-
-        final docSnapshot = await userDoc.get();
-
-        // If new user → create document
-        if (!docSnapshot.exists) {
-          await userDoc.set({
-            'name': user.displayName ?? '',
-            'email': user.email ?? '',
-            'phone': user.phoneNumber ?? '',
-            'selectedExams': [],
-            'activePlanIds': [],
-            'subscriptionIds': [],
-            'createdAt': Timestamp.now(),
-          });
-        } else {
-          // Existing user → update email if missing
-          await userDoc.update({
-            'email': user.email ?? '',
-            'name': user.displayName ?? '',
-            'updatedAt': Timestamp.now(),
-          });
-        }
+        _log('google sign-in success uid=${user.uid}');
+        await AuthSessionCoordinator.completePostLogin(user);
       }
 
       if (mounted) setState(() => _loading = false);
     } on FirebaseAuthException catch (e) {
+      _log('google sign-in auth error code=${e.code} message=${e.message}');
       if (mounted) {
         setState(() => _loading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message ?? "Google Sign-In failed")),
-        );
+        _showMessage(e.message ?? "Google Sign-In failed");
+      }
+    } on TimeoutException {
+      _log('google sign-in timeout');
+      if (mounted) {
+        setState(() => _loading = false);
+        _showMessage("Google Sign-In timed out. Please try again.");
       }
     } catch (_) {
+      _log('google sign-in unknown failure');
       if (mounted) {
         setState(() => _loading = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("Google Sign-In failed")));
+        _showMessage("Google Sign-In failed");
       }
     }
   }
-  // =========================
-  // UI
-  // =========================
 
   @override
   Widget build(BuildContext context) {
@@ -229,7 +224,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             fit: BoxFit.contain,
                           ),
                         ),
-
                         TextField(
                           controller: _phoneController,
                           keyboardType: TextInputType.phone,
@@ -249,9 +243,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ),
-
                         const SizedBox(height: 10),
-
                         SizedBox(
                           width: double.infinity,
                           height: 50,
@@ -276,9 +268,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                           ),
                         ),
-
                         const SizedBox(height: 30),
-
                         const Row(
                           children: [
                             Expanded(child: Divider()),
@@ -289,9 +279,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             Expanded(child: Divider()),
                           ],
                         ),
-
                         const SizedBox(height: 20),
-
                         SizedBox(
                           width: double.infinity,
                           height: 50,
@@ -299,7 +287,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             onPressed: _loading ? null : _signInWithGoogle,
                             style: OutlinedButton.styleFrom(
                               backgroundColor: Colors.white,
-                              side: BorderSide(color: Colors.grey),
+                              side: const BorderSide(color: Colors.grey),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
@@ -324,9 +312,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ),
-
                         const SizedBox(height: 30),
-
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(

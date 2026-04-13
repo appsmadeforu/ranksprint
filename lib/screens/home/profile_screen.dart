@@ -1,16 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'help_faq_screen.dart';
 
 import 'privacy_policy_screen.dart';
 import 'terms_conditions_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'subscription_screen.dart';
 import 'payment_history_screen.dart';
-import '../../services/subscription_access_service.dart';
+import '../../services/single_device_session_service.dart';
 import '../../services/user_exam_preference_service.dart';
 import '../../widgets/offline_state.dart';
 import '../../widgets/top_header.dart';
@@ -40,16 +38,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _forceLogoutAndGoToLogin(BuildContext context) async {
-    if (!kIsWeb) {
-      try {
-        await GoogleSignIn().signOut().timeout(const Duration(seconds: 3));
-        await GoogleSignIn().disconnect().timeout(const Duration(seconds: 3));
-      } catch (_) {
-        // Ignore Google session cleanup errors on devices without stable GMS.
-      }
-    }
-    SubscriptionAccessService.clearCache();
-    await FirebaseAuth.instance.signOut();
+    await SingleDeviceSessionService.signOutToLogin();
     await _clearAppCache();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
@@ -284,8 +273,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _logout(BuildContext context) async {
-    SubscriptionAccessService.clearCache();
-    await FirebaseAuth.instance.signOut();
+    await SingleDeviceSessionService.signOutToLogin();
   }
 
   void _confirmLogout(BuildContext context) {

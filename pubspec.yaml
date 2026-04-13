@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.8+8
+version: 1.0.15+15
 
 environment:
   sdk: ^3.11.0
@@ -39,6 +39,7 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   firebase_core: ^4.4.0
+  firebase_app_check: ^0.4.0
   firebase_auth: ^6.1.4
   google_sign_in: ^6.2.0
   cloud_firestore: ^6.1.2
@@ -54,6 +55,7 @@ dependencies:
   image_picker: ^1.1.2
   image_cropper: ^9.1.0
   package_info_plus: ^8.3.0
+  shared_preferences: ^2.5.3
   # url_launcher: ^6.2.2
   video_player: ^2.9.2
   share_plus: ^10.1.4

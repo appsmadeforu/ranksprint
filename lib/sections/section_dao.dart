@@ -25,19 +25,35 @@ class SectionDao {
 
   Future<List<SectionBean>> getSectionsOnce(
       String examId, String testId) async {
-    final snapshot = await FirebaseFirestore.instance
-        .collection('exams')
-        .doc(examId)
-        .collection('tests')
-        .doc(testId)
-        .collection('sections')
-        .orderBy('order')
-        .get();
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('exams')
+          .doc(examId)
+          .collection('tests')
+          .doc(testId)
+          .collection('sections')
+          .orderBy('order')
+          .get();
 
-    return snapshot.docs.map((doc) {
-      final data = doc.data();
-      data['id'] = doc.id;
-      return SectionBean.fromJson(data);
-    }).toList();
+      return snapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return SectionBean.fromJson(data);
+      }).toList();
+    } catch (_) {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('exams')
+          .doc(examId)
+          .collection('tests')
+          .doc(testId)
+          .collection('sections')
+          .get();
+
+      return snapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return SectionBean.fromJson(data);
+      }).toList();
+    }
   }
 }

@@ -1,7 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -11,6 +9,9 @@ import 'package:http/http.dart' as http;
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../auth/login_screen.dart';
+import 'main_navigation.dart';
+import '../../services/single_device_session_service.dart';
 import '../../widgets/top_header.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -20,7 +21,8 @@ class EditProfileScreen extends StatefulWidget {
   State<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
-class _EditProfileScreenState extends State<EditProfileScreen> {
+class _EditProfileScreenState extends State<EditProfileScreen>
+    with WidgetsBindingObserver {
   final _formKey = GlobalKey<FormState>();
 
   final firstNameController = TextEditingController();
@@ -49,6 +51,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String? _selectedPhotoName;
   bool _removePhoto = false;
   Map<String, dynamic>? _initialProfileSnapshot;
+  String? _pendingEmailVerificationEmail;
+  bool _showHeaderLogout = false;
+  int _activePincodeLookupToken = 0;
+  bool _refreshingAfterResume = false;
 
   static const List<String> _genderOptions = ['Male', 'Female', 'Other'];
   static const int _maxProfilePhotoBytes = 2 * 1024 * 1024;
@@ -58,12 +64,78 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadUserData();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshVerifiedEmailState());
+    }
+  }
+
+  Future<void> _refreshVerifiedEmailState() async {
+    if (_refreshingAfterResume) return;
+    final user = FirebaseAuth.instance.currentUser;
+    final pendingEmail = (_pendingEmailVerificationEmail ?? '').trim();
+    if (user == null || pendingEmail.isEmpty) return;
+
+    _refreshingAfterResume = true;
+    try {
+      await user.reload();
+      final refreshedUser = FirebaseAuth.instance.currentUser;
+      final authEmail = (refreshedUser?.email ?? '').trim();
+      if (authEmail.isEmpty ||
+          authEmail.toLowerCase() != pendingEmail.toLowerCase()) {
+        return;
+      }
+
+      if (!mounted) return;
+      await _loadUserData();
+      if (!mounted) return;
+
+      final hasProfileName =
+          firstNameController.text.trim().isNotEmpty ||
+          lastNameController.text.trim().isNotEmpty;
+      final hasContact =
+          emailController.text.trim().isNotEmpty ||
+          phoneController.text.trim().isNotEmpty;
+      final hasSelectedExam = await _hasAnySelectedExam();
+      if (!mounted) return;
+
+      if (_showHeaderLogout && hasProfileName && hasContact && hasSelectedExam) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const MainNavigation(initialIndex: 0)),
+          (route) => false,
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Email verified for $authEmail')),
+        );
+      }
+    } catch (_) {
+      // Ignore resume refresh failures and let the user continue manually.
+    } finally {
+      _refreshingAfterResume = false;
+    }
+  }
+
+  Future<bool> _hasAnySelectedExam() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+    final selectedExams = snapshot.data()?['selectedExams'];
+    return selectedExams is List && selectedExams.isNotEmpty;
   }
 
   Future<void> _loadUserData() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+    final userDoc = FirebaseFirestore.instance.collection('users').doc(user.uid);
 
     final authEmail = (user.email ?? '').trim();
     final authPhone = (user.phoneNumber ?? '').trim();
@@ -74,14 +146,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       (p) => p.providerId == 'google.com' || p.providerId == 'password',
     );
 
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .get();
+    final doc = await userDoc.get();
 
     if (!mounted) return;
 
     final data = doc.data() ?? <String, dynamic>{};
+    final pendingEmail = (data['pendingEmailVerificationEmail'] is String)
+        ? (data['pendingEmailVerificationEmail'] as String).trim()
+        : '';
+    final pendingEmailMatchesAuth =
+        pendingEmail.isNotEmpty &&
+        authEmail.isNotEmpty &&
+        pendingEmail.toLowerCase() == authEmail.toLowerCase();
+    if (pendingEmailMatchesAuth) {
+      await userDoc.set({
+        'pendingEmailVerificationEmail': FieldValue.delete(),
+        'pendingEmailVerificationUpdatedAt': FieldValue.delete(),
+      }, SetOptions(merge: true));
+    }
     final legacyFullName = (data['name'] is String)
         ? (data['name'] as String).trim()
         : '';
@@ -100,6 +182,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       lastName: lastName,
       legacyFullName: legacyFullName,
     );
+    final hasProfileName =
+        resolvedNames.firstName.isNotEmpty || resolvedNames.lastName.isNotEmpty;
+    final hasStoredEmail =
+        authEmail.isNotEmpty ||
+        ((data['email'] ?? '').toString().trim().isNotEmpty);
+    final hasStoredPhone =
+        authPhone.isNotEmpty ||
+        ((data['phone'] ?? '').toString().trim().isNotEmpty);
+    final isProfileIncomplete =
+        ((!hasStoredEmail && !hasStoredPhone) || !hasProfileName);
 
     setState(() {
       firstNameController.text = resolvedNames.firstName;
@@ -121,6 +213,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _photoUrl = (data['photoURL'] is String)
           ? (data['photoURL'] as String).trim()
           : '';
+      _pendingEmailVerificationEmail = pendingEmailMatchesAuth || pendingEmail.isEmpty
+          ? null
+          : pendingEmail;
+      _showHeaderLogout = isProfileIncomplete;
       _selectedPhotoBytes = null;
       _selectedPhotoName = null;
       _removePhoto = false;
@@ -160,6 +256,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           ? ''
           : DateTime(dob!.year, dob!.month, dob!.day).millisecondsSinceEpoch,
       'photoUrl': (_photoUrl ?? '').trim(),
+      'pendingEmailVerificationEmail':
+          (_pendingEmailVerificationEmail ?? '').trim(),
       'hasSelectedPhoto': _selectedPhotoBytes != null,
       'selectedPhotoName': (_selectedPhotoName ?? '').trim(),
       'removePhoto': _removePhoto,
@@ -264,10 +362,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     ].where((part) => part.isNotEmpty).join(' ');
     final requestedEmail = emailController.text.trim();
     final requestedPhone = phoneController.text.trim();
+    final pendingEmail = (_pendingEmailVerificationEmail ?? '').trim();
+    final requestMatchesPendingEmail =
+        pendingEmail.isNotEmpty &&
+        requestedEmail.toLowerCase() == pendingEmail.toLowerCase();
     final emailChanged =
         !_emailLocked &&
         requestedEmail.isNotEmpty &&
-        requestedEmail.toLowerCase() != _authEmail.trim().toLowerCase();
+        requestedEmail.toLowerCase() != _authEmail.trim().toLowerCase() &&
+        !requestMatchesPendingEmail;
     final phoneChanged =
         !_phoneLocked &&
         requestedPhone.isNotEmpty &&
@@ -279,7 +382,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       'middleName': middleName,
       'lastName': lastName,
       'name': fullName,
-      'email': _emailLocked ? _authEmail : requestedEmail,
+      'email': _authEmail,
       'phone': _phoneLocked ? _authPhone : requestedPhone,
       'pincode': pincodeController.text.trim(),
       'city': cityController.text.trim(),
@@ -287,6 +390,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       'gender': gender,
       'updatedAt': Timestamp.now(),
     };
+    if (pendingEmail.isNotEmpty) {
+      updateData['pendingEmailVerificationEmail'] = pendingEmail;
+      updateData['pendingEmailVerificationUpdatedAt'] = Timestamp.now();
+    }
 
     if (dob != null) {
       updateData['dob'] = Timestamp.fromDate(dob!);
@@ -296,15 +403,35 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     try {
       if (emailChanged) {
-        final emailVerified = await _verifyAndUpdateEmail(
+        if (await _isEmailAlreadyInUse(user: user, email: requestedEmail)) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('That email address is already being used by another account.'),
+            ),
+          );
+          return;
+        }
+        final emailFlowResult = await _verifyAndUpdateEmail(
           user: user,
           newEmail: requestedEmail,
         );
-        if (!emailVerified) return;
-        updateData['email'] = requestedEmail;
+        if (emailFlowResult == _EmailUpdateFlowResult.cancelled) return;
+        if (emailFlowResult == _EmailUpdateFlowResult.loggedOut) return;
+        updateData['pendingEmailVerificationEmail'] = requestedEmail;
+        updateData['pendingEmailVerificationUpdatedAt'] = Timestamp.now();
       }
 
       if (phoneChanged) {
+        if (await _isPhoneAlreadyInUse(user: user, phone: requestedPhone)) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('That phone number is already being used by another account.'),
+            ),
+          );
+          return;
+        }
         final phoneVerified = await _verifyAndUpdatePhone(
           user: user,
           newPhone: requestedPhone,
@@ -336,7 +463,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
 
       if (emailChanged) {
-        _authEmail = requestedEmail;
+        _pendingEmailVerificationEmail = requestedEmail;
       }
       if (phoneChanged) {
         _authPhone = requestedPhone;
@@ -350,7 +477,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Failed to save profile: $e')));
+        ).showSnackBar(
+          SnackBar(content: Text(_profileSaveErrorMessage(e))),
+        );
       }
     } finally {
       if (mounted) {
@@ -359,50 +488,194 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  Future<bool> _verifyAndUpdateEmail({
+  Future<_EmailUpdateFlowResult> _verifyAndUpdateEmail({
     required User user,
     required String newEmail,
   }) async {
     try {
       await user.verifyBeforeUpdateEmail(newEmail);
-      if (!mounted) return false;
-      await showDialog<void>(
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'pendingEmailVerificationEmail': newEmail,
+        'pendingEmailVerificationUpdatedAt': Timestamp.now(),
+      }, SetOptions(merge: true));
+      if (!mounted) return _EmailUpdateFlowResult.cancelled;
+      final action = await showDialog<_PostVerificationAction>(
         context: context,
+        barrierDismissible: false,
         builder: (dialogContext) {
           return AlertDialog(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(18),
             ),
-            title: const Text('Verify New Email'),
+            title: const Text('Verify your new email'),
             content: Text(
-              'We sent a verification link to $newEmail.\n\nOpen that email, complete verification, then return here and save again.',
+              'We sent a verification link to $newEmail. After you verify it, you may need to log out and sign in again before using this new email to log in or changing the email again.',
             ),
             actions: [
+              TextButton(
+                onPressed: () => Navigator.of(
+                  dialogContext,
+                ).pop(_PostVerificationAction.stayLoggedIn),
+                child: const Text('Stay logged in'),
+              ),
               ElevatedButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
+                onPressed: () => Navigator.of(
+                  dialogContext,
+                ).pop(_PostVerificationAction.logOutNow),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF2F3E8F),
                   foregroundColor: Colors.white,
                 ),
-                child: const Text('OK'),
+                child: const Text('Log out now'),
               ),
             ],
           );
         },
       );
-      return false;
+      if (action == _PostVerificationAction.logOutNow) {
+        await _forceLogoutAndGoToLogin();
+        return _EmailUpdateFlowResult.loggedOut;
+      }
+      return _EmailUpdateFlowResult.pending;
     } on FirebaseAuthException catch (e) {
-      if (!mounted) return false;
+      if (!mounted) return _EmailUpdateFlowResult.cancelled;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? 'Could not verify new email.')),
+        SnackBar(content: Text(_emailChangeErrorMessage(e))),
       );
-      return false;
+      return _EmailUpdateFlowResult.cancelled;
     } catch (_) {
-      if (!mounted) return false;
+      if (!mounted) return _EmailUpdateFlowResult.cancelled;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not verify new email.')),
       );
-      return false;
+      return _EmailUpdateFlowResult.cancelled;
+    }
+  }
+
+  String _emailChangeErrorMessage(FirebaseAuthException error) {
+    return switch (error.code) {
+      'requires-recent-login' ||
+      'email-change-needs-verification' =>
+        'Please verify the email change you already requested, then log out and sign in again before trying to change your email.',
+      'invalid-email' => 'Enter a valid email address.',
+      'email-already-in-use' =>
+        'That email address is already being used by another account.',
+      _ => error.message ?? 'Could not verify new email.',
+    };
+  }
+
+  String _profileSaveErrorMessage(Object error) {
+    if (error is FirebaseAuthException) {
+      return switch (error.code) {
+        'network-request-failed' =>
+          'Could not save your profile right now. Please check your internet connection and try again.',
+        'requires-recent-login' =>
+          'For security reasons, please sign in again and then retry saving your profile.',
+        _ => error.message ?? 'Could not save your profile right now. Please try again.',
+      };
+    }
+
+    if (error is FirebaseException) {
+      return switch (error.code) {
+        'unavailable' || 'network-request-failed' =>
+          'Could not save your profile right now. Please check your internet connection and try again.',
+        _ => 'Could not save your profile right now. Please try again.',
+      };
+    }
+
+    if (error is TimeoutException ||
+        error is http.ClientException ||
+        error.toString().toLowerCase().contains('connection reset') ||
+        error.toString().toLowerCase().contains('network')) {
+      return 'Could not save your profile right now. Please check your internet connection and try again.';
+    }
+
+    return 'Could not save your profile right now. Please try again.';
+  }
+
+  Future<bool> _isEmailAlreadyInUse({
+    required User user,
+    required String email,
+  }) async {
+    final normalizedEmail = email.trim().toLowerCase();
+    if (normalizedEmail.isEmpty) return false;
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .where('email', isGreaterThanOrEqualTo: '')
+        .get();
+
+    for (final doc in snapshot.docs) {
+      if (doc.id == user.uid) continue;
+      final existingEmail = (doc.data()['email'] ?? '').toString().trim();
+      if (existingEmail.toLowerCase() == normalizedEmail) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<bool> _isPhoneAlreadyInUse({
+    required User user,
+    required String phone,
+  }) async {
+    final normalizedPhone = _normalizePhoneForCompare(phone);
+    if (normalizedPhone.isEmpty) return false;
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .where('phone', isGreaterThanOrEqualTo: '')
+        .get();
+
+    for (final doc in snapshot.docs) {
+      if (doc.id == user.uid) continue;
+      final existingPhone = (doc.data()['phone'] ?? '').toString().trim();
+      if (_normalizePhoneForCompare(existingPhone) == normalizedPhone) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<void> _forceLogoutAndGoToLogin() async {
+    await SingleDeviceSessionService.signOutToLogin();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
+    );
+  }
+
+  Future<void> _confirmLogout() async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: const Text('Log out?'),
+          content: const Text(
+            'You will need to sign in again to continue editing your profile.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2F3E8F),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Log out'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldLogout == true) {
+      await _forceLogoutAndGoToLogin();
     }
   }
 
@@ -751,6 +1024,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> _resolvePincode() async {
     final pincode = pincodeController.text.trim();
     if (pincode.length != 6) return;
+    final lookupToken = ++_activePincodeLookupToken;
     setState(() {
       _isResolvingPincode = true;
       _pincodeLookupMessage = null;
@@ -759,7 +1033,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     try {
       final response = await http.get(
         Uri.parse('https://api.postalpincode.in/pincode/$pincode'),
-      );
+      ).timeout(const Duration(seconds: 8));
+
+      if (!mounted ||
+          lookupToken != _activePincodeLookupToken ||
+          pincodeController.text.trim() != pincode) {
+        return;
+      }
 
       if (response.statusCode != 200) {
         throw Exception('Lookup failed');
@@ -800,16 +1080,26 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ? 'City and state autofilled from PIN code.'
             : 'PIN found, but address details were incomplete.';
       });
-    } catch (_) {
-      if (!mounted) return;
+    } on TimeoutException {
+      if (!mounted || lookupToken != _activePincodeLookupToken) return;
       setState(() {
-        cityController.clear();
-        stateController.clear();
+        _pincodeLookupMessage =
+            'Unable to fetch location now. You can enter city and state manually.';
+      });
+    } on http.ClientException {
+      if (!mounted || lookupToken != _activePincodeLookupToken) return;
+      setState(() {
+        _pincodeLookupMessage =
+            'Unable to fetch location now. You can enter city and state manually.';
+      });
+    } catch (_) {
+      if (!mounted || lookupToken != _activePincodeLookupToken) return;
+      setState(() {
         _pincodeLookupMessage =
             'Unable to fetch location now. You can enter city and state manually.';
       });
     } finally {
-      if (mounted) {
+      if (mounted && lookupToken == _activePincodeLookupToken) {
         setState(() {
           _isResolvingPincode = false;
         });
@@ -819,6 +1109,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pincodeDebounce?.cancel();
     firstNameController.dispose();
     middleNameController.dispose();
@@ -849,6 +1140,34 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     showExamDropdown: false,
                     showNotificationBell: false,
                     enableTitleNavigation: false,
+                    trailingAction: _showHeaderLogout
+                        ? TextButton.icon(
+                            onPressed: loading ? null : _confirmLogout,
+                            icon: const Icon(
+                              Icons.logout_rounded,
+                              size: 18,
+                              color: Color(0xFFB45309),
+                            ),
+                            label: const Text(
+                              'Log out',
+                              style: TextStyle(
+                                color: Color(0xFFB45309),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size(0, 38),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
+                              ),
+                              backgroundColor: const Color(0xFFFFFBEB),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          )
+                        : null,
                   ),
                   Expanded(
                     child: loading && !_initialLoadComplete
@@ -866,12 +1185,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                 ),
                                 child: Form(
                                   key: _formKey,
-                                  child: Column(
+                                   child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                            children: [
                              const Text(
-                               'Keep your details accurate so RankSprint can personalize your exam journey.',
-                               style: TextStyle(
+                                'Keep your details accurate so RankSprint can personalize your exam journey.',
+                                style: TextStyle(
                                  fontSize: 14,
                                  color: Color(0xFF6B7280),
                                  height: 1.5,
@@ -946,6 +1265,48 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               return null;
                             },
                           ),
+                          if ((_pendingEmailVerificationEmail ?? '').isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFFBEB),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: const Color(0xFFF59E0B).withValues(
+                                      alpha: 0.35,
+                                    ),
+                                  ),
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Padding(
+                                      padding: EdgeInsets.only(top: 1),
+                                      child: Icon(
+                                        Icons.mark_email_unread_outlined,
+                                        size: 18,
+                                        color: Color(0xFFB45309),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        'Verification pending for ${_pendingEmailVerificationEmail!}. After verifying, log out and sign in again if you want to use this email for login or make another email change.',
+                                        style: const TextStyle(
+                                          fontSize: 12.5,
+                                          height: 1.4,
+                                          color: Color(0xFF92400E),
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           _buildTextField(
                             phoneController,
                             'Phone Number',
@@ -1545,6 +1906,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 class _PhoneVerificationCancelled implements Exception {
   const _PhoneVerificationCancelled();
 }
+
+enum _PostVerificationAction { stayLoggedIn, logOutNow }
+
+enum _EmailUpdateFlowResult { pending, loggedOut, cancelled }
 
 class _ResolvedNameParts {
   const _ResolvedNameParts({

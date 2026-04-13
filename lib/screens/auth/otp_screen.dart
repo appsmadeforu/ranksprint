@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:sms_autofill/sms_autofill.dart';
 import 'dart:async';
 
+import '../../services/auth_session_coordinator.dart';
+
 class OtpScreen extends StatefulWidget {
   final String verificationId;
   final String phoneNumber;
@@ -33,13 +35,36 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
   late String _verificationId;
   int? _resendToken;
   ConfirmationResult? _confirmationResult;
-  bool _loading = false;
-  bool _resending = false;
+  _OtpStage _stage = _OtpStage.idle;
   bool _autofillListening = false;
   int _resendSeconds = 30;
   Timer? _timer;
+  StreamSubscription<User?>? _authStateSub;
+
+  void _log(String message) {
+    debugPrint('OtpScreen: $message');
+  }
 
   String get _otp => _controllers.map((c) => c.text).join();
+  bool get _loading => _stage == _OtpStage.verifying || _stage == _OtpStage.syncing;
+  bool get _resending => _stage == _OtpStage.resending;
+
+  void _setStage(_OtpStage stage) {
+    if (!mounted) return;
+    setState(() => _stage = stage);
+  }
+
+  void _showMessage(String message) {
+    if (!mounted || message.trim().isEmpty) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _completePostLogin(User user) async {
+    await AuthSessionCoordinator.completePostLogin(
+      user,
+      fallbackPhoneNumber: widget.phoneNumber,
+    );
+  }
 
   @override
   void initState() {
@@ -47,6 +72,10 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
     _verificationId = widget.verificationId;
     _resendToken = widget.resendToken;
     _confirmationResult = widget.confirmationResult;
+    _authStateSub = _auth.authStateChanges().listen((user) {
+      if (!mounted || user != null || !_loading) return;
+      _setStage(_OtpStage.idle);
+    });
     _startResendTimer();
   }
 
@@ -70,54 +99,66 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
   Future<void> _verifyOtp() async {
     if (_otp.length != 6) return;
     if (_verificationId.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("OTP session expired. Please retry.")),
-        );
-      }
+      _showMessage("OTP session expired. Please retry.");
       return;
     }
 
-    setState(() => _loading = true);
+    _setStage(_OtpStage.verifying);
+    _log('verifyOtp start phone=${widget.phoneNumber}');
 
     try {
-      if (kIsWeb) {
-        final confirmationResult = _confirmationResult;
-        if (confirmationResult == null) {
-          throw FirebaseAuthException(
-            code: 'missing-confirmation-result',
-            message: 'OTP session expired. Please retry.',
-          );
-        }
-        await confirmationResult.confirm(_otp);
-      } else {
-        final credential = PhoneAuthProvider.credential(
-          verificationId: _verificationId,
-          smsCode: _otp,
+      final user = await _signInWithEnteredOtp();
+      if (user == null) {
+        throw FirebaseAuthException(
+          code: 'missing-user',
+          message: 'Could not verify OTP. Please try again.',
         );
-
-        await _auth.signInWithCredential(credential);
       }
-
-      if (mounted) {
-        setState(() => _loading = false);
-        Navigator.popUntil(context, (route) => route.isFirst);
-      }
+      _setStage(_OtpStage.syncing);
+      _log('verifyOtp signed in uid=${user.uid}');
+      await _completePostLogin(user).timeout(const Duration(seconds: 15));
+      if (!mounted) return;
+      _setStage(_OtpStage.idle);
+      _log('verifyOtp complete uid=${user.uid}');
+      Navigator.popUntil(context, (route) => route.isFirst);
     } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        setState(() => _loading = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message ?? "Invalid OTP")));
-      }
+      _log('verifyOtp auth error code=${e.code} message=${e.message}');
+      _setStage(_OtpStage.idle);
+      _showMessage(e.message ?? "Invalid OTP");
+    } on TimeoutException {
+      _log('verifyOtp timeout');
+      _setStage(_OtpStage.idle);
+      _showMessage("This is taking longer than expected. Please try again.");
     } catch (_) {
-      if (mounted) {
-        setState(() => _loading = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("Invalid OTP")));
-      }
+      _log('verifyOtp unknown failure');
+      _setStage(_OtpStage.idle);
+      _showMessage("Invalid OTP");
     }
+  }
+
+  Future<User?> _signInWithEnteredOtp() async {
+    if (kIsWeb) {
+      final confirmationResult = _confirmationResult;
+      if (confirmationResult == null) {
+        throw FirebaseAuthException(
+          code: 'missing-confirmation-result',
+          message: 'OTP session expired. Please retry.',
+        );
+      }
+      final credential = await confirmationResult.confirm(
+        _otp,
+      ).timeout(const Duration(seconds: 30));
+      return credential.user;
+    }
+
+    final credential = PhoneAuthProvider.credential(
+      verificationId: _verificationId,
+      smsCode: _otp,
+    );
+    final userCredential = await _auth
+        .signInWithCredential(credential)
+        .timeout(const Duration(seconds: 30));
+    return userCredential.user;
   }
 
   @override
@@ -138,32 +179,23 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
     try {
       listenForCode();
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Waiting for OTP SMS...')));
+      _showMessage('Waiting for OTP SMS...');
     } catch (_) {
       if (!mounted) return;
       setState(() => _autofillListening = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not start OTP autofill')),
-      );
+      _showMessage('Could not start OTP autofill');
     }
   }
 
   Future<void> _resendOtp() async {
     if (_resendSeconds > 0 || _resending || _loading) return;
     if (widget.phoneNumber.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Phone number missing. Go back and retry."),
-          ),
-        );
-      }
+      _showMessage("Phone number missing. Go back and retry.");
       return;
     }
 
-    setState(() => _resending = true);
+    _setStage(_OtpStage.resending);
+    _log('resendOtp start phone=${widget.phoneNumber}');
     for (final controller in _controllers) {
       controller.clear();
     }
@@ -178,41 +210,54 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
           _confirmationResult = confirmationResult;
         });
         _startResendTimer();
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("OTP resent")));
+        _log('resendOtp web success');
+        _showMessage("OTP resent");
       } else {
         await _auth.verifyPhoneNumber(
           phoneNumber: widget.phoneNumber,
           forceResendingToken: _resendToken,
           verificationCompleted: (PhoneAuthCredential credential) async {
-            await _auth.signInWithCredential(credential);
-            if (mounted) {
-              Navigator.popUntil(context, (route) => route.isFirst);
+            try {
+              _log('resendOtp verificationCompleted');
+              final userCredential = await _auth
+                  .signInWithCredential(credential)
+                  .timeout(const Duration(seconds: 30));
+              final user = userCredential.user;
+              if (user == null) return;
+              _setStage(_OtpStage.syncing);
+              await _completePostLogin(user).timeout(const Duration(seconds: 15));
+              if (mounted) {
+                _setStage(_OtpStage.idle);
+                _log('resendOtp auto verification complete uid=${user.uid}');
+                Navigator.popUntil(context, (route) => route.isFirst);
+              }
+            } catch (_) {
+              _log('resendOtp auto verification failed');
+              _setStage(_OtpStage.idle);
+              _showMessage("Could not verify OTP automatically. Please enter it manually.");
             }
           },
           verificationFailed: (FirebaseAuthException e) {
             if (mounted) {
-              setState(() => _resending = false);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(e.message ?? "Failed to resend OTP")),
-              );
+              _log('resendOtp verificationFailed code=${e.code} message=${e.message}');
+              _setStage(_OtpStage.idle);
+              _showMessage(e.message ?? "Failed to resend OTP");
             }
           },
           codeSent: (String verificationId, int? resendToken) {
             if (!mounted) return;
+            _log('resendOtp codeSent verificationId=$verificationId');
             setState(() {
               _verificationId = verificationId;
               _resendToken = resendToken;
-              _resending = false;
+              _stage = _OtpStage.idle;
             });
             _startResendTimer();
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(const SnackBar(content: Text("OTP resent")));
+            _showMessage("OTP resent");
           },
           codeAutoRetrievalTimeout: (String verificationId) {
             if (!mounted) return;
+            _log('resendOtp autoRetrievalTimeout verificationId=$verificationId');
             setState(() {
               _verificationId = verificationId;
               _autofillListening = false;
@@ -221,15 +266,21 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
         );
       }
     } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message ?? "Failed to resend OTP")),
-        );
-      }
+      _log('resendOtp auth error code=${e.code} message=${e.message}');
+      _setStage(_OtpStage.idle);
+      _showMessage(e.message ?? "Failed to resend OTP");
+    } on TimeoutException {
+      _log('resendOtp timeout');
+      _setStage(_OtpStage.idle);
+      _showMessage("Resend OTP timed out. Please try again.");
+    } catch (_) {
+      _log('resendOtp unknown failure');
+      _setStage(_OtpStage.idle);
+      _showMessage("Failed to resend OTP");
     }
 
-    if (mounted && kIsWeb) {
-      setState(() => _resending = false);
+    if (mounted && kIsWeb && _resending) {
+      _setStage(_OtpStage.idle);
     }
   }
 
@@ -289,6 +340,7 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
     if (!kIsWeb) {
       cancel();
     }
+    _authStateSub?.cancel();
     _timer?.cancel();
     for (final controller in _controllers) {
       controller.dispose();
@@ -474,3 +526,5 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
     );
   }
 }
+
+enum _OtpStage { idle, verifying, syncing, resending }
