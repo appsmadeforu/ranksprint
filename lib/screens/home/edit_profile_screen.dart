@@ -10,6 +10,7 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../auth/login_screen.dart';
+import '../../services/auth_identity_service.dart';
 import 'main_navigation.dart';
 import '../../services/single_device_session_service.dart';
 import '../../widgets/top_header.dart';
@@ -201,15 +202,17 @@ class _EditProfileScreenState extends State<EditProfileScreen>
           ? authEmail
           : ((data['email'] is String) ? data['email'] : '');
       phoneController.text = authPhone.isNotEmpty
-          ? authPhone
-          : ((data['phone'] is String) ? data['phone'] : '');
+          ? AuthIdentityService.normalizePhone(authPhone)
+          : AuthIdentityService.normalizePhone(
+              (data['phone'] is String) ? data['phone'] : '',
+            );
       pincodeController.text = (data['pincode'] is String)
           ? data['pincode']
           : '';
       cityController.text = (data['city'] is String) ? data['city'] : '';
       stateController.text = (data['state'] is String) ? data['state'] : '';
       _authEmail = authEmail;
-      _authPhone = authPhone;
+      _authPhone = AuthIdentityService.normalizePhone(authPhone);
       _photoUrl = (data['photoURL'] is String)
           ? (data['photoURL'] as String).trim()
           : '';
@@ -361,7 +364,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       lastName,
     ].where((part) => part.isNotEmpty).join(' ');
     final requestedEmail = emailController.text.trim();
-    final requestedPhone = phoneController.text.trim();
+    final requestedPhone = AuthIdentityService.normalizePhone(
+      phoneController.text.trim(),
+    );
     final pendingEmail = (_pendingEmailVerificationEmail ?? '').trim();
     final requestMatchesPendingEmail =
         pendingEmail.isNotEmpty &&
@@ -383,7 +388,13 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       'lastName': lastName,
       'name': fullName,
       'email': _authEmail,
-      'phone': _phoneLocked ? _authPhone : requestedPhone,
+      'phone': _phoneLocked
+          ? AuthIdentityService.normalizePhone(_authPhone)
+          : requestedPhone,
+      'normalizedEmail': AuthIdentityService.normalizeEmail(_authEmail),
+      'normalizedPhone': _phoneLocked
+          ? AuthIdentityService.normalizePhone(_authPhone)
+          : requestedPhone,
       'pincode': pincodeController.text.trim(),
       'city': cityController.text.trim(),
       'state': stateController.text.trim(),
@@ -420,6 +431,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
         if (emailFlowResult == _EmailUpdateFlowResult.loggedOut) return;
         updateData['pendingEmailVerificationEmail'] = requestedEmail;
         updateData['pendingEmailVerificationUpdatedAt'] = Timestamp.now();
+        updateData['normalizedEmail'] = AuthIdentityService.normalizeEmail(
+          requestedEmail,
+        );
       }
 
       if (phoneChanged) {
@@ -438,6 +452,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
         );
         if (!phoneVerified) return;
         updateData['phone'] = requestedPhone;
+        updateData['normalizedPhone'] = requestedPhone;
       }
 
       if (_selectedPhotoBytes != null) {
@@ -508,9 +523,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
               borderRadius: BorderRadius.circular(18),
             ),
             title: const Text('Verify your new email'),
-            content: Text(
-              'We sent a verification link to $newEmail. After you verify it, you may need to log out and sign in again before using this new email to log in or changing the email again.',
-            ),
+          content: Text(
+              'We sent a verification link to $newEmail. The email could be in your SPAM folder. After you verify it, you may need to log out and sign in again before using this new email to log in or changing the email again.',
+          ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(
@@ -840,17 +855,12 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   }
 
   String _normalizePhoneForCompare(String value) {
-    return value.replaceAll(RegExp(r'[^0-9]'), '');
+    return AuthIdentityService.normalizePhone(value);
   }
 
   String? _phoneForVerification(String value) {
-    final digits = _normalizePhoneForCompare(value);
-    if (digits.length == 10) return '+91$digits';
-    if (digits.length == 12 && digits.startsWith('91')) return '+$digits';
-    if (value.trim().startsWith('+') && digits.length >= 10) {
-      return value.trim();
-    }
-    return null;
+    final normalized = AuthIdentityService.normalizePhone(value);
+    return normalized.isEmpty ? null : normalized;
   }
 
   Future<void> _pickDob() async {

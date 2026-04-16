@@ -85,6 +85,9 @@ class _LoginScreenState extends State<LoginScreen> {
               fallbackPhoneNumber: phoneNumber,
             );
           }
+          if (mounted) {
+            setState(() => _loading = false);
+          }
         },
         verificationFailed: (FirebaseAuthException e) {
           _log('sendOtp verificationFailed code=${e.code} message=${e.message}');

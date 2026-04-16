@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/auth_session_coordinator.dart';
+import '../services/auth_account_cleanup_service.dart';
 import '../services/single_device_session_service.dart';
 import 'auth/login_screen.dart';
 import 'home/edit_profile_screen.dart';
@@ -77,7 +78,10 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
             if (sessionSnapshot.hasError) {
               _log('session check error=${sessionSnapshot.error}');
-              return const LoginScreen();
+              WidgetsBinding.instance.addPostFrameCallback((_) async {
+                await SingleDeviceSessionService.signOutToLogin();
+              });
+              return const _AuthLoadingScreen();
             }
 
             if (sessionSnapshot.data == SessionStatus.signedInElsewhere) {
@@ -99,7 +103,10 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
                 if (userSnapshot.hasError) {
                   _log('user snapshot error=${userSnapshot.error}');
-                  return const LoginScreen();
+                  WidgetsBinding.instance.addPostFrameCallback((_) async {
+                    await SingleDeviceSessionService.signOutToLogin();
+                  });
+                  return const _AuthLoadingScreen();
                 }
 
                 final data = userSnapshot.data?.data();
@@ -113,6 +120,10 @@ class _AuthWrapperState extends State<AuthWrapper> {
   }
 
   Widget _buildAuthenticatedDestination(Map<String, dynamic>? data) {
+    if (AuthAccountCleanupService.isAccountDeletionInProgress) {
+      return const _AuthLoadingScreen();
+    }
+
     final firstName = (data?['firstName'] ?? '').toString().trim();
     final lastName = (data?['lastName'] ?? '').toString().trim();
     final legacyName = (data?['name'] ?? '').toString().trim();

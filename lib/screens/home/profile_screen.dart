@@ -8,6 +8,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'subscription_screen.dart';
 import 'payment_history_screen.dart';
+import '../../services/auth_account_deletion_service.dart';
+import '../../services/auth_account_cleanup_service.dart';
 import '../../services/single_device_session_service.dart';
 import '../../services/user_exam_preference_service.dart';
 import '../../widgets/offline_state.dart';
@@ -194,53 +196,101 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _openEditProfile() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const EditProfileScreen()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const EditProfileScreen()));
   }
 
   void _confirmDeleteAccount(BuildContext context) {
     showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete Account'),
-        content: const Text(
-          'Are you sure you want to delete your account? This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(), // Cancel
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.of(dialogContext).pop();
-              await _deleteAccount(context);
-            },
-            child: const Text(
-              'Yes, Delete',
-              style: TextStyle(color: Colors.red),
+      barrierDismissible: !isDeletingAccount,
+      builder: (dialogContext) {
+        var isSubmitting = false;
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) => PopScope(
+            canPop: !isSubmitting,
+            child: AlertDialog(
+              title: const Text('Delete Account'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Do you want to delete your account?\n\n'
+                    'This will permanently remove your profile, exam selections, saved progress, recommendations, notifications, and related account data. '
+                    'You may also lose access to active app data tied to this account.\n\n'
+                    'This action cannot be undone.',
+                  ),
+                  if (isSubmitting) ...[
+                    const SizedBox(height: 16),
+                    Row(
+                      children: const [
+                        SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2.2),
+                        ),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text('Deleting account... Please wait.'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          setDialogState(() {
+                            isSubmitting = true;
+                          });
+
+                          await _deleteAccount(context);
+
+                          if (mounted && Navigator.of(dialogContext).canPop()) {
+                            Navigator.of(dialogContext).pop();
+                          }
+                        },
+                  child: isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2.2),
+                        )
+                      : const Text(
+                          'Yes, Delete',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   Future<void> _deleteAccount(BuildContext context) async {
+    AuthAccountCleanupService.beginAccountDeletion();
     setState(() {
       isDeletingAccount = true;
     });
 
     try {
       final user = FirebaseAuth.instance.currentUser;
-      final uid = user?.uid;
 
-      if (user != null && uid != null) {
-        // Deleting the Firebase Auth user removes all linked sign-in methods
-        // (email/password, phone, Google, etc.) for this account.
-        await user.delete();
-        await FirebaseFirestore.instance.collection('users').doc(uid).delete();
+      if (user != null) {
+        await AuthAccountDeletionService.deleteCurrentAccount();
       }
 
       await _forceLogoutAndGoToLogin(context);
@@ -257,13 +307,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (e.code == 'requires-recent-login') {
         await _forceLogoutAndGoToLogin(context);
       }
-    } catch (e) {
+    } on Exception catch (e) {
+      final message = e.toString().contains('requires-recent-login')
+          ? 'For security, please log in again and retry account deletion.'
+          : 'Error deleting account: $e';
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text("Error deleting account: $e")));
+        ).showSnackBar(SnackBar(content: Text(message)));
       }
     } finally {
+      AuthAccountCleanupService.clearAccountDeletionFlag();
       if (mounted) {
         setState(() {
           isDeletingAccount = false;
@@ -292,10 +346,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Navigator.of(dialogContext).pop();
               await _logout(context);
             },
-            child: const Text(
-              'Logout',
-              style: TextStyle(color: Colors.orange),
-            ),
+            child: const Text('Logout', style: TextStyle(color: Colors.orange)),
           ),
         ],
       ),
@@ -484,7 +535,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
-              showLoader ? Icons.hourglass_top_rounded : Icons.workspace_premium,
+              showLoader
+                  ? Icons.hourglass_top_rounded
+                  : Icons.workspace_premium,
               color: Colors.orange,
             ),
           ),
@@ -494,7 +547,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  showLoader ? 'Loading subscription details...' : 'Subscription',
+                  showLoader
+                      ? 'Loading subscription details...'
+                      : 'Subscription',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 16,
@@ -611,8 +666,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     children: [
                                       GestureDetector(
                                         onTap: photoUrl.isNotEmpty
-                                            ? () =>
-                                                _showProfilePhotoPreview(photoUrl)
+                                            ? () => _showProfilePhotoPreview(
+                                                photoUrl,
+                                              )
                                             : _openEditProfile,
                                         child: Container(
                                           width: 72,
@@ -629,23 +685,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                                   width: 72,
                                                   height: 72,
                                                   fit: BoxFit.cover,
-                                                  errorBuilder: (
-                                                    context,
-                                                    error,
-                                                    stackTrace,
-                                                  ) {
-                                                    return Center(
-                                                      child: Text(
-                                                        _profileInitials(data),
-                                                        style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                          fontSize: 20,
-                                                        ),
-                                                      ),
-                                                    );
-                                                  },
+                                                  errorBuilder:
+                                                      (
+                                                        context,
+                                                        error,
+                                                        stackTrace,
+                                                      ) {
+                                                        return Center(
+                                                          child: Text(
+                                                            _profileInitials(
+                                                              data,
+                                                            ),
+                                                            style:
+                                                                const TextStyle(
+                                                                  color: Colors
+                                                                      .white,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .bold,
+                                                                  fontSize: 20,
+                                                                ),
+                                                          ),
+                                                        );
+                                                      },
                                                 )
                                               : Text(
                                                   _profileInitials(data),
@@ -677,7 +739,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                               child: Icon(
                                                 photoUrl.isNotEmpty
                                                     ? Icons.edit_outlined
-                                                    : Icons.add_a_photo_outlined,
+                                                    : Icons
+                                                          .add_a_photo_outlined,
                                                 size: 16,
                                                 color: const Color(0xFF2F3E8F),
                                               ),
@@ -689,7 +752,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    photoUrl.isNotEmpty ? 'Edit Photo' : 'Add Photo',
+                                    photoUrl.isNotEmpty
+                                        ? 'Edit Photo'
+                                        : 'Add Photo',
                                     style: const TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
@@ -721,8 +786,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                             onTap: () {
                                               _openEditProfile();
                                             },
-                                            borderRadius:
-                                                BorderRadius.circular(8),
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
                                             child: Container(
                                               padding: const EdgeInsets.all(6),
                                               decoration: BoxDecoration(
@@ -767,390 +833,406 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         ),
 
-                  const SizedBox(height: 20),
+                        const SizedBox(height: 20),
 
-                  // Subscription card
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: !_showDeferredSubscriptionCard
-                        ? _buildSubscriptionCardPlaceholder()
-                        : FutureBuilder<_ProfileSubscriptionVm>(
-                            key: ValueKey<String?>(
-                              'subscription-${effectiveSelectedExamId ?? 'none'}',
-                            ),
-                            future: _getSubscriptionVm(
-                              examId: effectiveSelectedExamId,
-                              activePlanIds: activePlanIds,
-                              subscriptionIds: subscriptionIds,
-                            ),
-                            builder: (context, subSnap) {
-                              if (!subSnap.hasData) {
-                                return _buildSubscriptionCardPlaceholder(
-                                  showLoader: true,
-                                );
-                              }
-
-                              final vm = subSnap.data!;
-
-                              return Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(18),
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFF3A53B7),
-                                      Color(0xFF1F3A8A),
-                                    ],
+                        // Subscription card
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: !_showDeferredSubscriptionCard
+                              ? _buildSubscriptionCardPlaceholder()
+                              : FutureBuilder<_ProfileSubscriptionVm>(
+                                  key: ValueKey<String?>(
+                                    'subscription-${effectiveSelectedExamId ?? 'none'}',
                                   ),
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.all(10),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white24,
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                          ),
-                                          child: const Icon(
-                                            Icons.workspace_premium,
-                                            color: Colors.orange,
-                                          ),
+                                  future: _getSubscriptionVm(
+                                    examId: effectiveSelectedExamId,
+                                    activePlanIds: activePlanIds,
+                                    subscriptionIds: subscriptionIds,
+                                  ),
+                                  builder: (context, subSnap) {
+                                    if (!subSnap.hasData) {
+                                      return _buildSubscriptionCardPlaceholder(
+                                        showLoader: true,
+                                      );
+                                    }
+
+                                    final vm = subSnap.data!;
+
+                                    return Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(18),
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color(0xFF3A53B7),
+                                            Color(0xFF1F3A8A),
+                                          ],
                                         ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
                                             children: [
-                                              Text(
-                                                vm.title,
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.bold,
+                                              Container(
+                                                padding: const EdgeInsets.all(
+                                                  10,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white24,
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                ),
+                                                child: const Icon(
+                                                  Icons.workspace_premium,
+                                                  color: Colors.orange,
                                                 ),
                                               ),
-                                              const SizedBox(height: 6),
-                                              Text(
-                                                vm.subtitle,
-                                                style: const TextStyle(
-                                                  color: Colors.white70,
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      vm.title,
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 16,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 6),
+                                                    Text(
+                                                      vm.subtitle,
+                                                      style: const TextStyle(
+                                                        color: Colors.white70,
+                                                      ),
+                                                    ),
+                                                  ],
                                                 ),
                                               ),
                                             ],
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                    if (vm.initialPlanId != null) ...[
-                                      const SizedBox(height: 14),
-                                      SizedBox(
-                                        width: double.infinity,
-                                        child: OutlinedButton(
-                                          onPressed: () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (_) =>
-                                                    SubscriptionScreen(
-                                                      initialExamId:
-                                                          effectiveSelectedExamId,
-                                                      initialPlanId:
-                                                          vm.initialPlanId,
+                                          if (vm.initialPlanId != null) ...[
+                                            const SizedBox(height: 14),
+                                            SizedBox(
+                                              width: double.infinity,
+                                              child: OutlinedButton(
+                                                onPressed: () {
+                                                  Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                      builder: (_) =>
+                                                          SubscriptionScreen(
+                                                            initialExamId:
+                                                                effectiveSelectedExamId,
+                                                            initialPlanId: vm
+                                                                .initialPlanId,
+                                                          ),
                                                     ),
+                                                  );
+                                                },
+                                                style: OutlinedButton.styleFrom(
+                                                  side: const BorderSide(
+                                                    color: Colors.white24,
+                                                  ),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          10,
+                                                        ),
+                                                  ),
+                                                ),
+                                                child: const Padding(
+                                                  padding: EdgeInsets.symmetric(
+                                                    vertical: 12,
+                                                  ),
+                                                  child: Text(
+                                                    'Manage Subscription',
+                                                    style: TextStyle(
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                ),
                                               ),
-                                            );
-                                          },
-                                          style: OutlinedButton.styleFrom(
-                                            side: const BorderSide(
-                                              color: Colors.white24,
                                             ),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                            ),
-                                          ),
-                                          child: const Padding(
-                                            padding: EdgeInsets.symmetric(
-                                              vertical: 12,
-                                            ),
-                                            child: Text(
-                                              'Manage Subscription',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
+                                          ],
+                                        ],
                                       ),
-                                    ],
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-                  ),
-
-                  const SizedBox(height: 18),
-
-                  // Performance section
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'PERFORMANCE',
-                          style: TextStyle(
-                            color: Colors.grey,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Card(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Column(
-                            children: [
-                              ListTile(
-                                leading: const Icon(Icons.history),
-                                title: const Text('Test History'),
-                                trailing: const Icon(Icons.chevron_right),
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => TestHistoryScreen(
-                                        initialExamId: effectiveSelectedExamId,
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                              const Divider(height: 1),
-                              ListTile(
-                                leading: const Icon(Icons.trending_up),
-                                title: const Text('Performance Trends'),
-                                trailing: const Icon(Icons.chevron_right),
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => PerformanceTrendsScreen(
-                                        initialExamId: effectiveSelectedExamId,
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 18),
-
-                  // Account section
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'ACCOUNT',
-                          style: TextStyle(
-                            color: Colors.grey,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Card(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Column(
-                            children: [
-                              if (!isDeletingAccount)
-                                ListTile(
-                                  leading: Icon(Icons.settings),
-                                  title: Text('Account Settings'),
-                                  trailing: const Icon(Icons.chevron_right),
-                                  onTap: () {
-                                    _openEditProfile();
+                                    );
                                   },
                                 ),
-                              const Divider(height: 1),
-                              ListTile(
-                                leading: const Icon(Icons.credit_card_outlined),
-                                title: const Text('Payment History'),
-                                trailing: const Icon(Icons.chevron_right),
-                                onTap: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          const PaymentHistoryScreen(),
-                                    ),
-                                  );
-                                },
-                              ),
-                              // Notifications option removed as requested
-                            ],
-                          ),
                         ),
-                      ],
-                    ),
-                  ),
 
-                  const SizedBox(height: 18),
+                        const SizedBox(height: 18),
 
-                  // Support
-                  // Support
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'SUPPORT',
-                          style: TextStyle(
-                            color: Colors.grey,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Card(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+                        // Performance section
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Help & FAQ
-                              ListTile(
-                                leading: const Icon(Icons.help_outline),
-                                title: const Text("Help & FAQ"),
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => HelpFaqScreen(),
-                                    ),
-                                  );
-                                },
+                              const Text(
+                                'PERFORMANCE',
+                                style: TextStyle(
+                                  color: Colors.grey,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                              const Divider(height: 1),
-
-                              // Terms
-                              ListTile(
-                                leading: const Icon(Icons.description_outlined),
-                                title: const Text("Terms & Conditions"),
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          const TermsConditionsScreen(),
+                              const SizedBox(height: 8),
+                              Card(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Column(
+                                  children: [
+                                    ListTile(
+                                      leading: const Icon(Icons.history),
+                                      title: const Text('Test History'),
+                                      trailing: const Icon(Icons.chevron_right),
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => TestHistoryScreen(
+                                              initialExamId:
+                                                  effectiveSelectedExamId,
+                                            ),
+                                          ),
+                                        );
+                                      },
                                     ),
-                                  );
-                                },
-                              ),
-                              const Divider(height: 1),
-
-                              // Privacy
-                              ListTile(
-                                leading: const Icon(Icons.lock_outline),
-                                title: const Text("Privacy Policy"),
-                                // trailing: const Icon(Icons.chevron_right),
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          const PrivacyPolicyScreen(),
+                                    const Divider(height: 1),
+                                    ListTile(
+                                      leading: const Icon(Icons.trending_up),
+                                      title: const Text('Performance Trends'),
+                                      trailing: const Icon(Icons.chevron_right),
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                PerformanceTrendsScreen(
+                                                  initialExamId:
+                                                      effectiveSelectedExamId,
+                                                ),
+                                          ),
+                                        );
+                                      },
                                     ),
-                                  );
-                                },
+                                  ],
+                                ),
                               ),
                             ],
                           ),
                         ),
-                      ],
-                    ),
-                  ),
 
-                  const SizedBox(height: 18),
+                        const SizedBox(height: 18),
 
-                  // Actions
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'ACTIONS',
-                          style: TextStyle(
-                            color: Colors.grey,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Card(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
+                        // Account section
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Logout
-                              ListTile(
-                                leading: const Icon(
-                                  Icons.logout,
-                                  color: Colors.orange,
+                              const Text(
+                                'ACCOUNT',
+                                style: TextStyle(
+                                  color: Colors.grey,
+                                  fontWeight: FontWeight.w600,
                                 ),
-                                title: const Text(
-                                  'Logout',
-                                  style: TextStyle(color: Colors.orange),
-                                ),
-                                // trailing: const Icon(Icons.chevron_right),
-                                onTap: () => _confirmLogout(context),
                               ),
-                              const Divider(height: 1),
-
-                              // Delete Account
-                              ListTile(
-                                leading: const Icon(
-                                  Icons.delete_outline,
-                                  color: Colors.red,
+                              const SizedBox(height: 8),
+                              Card(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                                title: const Text(
-                                  'Delete Account',
-                                  style: TextStyle(color: Colors.red),
+                                child: Column(
+                                  children: [
+                                    if (!isDeletingAccount)
+                                      ListTile(
+                                        leading: Icon(Icons.settings),
+                                        title: Text('Account Settings'),
+                                        trailing: const Icon(
+                                          Icons.chevron_right,
+                                        ),
+                                        onTap: () {
+                                          _openEditProfile();
+                                        },
+                                      ),
+                                    const Divider(height: 1),
+                                    ListTile(
+                                      leading: const Icon(
+                                        Icons.credit_card_outlined,
+                                      ),
+                                      title: const Text('Payment History'),
+                                      trailing: const Icon(Icons.chevron_right),
+                                      onTap: () {
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                const PaymentHistoryScreen(),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                    // Notifications option removed as requested
+                                  ],
                                 ),
-                                // trailing: const Icon(Icons.chevron_right),
-                                onTap: () => _confirmDeleteAccount(context),
                               ),
                             ],
                           ),
                         ),
-                      ],
-                    ),
-                  ),
 
-                  const SizedBox(height: 30),
-                  Center(
-                    child: Text(
-                      '$_appVersionLabel\n© 2026 Rank Sprint',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.grey),
-                    ),
-                  ),
-                  const SizedBox(height: 40),
+                        const SizedBox(height: 18),
+
+                        // Support
+                        // Support
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'SUPPORT',
+                                style: TextStyle(
+                                  color: Colors.grey,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Card(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Column(
+                                  children: [
+                                    // Help & FAQ
+                                    ListTile(
+                                      leading: const Icon(Icons.help_outline),
+                                      title: const Text("Help & FAQ"),
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => HelpFaqScreen(),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                    const Divider(height: 1),
+
+                                    // Terms
+                                    ListTile(
+                                      leading: const Icon(
+                                        Icons.description_outlined,
+                                      ),
+                                      title: const Text("Terms & Conditions"),
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                const TermsConditionsScreen(),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                    const Divider(height: 1),
+
+                                    // Privacy
+                                    ListTile(
+                                      leading: const Icon(Icons.lock_outline),
+                                      title: const Text("Privacy Policy"),
+                                      // trailing: const Icon(Icons.chevron_right),
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                const PrivacyPolicyScreen(),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 18),
+
+                        // Actions
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'ACTIONS',
+                                style: TextStyle(
+                                  color: Colors.grey,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Card(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: Column(
+                                  children: [
+                                    // Logout
+                                    ListTile(
+                                      leading: const Icon(
+                                        Icons.logout,
+                                        color: Colors.orange,
+                                      ),
+                                      title: const Text(
+                                        'Logout',
+                                        style: TextStyle(color: Colors.orange),
+                                      ),
+                                      // trailing: const Icon(Icons.chevron_right),
+                                      onTap: () => _confirmLogout(context),
+                                    ),
+                                    const Divider(height: 1),
+
+                                    // Delete Account
+                                    ListTile(
+                                      leading: const Icon(
+                                        Icons.delete_outline,
+                                        color: Colors.red,
+                                      ),
+                                      title: const Text(
+                                        'Delete Account',
+                                        style: TextStyle(color: Colors.red),
+                                      ),
+                                      // trailing: const Icon(Icons.chevron_right),
+                                      onTap: () =>
+                                          _confirmDeleteAccount(context),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 30),
+                        Center(
+                          child: Text(
+                            '$_appVersionLabel\n© 2026 Rank Sprint',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.grey),
+                          ),
+                        ),
+                        const SizedBox(height: 40),
                       ],
                     ),
                   ),

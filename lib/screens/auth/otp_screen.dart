@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:sms_autofill/sms_autofill.dart';
 import 'dart:async';
 
@@ -31,6 +32,7 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
     6,
     (_) => TextEditingController(),
   );
+  final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
 
   late String _verificationId;
   int? _resendToken;
@@ -40,6 +42,7 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
   int _resendSeconds = 30;
   Timer? _timer;
   StreamSubscription<User?>? _authStateSub;
+  bool _postLoginHandled = false;
 
   void _log(String message) {
     debugPrint('OtpScreen: $message');
@@ -60,10 +63,40 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
   }
 
   Future<void> _completePostLogin(User user) async {
+    if (_postLoginHandled) return;
+    _postLoginHandled = true;
     await AuthSessionCoordinator.completePostLogin(
       user,
       fallbackPhoneNumber: widget.phoneNumber,
     );
+  }
+
+  Future<void> _finalizeSignedInUser(User user) async {
+    if (_postLoginHandled) {
+      return;
+    }
+
+    _setStage(_OtpStage.syncing);
+    try {
+      await _completePostLogin(user).timeout(const Duration(seconds: 15));
+      if (!mounted) return;
+      _setStage(_OtpStage.idle);
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+    } on FirebaseAuthException catch (e) {
+      _postLoginHandled = false;
+      _setStage(_OtpStage.idle);
+      _showMessage(e.message ?? 'Could not finish signing you in.');
+    } on TimeoutException {
+      _postLoginHandled = false;
+      _setStage(_OtpStage.idle);
+      _showMessage("This is taking longer than expected. Please try again.");
+    } catch (_) {
+      _postLoginHandled = false;
+      _setStage(_OtpStage.idle);
+      _showMessage("Could not finish signing you in. Please try again.");
+    }
   }
 
   @override
@@ -73,8 +106,15 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
     _resendToken = widget.resendToken;
     _confirmationResult = widget.confirmationResult;
     _authStateSub = _auth.authStateChanges().listen((user) {
-      if (!mounted || user != null || !_loading) return;
-      _setStage(_OtpStage.idle);
+      if (!mounted) return;
+      if (user == null) {
+        if (_loading) {
+          _setStage(_OtpStage.idle);
+        }
+        return;
+      }
+      _log('authStateChanges observed signed-in uid=${user.uid}');
+      _finalizeSignedInUser(user);
     });
     _startResendTimer();
   }
@@ -114,23 +154,22 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
           message: 'Could not verify OTP. Please try again.',
         );
       }
-      _setStage(_OtpStage.syncing);
       _log('verifyOtp signed in uid=${user.uid}');
-      await _completePostLogin(user).timeout(const Duration(seconds: 15));
-      if (!mounted) return;
-      _setStage(_OtpStage.idle);
+      await _finalizeSignedInUser(user);
       _log('verifyOtp complete uid=${user.uid}');
-      Navigator.popUntil(context, (route) => route.isFirst);
     } on FirebaseAuthException catch (e) {
       _log('verifyOtp auth error code=${e.code} message=${e.message}');
+      _postLoginHandled = false;
       _setStage(_OtpStage.idle);
       _showMessage(e.message ?? "Invalid OTP");
     } on TimeoutException {
       _log('verifyOtp timeout');
+      _postLoginHandled = false;
       _setStage(_OtpStage.idle);
       _showMessage("This is taking longer than expected. Please try again.");
     } catch (_) {
       _log('verifyOtp unknown failure');
+      _postLoginHandled = false;
       _setStage(_OtpStage.idle);
       _showMessage("Invalid OTP");
     }
@@ -224,14 +263,10 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
                   .timeout(const Duration(seconds: 30));
               final user = userCredential.user;
               if (user == null) return;
-              _setStage(_OtpStage.syncing);
-              await _completePostLogin(user).timeout(const Duration(seconds: 15));
-              if (mounted) {
-                _setStage(_OtpStage.idle);
-                _log('resendOtp auto verification complete uid=${user.uid}');
-                Navigator.popUntil(context, (route) => route.isFirst);
-              }
+              await _finalizeSignedInUser(user);
+              _log('resendOtp auto verification complete uid=${user.uid}');
             } catch (_) {
+              _postLoginHandled = false;
               _log('resendOtp auto verification failed');
               _setStage(_OtpStage.idle);
               _showMessage("Could not verify OTP automatically. Please enter it manually.");
@@ -287,33 +322,60 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
   Widget _buildOtpBox(int index) {
     return SizedBox(
       width: 45,
-      child: TextField(
-        controller: _controllers[index],
-        keyboardType: TextInputType.number,
-        autofillHints: const [AutofillHints.oneTimeCode],
-        textAlign: TextAlign.center,
-        maxLength: 1,
-        decoration: InputDecoration(
-          counterText: "",
-          filled: true,
-          fillColor: Colors.grey[200],
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide.none,
-          ),
-        ),
-        onChanged: (value) {
-          if (value.length > 1) {
-            _applyOtpCode(value);
-            return;
+      child: Focus(
+        onKey: (node, event) {
+          if (event is! RawKeyDownEvent ||
+              event.logicalKey != LogicalKeyboardKey.backspace) {
+            return KeyEventResult.ignored;
           }
 
-          if (value.isNotEmpty && index < 5) {
-            FocusScope.of(context).nextFocus();
-          } else if (value.isEmpty && index > 0) {
-            FocusScope.of(context).previousFocus();
+          final controller = _controllers[index];
+          if (controller.text.isNotEmpty) {
+            controller.clear();
+            if (index > 0) {
+              _focusNodes[index - 1].requestFocus();
+            }
+            return KeyEventResult.handled;
           }
+
+          if (index > 0) {
+            final previousController = _controllers[index - 1];
+            previousController.clear();
+            _focusNodes[index - 1].requestFocus();
+            return KeyEventResult.handled;
+          }
+
+          return KeyEventResult.ignored;
         },
+        child: TextField(
+          focusNode: _focusNodes[index],
+          controller: _controllers[index],
+          keyboardType: TextInputType.number,
+          autofillHints: const [AutofillHints.oneTimeCode],
+          textAlign: TextAlign.center,
+          maxLength: 1,
+          decoration: InputDecoration(
+            counterText: "",
+            filled: true,
+            fillColor: Colors.grey[200],
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide.none,
+            ),
+          ),
+          onChanged: (value) {
+            if (value.length > 1) {
+              _applyOtpCode(value);
+              return;
+            }
+
+            if (value.isNotEmpty && index < 5) {
+              _focusNodes[index + 1].requestFocus();
+            } else if (value.isEmpty && index > 0) {
+              _focusNodes[index - 1].requestFocus();
+            }
+          },
+        ),
       ),
     );
   }
@@ -344,6 +406,9 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
     _timer?.cancel();
     for (final controller in _controllers) {
       controller.dispose();
+    }
+    for (final focusNode in _focusNodes) {
+      focusNode.dispose();
     }
     super.dispose();
   }

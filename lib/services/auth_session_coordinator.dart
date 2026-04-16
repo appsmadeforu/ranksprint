@@ -1,7 +1,8 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import 'auth_account_resolution_service.dart';
+import 'auth_deleted_identity_service.dart';
 import 'single_device_session_service.dart';
 
 class AuthSessionCoordinator {
@@ -17,30 +18,29 @@ class AuthSessionCoordinator {
   }) async {
     _log('completePostLogin start uid=${user.uid}');
     try {
-      await SingleDeviceSessionService.registerLoginSessionSafe(user);
-      final userDoc = FirebaseFirestore.instance.collection('users').doc(user.uid);
-      final snapshot = await userDoc.get().timeout(const Duration(seconds: 15));
-      if (!snapshot.exists) {
-        _log('creating user doc uid=${user.uid}');
-        await userDoc.set({
-          'name': user.displayName ?? '',
-          'email': user.email ?? '',
-          'phone': user.phoneNumber ?? fallbackPhoneNumber ?? '',
-          'selectedExams': [],
-          'activePlanIds': [],
-          'subscriptionIds': [],
-          'createdAt': Timestamp.now(),
-        }, SetOptions(merge: true)).timeout(const Duration(seconds: 15));
-        return;
+      final deleted = await AuthDeletedIdentityService.isIdentityDeleted(
+        email: user.email,
+        phone: user.phoneNumber ?? fallbackPhoneNumber,
+      );
+      if (deleted) {
+        await SingleDeviceSessionService.signOutToLogin();
+        throw FirebaseAuthException(
+          code: 'account-deleted',
+          message:
+              'This account was deleted and cannot be used to sign in again.',
+        );
       }
 
-      _log('updating user doc uid=${user.uid}');
-      await userDoc.set({
-        'name': user.displayName ?? '',
-        'email': user.email ?? '',
-        'phone': user.phoneNumber ?? fallbackPhoneNumber ?? '',
-        'updatedAt': Timestamp.now(),
-      }, SetOptions(merge: true)).timeout(const Duration(seconds: 15));
+      final resolved = await AuthAccountResolutionService.resolveForUser(
+        user,
+        fallbackPhoneNumber: fallbackPhoneNumber,
+      ).timeout(const Duration(seconds: 20));
+      _log(
+        'resolved account uid=${user.uid} mergedFrom=${resolved.mergedFromUserIds}',
+      );
+      await SingleDeviceSessionService.registerLoginSession(user).timeout(
+        const Duration(seconds: 15),
+      );
     } catch (error, stackTrace) {
       _log('completePostLogin failed uid=${user.uid} error=$error');
       debugPrintStack(stackTrace: stackTrace);

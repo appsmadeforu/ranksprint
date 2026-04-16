@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'auth_identity_service.dart';
 import 'subscription_access_service.dart';
 
 class SingleDeviceSessionService {
@@ -30,16 +31,10 @@ class SingleDeviceSessionService {
       _sessionUpdatedAtField: Timestamp.now(),
       _lastLoginNoticeField:
           'You are signed in on this device. Any earlier session on another device has been signed out.',
+      'normalizedEmail': AuthIdentityService.normalizeEmail(user.email),
+      'normalizedPhone': AuthIdentityService.normalizePhone(user.phoneNumber),
+      'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
-  }
-
-  static Future<void> registerLoginSessionSafe(User user) async {
-    try {
-      await registerLoginSession(user);
-    } catch (error, stackTrace) {
-      debugPrint('Single-device session registration failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
-    }
   }
 
   static Future<bool> isSessionCurrent(User user) async {
@@ -107,6 +102,10 @@ class SingleDeviceSessionService {
   }
 
   static Future<void> signOutToLogin() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      await _clearRemoteSession(user);
+    }
     await _clearProviderSessions();
     await FirebaseAuth.instance.signOut();
     await clearLocalSession();
@@ -129,6 +128,17 @@ class SingleDeviceSessionService {
   static String _buildSessionId(String uid) {
     final micros = DateTime.now().microsecondsSinceEpoch;
     return '$uid-$micros';
+  }
+
+  static Future<void> _clearRemoteSession(User user) async {
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+      _sessionIdField: FieldValue.delete(),
+      _sessionUpdatedAtField: FieldValue.delete(),
+      _lastLoginNoticeField: FieldValue.delete(),
+      'normalizedEmail': AuthIdentityService.normalizeEmail(user.email),
+      'normalizedPhone': AuthIdentityService.normalizePhone(user.phoneNumber),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 }
 
