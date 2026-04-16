@@ -1690,7 +1690,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                                   onTap: () =>
                                                       _selectOption(qid, optId),
                                                   tileColor: isSelected
-                                                      ? const Color(0x6796C196)
+                                                      ? const Color(0x7AA0C9A0)
                                                       : null,
                                                 ),
                                               );

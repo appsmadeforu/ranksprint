@@ -823,7 +823,7 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                icon: const Icon(Icons.tune_rounded, size: 17),
+                icon: const Icon(Icons.edit_outlined, size: 17),
                 tooltip: 'Edit goal',
               ),
             ],
