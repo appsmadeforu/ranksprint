@@ -2,7 +2,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import 'auth_account_resolution_service.dart';
-import 'auth_deleted_identity_service.dart';
 import 'single_device_session_service.dart';
 
 class AuthSessionCoordinator {
@@ -18,19 +17,6 @@ class AuthSessionCoordinator {
   }) async {
     _log('completePostLogin start uid=${user.uid}');
     try {
-      final deleted = await AuthDeletedIdentityService.isIdentityDeleted(
-        email: user.email,
-        phone: user.phoneNumber ?? fallbackPhoneNumber,
-      );
-      if (deleted) {
-        await SingleDeviceSessionService.signOutToLogin();
-        throw FirebaseAuthException(
-          code: 'account-deleted',
-          message:
-              'This account was deleted and cannot be used to sign in again.',
-        );
-      }
-
       final resolved = await AuthAccountResolutionService.resolveForUser(
         user,
         fallbackPhoneNumber: fallbackPhoneNumber,

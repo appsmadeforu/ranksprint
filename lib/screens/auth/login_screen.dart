@@ -30,7 +30,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _showMessage(String message) {
     if (!mounted || message.trim().isEmpty) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -55,9 +57,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       if (kIsWeb) {
-        final confirmationResult = await _auth.signInWithPhoneNumber(
-          phoneNumber,
-        ).timeout(const Duration(seconds: 30));
+        final confirmationResult = await _auth
+            .signInWithPhoneNumber(phoneNumber)
+            .timeout(const Duration(seconds: 30));
         if (!mounted) return;
         setState(() => _loading = false);
         _log('sendOtp web confirmation ready phone=$phoneNumber');
@@ -90,7 +92,9 @@ class _LoginScreenState extends State<LoginScreen> {
           }
         },
         verificationFailed: (FirebaseAuthException e) {
-          _log('sendOtp verificationFailed code=${e.code} message=${e.message}');
+          _log(
+            'sendOtp verificationFailed code=${e.code} message=${e.message}',
+          );
           _showMessage(e.message ?? "Verification Failed");
           if (mounted) setState(() => _loading = false);
         },
@@ -221,12 +225,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         SizedBox(
-                          width: 250,
+                          width: 280,
                           child: Image.asset(
-                            "assets/icons/app_icon.png",
+                            "assets/icons/old_app_icon2.png",
                             fit: BoxFit.contain,
                           ),
                         ),
+                        // const SizedBox(height: 20),
                         TextField(
                           controller: _phoneController,
                           keyboardType: TextInputType.phone,

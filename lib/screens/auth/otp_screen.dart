@@ -49,7 +49,8 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
   }
 
   String get _otp => _controllers.map((c) => c.text).join();
-  bool get _loading => _stage == _OtpStage.verifying || _stage == _OtpStage.syncing;
+  bool get _loading =>
+      _stage == _OtpStage.verifying || _stage == _OtpStage.syncing;
   bool get _resending => _stage == _OtpStage.resending;
 
   void _setStage(_OtpStage stage) {
@@ -59,7 +60,9 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
 
   void _showMessage(String message) {
     if (!mounted || message.trim().isEmpty) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _completePostLogin(User user) async {
@@ -184,9 +187,9 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
           message: 'OTP session expired. Please retry.',
         );
       }
-      final credential = await confirmationResult.confirm(
-        _otp,
-      ).timeout(const Duration(seconds: 30));
+      final credential = await confirmationResult
+          .confirm(_otp)
+          .timeout(const Duration(seconds: 30));
       return credential.user;
     }
 
@@ -269,12 +272,16 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
               _postLoginHandled = false;
               _log('resendOtp auto verification failed');
               _setStage(_OtpStage.idle);
-              _showMessage("Could not verify OTP automatically. Please enter it manually.");
+              _showMessage(
+                "Could not verify OTP automatically. Please enter it manually.",
+              );
             }
           },
           verificationFailed: (FirebaseAuthException e) {
             if (mounted) {
-              _log('resendOtp verificationFailed code=${e.code} message=${e.message}');
+              _log(
+                'resendOtp verificationFailed code=${e.code} message=${e.message}',
+              );
               _setStage(_OtpStage.idle);
               _showMessage(e.message ?? "Failed to resend OTP");
             }
@@ -292,7 +299,9 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
           },
           codeAutoRetrievalTimeout: (String verificationId) {
             if (!mounted) return;
-            _log('resendOtp autoRetrievalTimeout verificationId=$verificationId');
+            _log(
+              'resendOtp autoRetrievalTimeout verificationId=$verificationId',
+            );
             setState(() {
               _verificationId = verificationId;
               _autofillListening = false;
@@ -440,10 +449,10 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
                     children: [
                       // Logo
                       SizedBox(
-                        width: 250,
-                        // height: 250,
+                        width: 200,
+                        // height: 200,
                         child: Image.asset(
-                          "assets/icons/app_icon.png",
+                          "assets/icons/old_app_icon2.png",
                           fit: BoxFit.contain,
                         ),
                       ),

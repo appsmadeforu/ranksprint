@@ -592,17 +592,27 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
   }
 
   bool _canOpenQuestion(int index) {
-    if (index > SectionService.unlockedSectionLength &&
-        SectionService.isLock == true) {
+    if (index < 0 || index >= questions.length) {
       return false;
     }
 
-    if (index < SectionService.unlockedSectionLength &&
-        SectionService.isLock == false) {
-      return false;
+    if (SectionService.isLock) {
+      return index <= SectionService.unlockedSectionLength;
     }
 
     return true;
+  }
+
+  void _goToNextQuestion() {
+    final nextIndex = currentIndex + 1;
+    if (!_canOpenQuestion(nextIndex)) {
+      return;
+    }
+
+    setState(() {
+      _markCurrentQuestionVisited();
+      currentIndex = nextIndex;
+    });
   }
 
   Future<void> _syncLeaderboardMetricsForTest() async {
@@ -1690,7 +1700,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                                   onTap: () =>
                                                       _selectOption(qid, optId),
                                                   tileColor: isSelected
-                                                      ? const Color(0x7AA0C9A0)
+                                                      ? const Color(0xFF8FBF8F)
                                                       : null,
                                                 ),
                                               );
@@ -1847,16 +1857,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                           ),
                                         )
                                       : ElevatedButton(
-                                          onPressed: () {
-                                            if (_canOpenQuestion(
-                                              currentIndex + 1,
-                                            )) {
-                                              setState(() {
-                                                _markCurrentQuestionVisited();
-                                                currentIndex += 1;
-                                              });
-                                            }
-                                          },
+                                          onPressed: _goToNextQuestion,
                                           style: ElevatedButton.styleFrom(
                                             shape: RoundedRectangleBorder(
                                               borderRadius:
