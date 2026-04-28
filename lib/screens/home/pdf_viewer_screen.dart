@@ -24,22 +24,43 @@ class PdfViewerScreen extends StatefulWidget {
 
 class _PdfViewerScreenState extends State<PdfViewerScreen> {
   late int _currentIndex;
+  bool _isPdfLoading = true;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.currentIndex >= 0 ? widget.currentIndex : 0;
+    _beginPdfLoad();
   }
 
   void _previousPdf() {
     if (_currentIndex > 0) {
-      setState(() => _currentIndex--);
+      setState(() {
+        _currentIndex--;
+      });
+      _beginPdfLoad();
     }
   }
 
   void _nextPdf() {
     if (_currentIndex < widget.pdfUrls.length - 1) {
-      setState(() => _currentIndex++);
+      setState(() {
+        _currentIndex++;
+      });
+      _beginPdfLoad();
+    }
+  }
+
+  void _beginPdfLoad() {
+    if (!mounted) return;
+    setState(() => _isPdfLoading = true);
+
+    if (isWebPdfViewerSupported) {
+      Future<void>.delayed(const Duration(milliseconds: 1400), () {
+        if (mounted) {
+          setState(() => _isPdfLoading = false);
+        }
+      });
     }
   }
 
@@ -59,7 +80,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           ),
         ],
       ),
-      body: _buildPdfBody(),
+      body: Stack(
+        children: [
+          _buildPdfBody(),
+          if (_isPdfLoading) const _PdfLoadingOverlay(),
+        ],
+      ),
       bottomNavigationBar: BottomAppBar(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -100,11 +126,61 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
     return SfPdfViewer.network(
       url,
+      onDocumentLoaded: (_) {
+        if (mounted) {
+          setState(() => _isPdfLoading = false);
+        }
+      },
       onDocumentLoadFailed: (PdfDocumentLoadFailedDetails details) {
+        if (mounted) {
+          setState(() => _isPdfLoading = false);
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error loading PDF: ${details.error}')),
         );
       },
+    );
+  }
+}
+
+class _PdfLoadingOverlay extends StatelessWidget {
+  const _PdfLoadingOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white.withValues(alpha: 0.92),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          SizedBox(
+            width: 44,
+            height: 44,
+            child: CircularProgressIndicator(
+              strokeWidth: 3.2,
+              color: Color(0xFF2F6FEB),
+            ),
+          ),
+          SizedBox(height: 18),
+          Text(
+            'Loading paper...',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          SizedBox(height: 8),
+          Text(
+            'This may take a few seconds',
+            style: TextStyle(
+              fontSize: 14,
+              color: Color(0xFF64748B),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

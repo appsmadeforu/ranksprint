@@ -1209,6 +1209,9 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
 
     final topSubjects = overallSubjects.values.toList()
       ..sort((a, b) => b.accuracy.compareTo(a.accuracy));
+    final subjectColors = _buildSubjectColorMap(
+      topSubjects.map((subject) => subject.name),
+    );
     final latest = points.isEmpty ? null : points.last;
     final first = points.isEmpty ? null : points.first;
     final scoredAttempts = attemptCards.reversed.toList();
@@ -1243,7 +1246,7 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
           .toList();
       return _SubjectSeries(
         name: subject.name,
-        color: _subjectColor(subject.name),
+        color: subjectColors[subject.name] ?? _fallbackSubjectColor(0),
         values: values,
       );
     }).toList();
@@ -2770,8 +2773,20 @@ class _SkeletonBlock extends StatelessWidget {
   }
 }
 
-Color _subjectColor(String subject) {
-  final normalized = subject.trim().toLowerCase();
+Map<String, Color> _buildSubjectColorMap(Iterable<String> subjects) {
+  final uniqueSubjects = subjects
+      .map((subject) => subject.trim())
+      .where((subject) => subject.isNotEmpty)
+      .toSet()
+      .toList()
+    ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  return {
+    for (int i = 0; i < uniqueSubjects.length; i++)
+      uniqueSubjects[i]: _fallbackSubjectColor(i),
+  };
+}
+
+Color _fallbackSubjectColor(int index) {
   const palette = <Color>[
     Color(0xFF4B72F1),
     Color(0xFF31B56A),
@@ -2779,10 +2794,17 @@ Color _subjectColor(String subject) {
     Color(0xFFEB5757),
     Color(0xFF8B5CF6),
     Color(0xFF06B6D4),
+    Color(0xFFEC4899),
+    Color(0xFF14B8A6),
+    Color(0xFF84CC16),
+    Color(0xFFF97316),
+    Color(0xFF6366F1),
+    Color(0xFF0EA5E9),
   ];
-  var hash = 0;
-  for (final code in normalized.codeUnits) {
-    hash = ((hash * 31) + code) & 0x7fffffff;
+  if (index < palette.length) {
+    return palette[index];
   }
-  return palette[hash % palette.length];
+
+  final hue = (index * 137.508) % 360;
+  return HSLColor.fromAHSL(1, hue, 0.68, 0.52).toColor();
 }
