@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ranksprint/sections/section_bean.dart';
 import 'package:ranksprint/services/html_helper.dart';
-import 'package:ranksprint/screens/home/tests_screen.dart';
+import 'package:ranksprint/screens/home/main_navigation.dart';
 
 enum ResultFilter {
   all,
@@ -735,7 +735,12 @@ class ExamResultScreenState extends State<ExamResultScreen>
     final examId = widget.returnToTestsExamId;
     if (examId == null || examId.isEmpty) return;
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => TestsScreen(selectedExam: examId)),
+      MaterialPageRoute(
+        builder: (_) => MainNavigation(
+          initialIndex: 1,
+          initialTestsExamId: examId,
+        ),
+      ),
       (route) => route.isFirst,
     );
   }

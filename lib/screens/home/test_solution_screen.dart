@@ -9,7 +9,7 @@ import 'package:ranksprint/services/result_data_service.dart';
 import 'package:share_plus/share_plus.dart' as share_plus;
 
 import '../../examSummary/exam_summary_screen.dart';
-import 'tests_screen.dart';
+import 'main_navigation.dart';
 import '../../widgets/top_header.dart';
 
 class TestSolutionScreen extends StatefulWidget {
@@ -421,7 +421,12 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
 
   void _goToTestsScreen(String examId) {
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => TestsScreen(selectedExam: examId)),
+      MaterialPageRoute(
+        builder: (_) => MainNavigation(
+          initialIndex: 1,
+          initialTestsExamId: examId,
+        ),
+      ),
       (route) => route.isFirst,
     );
   }

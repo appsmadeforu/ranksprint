@@ -343,9 +343,11 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
-    if (dob != null && !_isAtLeast13YearsOld(dob!)) {
+    if (dob != null && !_isAllowedDob(dob!)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('User must be at least 16 years old.')),
+        const SnackBar(
+          content: Text('Date of birth must be on or before 01/01/2007.'),
+        ),
       );
       return;
     }
@@ -1846,11 +1848,10 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   }
 
   DateTime get _latestAllowedDob {
-    final now = DateTime.now();
-    return DateTime(now.year - 13, now.month, now.day);
+    return DateTime(2007, 1, 1);
   }
 
-  bool _isAtLeast13YearsOld(DateTime value) {
+  bool _isAllowedDob(DateTime value) {
     return !value.isAfter(_latestAllowedDob);
   }
 

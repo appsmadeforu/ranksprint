@@ -8,12 +8,14 @@ import 'select_exam_home.dart';
 
 class MainNavigation extends StatefulWidget {
   final int initialIndex;
+  final String? initialTestsExamId;
   final String? initialAnalyticsExamId;
   final int initialAnalyticsTabIndex;
 
   const MainNavigation({
     Key? key,
     this.initialIndex = 0,
+    this.initialTestsExamId,
     this.initialAnalyticsExamId,
     this.initialAnalyticsTabIndex = 0,
   }) : super(key: key);
@@ -29,6 +31,7 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   late int _index;
   late final List<bool> _visited;
+  String? _testsExamId;
   String? _analyticsExamId;
   late int _analyticsTabIndex;
 
@@ -36,6 +39,7 @@ class _MainNavigationState extends State<MainNavigation> {
   void initState() {
     super.initState();
     _index = widget.initialIndex;
+    _testsExamId = widget.initialTestsExamId;
     _analyticsExamId = widget.initialAnalyticsExamId;
     _analyticsTabIndex = widget.initialAnalyticsTabIndex;
     _visited = List<bool>.filled(5, false);
@@ -130,7 +134,7 @@ class _MainNavigationState extends State<MainNavigation> {
       case 0:
         return const SelectExamHome();
       case 1:
-        return const TestsScreen();
+        return TestsScreen(selectedExam: _testsExamId);
       case 2:
         return const PyqScreen();
       case 3:

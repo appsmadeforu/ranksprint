@@ -1713,171 +1713,212 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              // bottom actions
-                              Row(
-                                children: [
-                                  if (!(currentIndex ==
-                                          SectionService
-                                              .unlockedSectionLength &&
-                                      SectionService.isLock)) ...[
-                                    if (!_isFirstQuestionOfSection(
-                                      currentIndex,
-                                    )) ...[
-                                      OutlinedButton(
-                                        onPressed: currentIndex > 0
-                                            ? () {
-                                                setState(() {
-                                                  currentIndex -= 1;
-                                                });
-                                              }
-                                            : null,
-                                        style: OutlinedButton.styleFrom(
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                          ),
-                                          side: const BorderSide(
-                                            color: Color(0xFFCBD5E1),
-                                          ),
-                                          minimumSize: const Size(68, 56),
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 14,
-                                          ),
-                                        ),
-                                        child: const Icon(
-                                          Icons.arrow_back,
-                                          size: 24,
-                                          color: Color(0xFF475569),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                    ],
-                                  ],
-                                  Expanded(
-                                    child: OutlinedButton(
-                                      onPressed: () {
-                                        final qid =
-                                            questions[currentIndex]['__id']
-                                                as String;
-                                        _toggleReview(qid);
-                                        _moveToNextQuestionOrHandleSectionBoundary();
-                                      },
-                                      style: OutlinedButton.styleFrom(
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                        side: const BorderSide(
-                                          color: Color(0xFF2F6FEB),
-                                        ),
-                                        minimumSize: const Size.fromHeight(56),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 16,
-                                          vertical: 14,
-                                        ),
-                                      ),
-                                      child: const Padding(
-                                        padding: EdgeInsets.zero,
-                                        child: Text(
-                                          'Review Later',
-                                          style: TextStyle(
-                                            color: Color(0xFF2F6FEB),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  currentIndex ==
+                              LayoutBuilder(
+                                builder: (context, constraints) {
+                                  final isCompactPhone =
+                                      constraints.maxWidth < 360;
+                                  final actionButtonHeight =
+                                      isCompactPhone ? 52.0 : 56.0;
+                                  final actionButtonWidth =
+                                      isCompactPhone ? 60.0 : 68.0;
+                                  final actionButtonPadding =
+                                      EdgeInsets.symmetric(
+                                        horizontal: isCompactPhone ? 12 : 16,
+                                        vertical: isCompactPhone ? 12 : 14,
+                                      );
+                                  final actionButtonTextStyle = TextStyle(
+                                    fontSize: isCompactPhone ? 14 : 16,
+                                    fontWeight: FontWeight.w600,
+                                  );
+
+                                  return Row(
+                                    children: [
+                                      if (!(currentIndex ==
                                               SectionService
                                                   .unlockedSectionLength &&
-                                          SectionService.isLock
-                                      ? Expanded(
-                                          child: ElevatedButton(
-                                            onPressed: _showSubmitSectionDialog,
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: const Color(
-                                                0xFF1E40AF,
-                                              ),
-                                              foregroundColor: Colors.white,
-                                              elevation: 0,
+                                          SectionService.isLock)) ...[
+                                        if (!_isFirstQuestionOfSection(
+                                          currentIndex,
+                                        )) ...[
+                                          OutlinedButton(
+                                            onPressed: currentIndex > 0
+                                                ? () {
+                                                    setState(() {
+                                                      currentIndex -= 1;
+                                                    });
+                                                  }
+                                                : null,
+                                            style: OutlinedButton.styleFrom(
                                               shape: RoundedRectangleBorder(
                                                 borderRadius:
                                                     BorderRadius.circular(12),
                                               ),
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    vertical: 14,
-                                                    horizontal: 16,
-                                                  ),
+                                              side: const BorderSide(
+                                                color: Color(0xFFCBD5E1),
+                                              ),
+                                              minimumSize: Size(
+                                                actionButtonWidth,
+                                                actionButtonHeight,
+                                              ),
+                                              padding: actionButtonPadding,
                                             ),
-                                            child: const Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              children: [
-                                                Icon(
-                                                  Icons.lock_open_rounded,
-                                                  size: 18,
-                                                ),
-                                                SizedBox(width: 8),
-                                                Text(
-                                                  'Submit Section',
-                                                  style: TextStyle(
-                                                    fontSize: 15,
-                                                    fontWeight: FontWeight.w700,
-                                                  ),
-                                                ),
-                                              ],
+                                            child: const Icon(
+                                              Icons.arrow_back,
+                                              size: 24,
+                                              color: Color(0xFF475569),
                                             ),
                                           ),
-                                        )
-                                      : currentIndex ==
-                                            SectionService.totalQuestionLength
-                                      ? Expanded(
-                                          child: ElevatedButton(
-                                            onPressed: _showSubmitTestDialog,
-                                            style: ElevatedButton.styleFrom(
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                              ),
-                                            ),
-                                            child: const Padding(
-                                              padding: EdgeInsets.symmetric(
-                                                vertical: 14,
-                                              ),
-                                              child: Text(
-                                                'Submit Test',
-                                                style: TextStyle(fontSize: 16),
-                                              ),
-                                            ),
-                                          ),
-                                        )
-                                      : ElevatedButton(
-                                          onPressed: _goToNextQuestion,
-                                          style: ElevatedButton.styleFrom(
+                                          const SizedBox(width: 12),
+                                        ],
+                                      ],
+                                      Expanded(
+                                        child: OutlinedButton(
+                                          onPressed: () {
+                                            final qid =
+                                                questions[currentIndex]['__id']
+                                                    as String;
+                                            _toggleReview(qid);
+                                            _moveToNextQuestionOrHandleSectionBoundary();
+                                          },
+                                          style: OutlinedButton.styleFrom(
                                             shape: RoundedRectangleBorder(
                                               borderRadius:
                                                   BorderRadius.circular(12),
                                             ),
-                                            minimumSize: const Size(68, 56),
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 16,
-                                              vertical: 14,
+                                            side: const BorderSide(
+                                              color: Color(0xFF2F6FEB),
                                             ),
+                                            minimumSize: Size.fromHeight(
+                                              actionButtonHeight,
+                                            ),
+                                            padding: actionButtonPadding,
                                           ),
-                                          child: const Padding(
+                                          child: Padding(
                                             padding: EdgeInsets.zero,
-                                            child: Icon(
-                                              Icons.arrow_forward,
-                                              size: 24,
+                                            child: Text(
+                                              'Review Later',
+                                              style:
+                                                  actionButtonTextStyle.copyWith(
+                                                    color:
+                                                        const Color(0xFF2F6FEB),
+                                                  ),
                                             ),
                                           ),
                                         ),
-                                ],
+                                      ),
+                                      const SizedBox(width: 12),
+                                      currentIndex ==
+                                                  SectionService
+                                                      .unlockedSectionLength &&
+                                              SectionService.isLock
+                                          ? Expanded(
+                                              child: ElevatedButton(
+                                                onPressed:
+                                                    _showSubmitSectionDialog,
+                                                style:
+                                                    ElevatedButton.styleFrom(
+                                                      backgroundColor:
+                                                          const Color(
+                                                            0xFF1E40AF,
+                                                          ),
+                                                      foregroundColor:
+                                                          Colors.white,
+                                                      elevation: 0,
+                                                      shape:
+                                                          RoundedRectangleBorder(
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                      12,
+                                                                    ),
+                                                          ),
+                                                      minimumSize:
+                                                          Size.fromHeight(
+                                                            actionButtonHeight,
+                                                          ),
+                                                      padding:
+                                                          actionButtonPadding,
+                                                    ),
+                                                child: Row(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    const Icon(
+                                                      Icons.lock_open_rounded,
+                                                      size: 18,
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    Text(
+                                                      'Submit Section',
+                                                      style:
+                                                          actionButtonTextStyle,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            )
+                                          : currentIndex ==
+                                                SectionService
+                                                    .totalQuestionLength
+                                          ? Expanded(
+                                              child: ElevatedButton(
+                                                onPressed:
+                                                    _showSubmitTestDialog,
+                                                style:
+                                                    ElevatedButton.styleFrom(
+                                                      shape:
+                                                          RoundedRectangleBorder(
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                      12,
+                                                                    ),
+                                                          ),
+                                                      minimumSize:
+                                                          Size.fromHeight(
+                                                            actionButtonHeight,
+                                                          ),
+                                                      padding:
+                                                          actionButtonPadding,
+                                                    ),
+                                                child: Padding(
+                                                  padding: EdgeInsets.zero,
+                                                  child: Text(
+                                                    'Submit Test',
+                                                    style:
+                                                        actionButtonTextStyle,
+                                                  ),
+                                                ),
+                                              ),
+                                            )
+                                          : ElevatedButton(
+                                              onPressed: _goToNextQuestion,
+                                              style:
+                                                  ElevatedButton.styleFrom(
+                                                    shape:
+                                                        RoundedRectangleBorder(
+                                                          borderRadius:
+                                                              BorderRadius
+                                                                  .circular(12),
+                                                        ),
+                                                    minimumSize: Size(
+                                                      actionButtonWidth,
+                                                      actionButtonHeight,
+                                                    ),
+                                                    padding:
+                                                        actionButtonPadding,
+                                                  ),
+                                              child: const Padding(
+                                                padding: EdgeInsets.zero,
+                                                child: Icon(
+                                                  Icons.arrow_forward,
+                                                  size: 24,
+                                                ),
+                                              ),
+                                            ),
+                                    ],
+                                  );
+                                },
                               ),
                             ],
                           ),
