@@ -328,11 +328,23 @@ class _SelectExamHomeState extends State<SelectExamHome> {
 
       final plansSnap = await FirebaseFirestore.instance
           .collection('subscriptionPlans')
-          .where('features.isActive', isEqualTo: true)
           .get();
 
       for (final doc in plansSnap.docs) {
         final data = doc.data();
+        final features = Map<String, dynamic>.from(
+          data['features'] ?? const <String, dynamic>{},
+        );
+        final hasFeatureFlag = features['isActive'] is bool;
+        final hasTopLevelFlag = data['isActive'] is bool;
+        final isActive = hasFeatureFlag
+            ? features['isActive'] == true
+            : hasTopLevelFlag
+                ? data['isActive'] == true
+                : true;
+        if (!isActive) {
+          continue;
+        }
         if (examPlanIds.contains(doc.id)) {
           return true;
         }

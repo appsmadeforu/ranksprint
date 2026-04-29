@@ -143,7 +143,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       await _loadSelectedExamContext();
       final snapshot = await FirebaseFirestore.instance
           .collection('subscriptionPlans')
-          .where('features.isActive', isEqualTo: true)
           .get();
 
       final plans = <Map<String, dynamic>>[];
@@ -153,6 +152,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         final features = Map<String, dynamic>.from(
           data['features'] ?? const <String, dynamic>{},
         );
+        final isActive = _isPlanActive(data, features);
+        if (!isActive) {
+          continue;
+        }
 
         final rawExamsIncluded = data['examsIncluded'];
         final examsIncluded = <String, dynamic>{};
@@ -227,6 +230,19 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       debugPrint("Plan load error: $e");
       setState(() => isLoadingPlans = false);
     }
+  }
+
+  bool _isPlanActive(
+    Map<String, dynamic> data,
+    Map<String, dynamic> features,
+  ) {
+    if (features['isActive'] is bool) {
+      return features['isActive'] == true;
+    }
+    if (data['isActive'] is bool) {
+      return data['isActive'] == true;
+    }
+    return true;
   }
 
   String _getDurationString(int days) {
