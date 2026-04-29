@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import '../../services/subscription_backend_service.dart';
 import '../../services/subscription_access_service.dart';
 
 class SubscriptionScreen extends StatefulWidget {
@@ -36,6 +37,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   bool isLoadingPlans = false;
   bool _isPurchasing = false;
   bool _isApplyingCoupon = false;
+  bool _isRestoring = false;
   Map<String, dynamic>? _appliedCoupon;
   String? _couponFeedback;
   bool _couponFeedbackIsError = false;
@@ -99,9 +101,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
           if (purchase.status == PurchaseStatus.purchased ||
               purchase.status == PurchaseStatus.restored) {
-            await _grantSubscriptionForPurchase(purchase);
+            await _finalizeSubscriptionForPurchase(purchase);
             if (mounted) {
-              setState(() => _isPurchasing = false);
+              setState(() {
+                _isPurchasing = false;
+                _isRestoring = false;
+              });
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Subscription activated.')),
               );
@@ -109,7 +114,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           }
 
           if (purchase.status == PurchaseStatus.canceled && mounted) {
-            setState(() => _isPurchasing = false);
+            setState(() {
+              _isPurchasing = false;
+              _isRestoring = false;
+            });
           }
 
           if (purchase.pendingCompletePurchase) {
@@ -119,7 +127,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       },
       onError: (_) {
         if (!mounted) return;
-        setState(() => _isPurchasing = false);
+        setState(() {
+          _isPurchasing = false;
+          _isRestoring = false;
+        });
       },
     );
   }
@@ -395,7 +406,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
   }
 
-  Future<void> _grantSubscriptionForPurchase(PurchaseDetails purchase) async {
+  Future<void> _finalizeSubscriptionForPurchase(PurchaseDetails purchase) async {
     final plan = subscriptionPlans.where((p) {
       return (p['storeProductId'] ?? '').toString() == purchase.productID;
     }).firstWhere(
@@ -404,12 +415,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     );
     if (plan.isEmpty) return;
 
-    await _grantSubscription(
-      plan: plan,
-      source: 'iap',
-      productId: purchase.productID,
-      purchaseId: purchase.purchaseID ?? '',
+    await SubscriptionBackendService.finalizePurchase(
+      planId: plan['id'].toString(),
+      examId: selectedExamId ?? '',
+      purchase: purchase,
+      couponCode: (_appliedCoupon?['id'] ?? '').toString(),
     );
+    SubscriptionAccessService.clearCache();
   }
 
   int _effectivePriceForPlan(
@@ -574,43 +586,19 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     });
 
     try {
-      final doc = await _findCouponDocument(rawCode);
-      if (doc == null) {
-        throw 'Coupon not found.';
-      }
-
-      final data = doc.data();
-      if ((data['isActive'] ?? false) != true) {
-        throw 'Coupon is inactive.';
-      }
-      if (!_couponWithinWindow(data)) {
-        throw 'Coupon has expired or is not live yet.';
-      }
-      if (!_couponAppliesToPlan(data, plan)) {
-        throw 'Coupon is not valid for this plan.';
-      }
-      if (!await _couponAllowedForUser(data)) {
-        throw 'Coupon is not available for this user.';
-      }
-
-      final maxRedemptions =
-          ((data['maxRedemptions'] ?? data['usageLimit'] ?? 0) as num).toInt();
-      final redeemedCount =
-          ((data['redeemedCount'] ?? data['usedCount'] ?? 0) as num).toInt();
-      if (maxRedemptions > 0 && redeemedCount >= maxRedemptions) {
-        throw 'Coupon redemption limit reached.';
-      }
-
-      if (!mounted) return;
-      final appliedCoupon = {
-        ...data,
-        'id': (data['code'] ?? rawCode).toString(),
-        'docId': doc.id,
-      };
-      final finalPrice = _effectivePriceForPlan(
-        plan,
-        couponOverride: appliedCoupon,
+      final result = await SubscriptionBackendService.redeemCoupon(
+        planId: plan['id'].toString(),
+        examId: selectedExamId ?? '',
+        couponCode: rawCode,
       );
+      if (!mounted) return;
+      final appliedCoupon = <String, dynamic>{
+        'id': result.couponCode,
+        'googlePlayProductId': result.checkoutProductId,
+        'discountType': result.finalPrice == 0 ? 'free' : 'custom',
+        'discountValue': 0,
+      };
+      final finalPrice = result.finalPrice;
       setState(() {
         _appliedCoupon = appliedCoupon;
         _couponFeedback =
@@ -624,6 +612,14 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           ),
         ),
       );
+      if (result.activated) {
+        SubscriptionAccessService.clearCache();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Coupon redeemed and subscription activated.'),
+          ),
+        );
+      }
     } catch (error) {
       if (!mounted) return;
       final message = error.toString().replaceFirst('Exception: ', '');
@@ -642,78 +638,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
   }
 
-  Future<void> _grantSubscription({
-    required Map<String, dynamic> plan,
-    required String source,
-    String productId = '',
-    String purchaseId = '',
-  }) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final durationDays = (plan['durationDays'] ?? 30) as int;
-    final now = DateTime.now();
-    final expiresAt = now.add(Duration(days: durationDays));
-    final subRef = FirebaseFirestore.instance.collection('subscriptions').doc();
-    final coupon = _appliedCoupon;
-    final couponCode = (coupon?['id'] ?? '').toString();
-    final effectivePrice = _effectivePriceForPlan(plan);
-
-    await subRef.set({
-      'userId': user.uid,
-      'planId': plan['id'],
-      'status': 'active',
-      'source': source,
-      'productId': productId,
-      'purchaseId': purchaseId,
-      'originalPrice': plan['price'],
-      'finalPrice': effectivePrice,
-      'couponCode': couponCode,
-      'couponSnapshot': coupon == null
-          ? null
-          : {
-              'discountType': coupon['discountType'],
-              'discountValue': coupon['discountValue'],
-              'googlePlayProductId': coupon['googlePlayProductId'],
-            },
-      'startedAt': Timestamp.fromDate(now),
-      'expiresAt': Timestamp.fromDate(expiresAt),
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-
-    await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-      'subscriptionStatus': 'paid',
-      'activePlanIds': FieldValue.arrayUnion([plan['id']]),
-      'subscriptionIds': FieldValue.arrayUnion([subRef.id]),
-    }, SetOptions(merge: true));
-
-    if (couponCode.isNotEmpty) {
-      final couponDocId = (coupon?['docId'] ?? '').toString();
-      if (couponDocId.isNotEmpty) {
-        await FirebaseFirestore.instance
-            .collection('coupons')
-            .doc(couponDocId)
-            .set({
-          'usedCount': FieldValue.increment(1),
-          'redeemedCount': FieldValue.increment(1),
-          'lastRedeemedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      }
-
-      await FirebaseFirestore.instance.collection('couponRedemptions').add({
-        'couponCode': couponCode,
-        'couponId': couponDocId.isNotEmpty ? couponDocId : couponCode,
-        'userId': user.uid,
-        'planId': plan['id'],
-        'subscriptionId': subRef.id,
-        'source': source,
-        'originalPrice': plan['price'],
-        'finalPrice': effectivePrice,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-    }
-  }
-
   Future<void> _redeemFreeCoupon(Map<String, dynamic> plan) async {
     if (_appliedCoupon == null) {
       if (!mounted) return;
@@ -728,10 +652,14 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
 
     try {
-      await _grantSubscription(
-        plan: plan,
-        source: 'coupon',
+      final result = await SubscriptionBackendService.redeemCoupon(
+        planId: plan['id'].toString(),
+        examId: selectedExamId ?? '',
+        couponCode: (_appliedCoupon?['id'] ?? '').toString(),
       );
+      if (!result.activated) {
+        throw Exception('Coupon requires checkout before activation.');
+      }
       SubscriptionAccessService.clearCache();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -741,6 +669,31 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       if (mounted) {
         setState(() => _isPurchasing = false);
       }
+    }
+  }
+
+  Future<void> _restorePurchases() async {
+    final available = await _iap.isAvailable();
+    if (!available) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('In-app purchases are not available.')),
+      );
+      return;
+    }
+
+    if (mounted) {
+      setState(() => _isRestoring = true);
+    }
+
+    try {
+      await _iap.restorePurchases();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isRestoring = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
+      );
     }
   }
 
@@ -1144,10 +1097,22 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                   _sectionCard(
                     color: const Color(0xFFEAF4FF),
                     child: Row(
-                      children: const [
-                        Icon(Icons.verified, color: Colors.green),
-                        SizedBox(width: 8),
-                        Text("100% Secure Payment"),
+                      children: [
+                        const Icon(Icons.verified, color: Colors.green),
+                        const SizedBox(width: 8),
+                        const Expanded(child: Text("100% Secure Payment")),
+                        TextButton(
+                          onPressed: _isPurchasing || _isRestoring
+                              ? null
+                              : _restorePurchases,
+                          child: _isRestoring
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Text('Restore'),
+                        ),
                       ],
                     ),
                   ),
@@ -1176,8 +1141,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                 ),
               ),
             ),
-            ElevatedButton(
-              onPressed: _isPurchasing ? null : _startPurchase,
+             ElevatedButton(
+               onPressed: (_isPurchasing || _isRestoring) ? null : _startPurchase,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange,
                 padding: const EdgeInsets.symmetric(

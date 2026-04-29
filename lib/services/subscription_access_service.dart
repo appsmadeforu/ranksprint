@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'subscription_backend_service.dart';
 
 class SubscriptionAccessService {
   const SubscriptionAccessService._();
@@ -14,49 +15,30 @@ class SubscriptionAccessService {
       return _cachedActivePlanIds!;
     }
 
-    final userDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
+    try {
+      await SubscriptionBackendService.refreshAccess();
+    } catch (_) {
+      // Fall back to direct reads so existing users are not blocked by a
+      // temporary functions outage.
+    }
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('subscriptions')
+        .where('userId', isEqualTo: user.uid)
+        .where('status', isEqualTo: 'active')
         .get();
 
-    final inlineActivePlanIds = List<String>.from(
-      userDoc.data()?['activePlanIds'] ?? const [],
-    ).where((id) => id.isNotEmpty);
-    if (inlineActivePlanIds.isNotEmpty) {
-      _cachedUserId = user.uid;
-      _cachedActivePlanIds = inlineActivePlanIds.toSet();
-      return _cachedActivePlanIds!;
-    }
-
-    final subscriptionIds = List<String>.from(
-      userDoc.data()?['subscriptionIds'] ?? const [],
-    );
-
-    if (subscriptionIds.isEmpty) {
-      _cachedUserId = user.uid;
-      _cachedActivePlanIds = <String>{};
-      return _cachedActivePlanIds!;
-    }
-
+    final now = DateTime.now();
     final activePlanIds = <String>{};
 
-    final subscriptionDocs = await Future.wait(
-      subscriptionIds.map(
-        (subscriptionId) => FirebaseFirestore.instance
-            .collection('subscriptions')
-            .doc(subscriptionId)
-            .get(),
-      ),
-    );
+    for (final subscriptionDoc in snapshot.docs) {
+      final data = subscriptionDoc.data();
+      final expiry = data['expiresAt'];
+      if (expiry is Timestamp && !expiry.toDate().isAfter(now)) {
+        continue;
+      }
 
-    for (final subscriptionDoc in subscriptionDocs) {
-
-      if (!subscriptionDoc.exists) continue;
-
-      final data = subscriptionDoc.data() ?? const <String, dynamic>{};
-      if ((data['status'] ?? '').toString() != 'active') continue;
-
-      final planId = (data['planId'] ?? '').toString();
+      final planId = (data['planId'] ?? '').toString().trim();
       if (planId.isNotEmpty) {
         activePlanIds.add(planId);
       }
