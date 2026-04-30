@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 import '../../services/subscription_backend_service.dart';
 import '../../services/subscription_access_service.dart';
 
@@ -39,6 +40,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   bool _isApplyingCoupon = false;
   bool _isRestoring = false;
   Map<String, dynamic>? _appliedCoupon;
+  String? _pendingPurchasePlanId;
   String? _couponFeedback;
   bool _couponFeedbackIsError = false;
   StreamSubscription<List<PurchaseDetails>>? _purchaseSubscription;
@@ -79,49 +81,66 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     _purchaseSubscription = _iap.purchaseStream.listen(
       (purchaseDetailsList) async {
         for (final purchase in purchaseDetailsList) {
-          if (purchase.status == PurchaseStatus.pending) {
-            if (mounted) {
-              setState(() => _isPurchasing = true);
+          try {
+            if (purchase.status == PurchaseStatus.pending) {
+              if (mounted) {
+                setState(() => _isPurchasing = true);
+              }
+              continue;
             }
-            continue;
-          }
 
-          if (purchase.status == PurchaseStatus.error) {
-            if (mounted) {
-              setState(() => _isPurchasing = false);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    purchase.error?.message ?? 'Purchase failed. Try again.',
+            if (purchase.status == PurchaseStatus.error) {
+              if (mounted) {
+                setState(() => _isPurchasing = false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      purchase.error?.message ?? 'Purchase failed. Try again.',
+                    ),
                   ),
-                ),
-              );
+                );
+              }
             }
-          }
 
-          if (purchase.status == PurchaseStatus.purchased ||
-              purchase.status == PurchaseStatus.restored) {
-            await _finalizeSubscriptionForPurchase(purchase);
+            if (purchase.status == PurchaseStatus.purchased ||
+                purchase.status == PurchaseStatus.restored) {
+              await _finalizeSubscriptionForPurchase(purchase);
+              if (mounted) {
+                setState(() {
+                  _isPurchasing = false;
+                  _isRestoring = false;
+                });
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Subscription activated.')),
+                );
+              }
+            }
+
+            if (purchase.status == PurchaseStatus.canceled && mounted) {
+              setState(() {
+                _isPurchasing = false;
+                _isRestoring = false;
+              });
+            }
+          } catch (error) {
+            debugPrint('Subscription finalize error: $error');
             if (mounted) {
               setState(() {
                 _isPurchasing = false;
                 _isRestoring = false;
               });
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Subscription activated.')),
+                SnackBar(
+                  content: Text(
+                    _friendlyPurchaseError(error),
+                  ),
+                ),
               );
             }
-          }
-
-          if (purchase.status == PurchaseStatus.canceled && mounted) {
-            setState(() {
-              _isPurchasing = false;
-              _isRestoring = false;
-            });
-          }
-
-          if (purchase.pendingCompletePurchase) {
-            await _iap.completePurchase(purchase);
+          } finally {
+            if (purchase.pendingCompletePurchase) {
+              await _iap.completePurchase(purchase);
+            }
           }
         }
       },
@@ -202,6 +221,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                       data['androidProductId'] ??
                       data['appStoreProductId'] ??
                       data['iosProductId'] ??
+                      '')
+                  .toString(),
+          'playBasePlanId':
+              (features['playBasePlanId'] ??
+                      data['playBasePlanId'] ??
+                      data['basePlanId'] ??
                       '')
                   .toString(),
           'examsIncluded': examsIncluded,
@@ -361,6 +386,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       return;
     }
 
+    _pendingPurchasePlanId = plan['id'].toString();
+
     final productId = _productIdForPlan(plan);
     if (productId.isEmpty) {
       if (!mounted) return;
@@ -411,10 +438,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       return;
     }
 
-    final product = response.productDetails.first;
-    final purchaseParam = PurchaseParam(productDetails: product);
+    final product = _selectProductDetailsForPlan(plan, response.productDetails);
+    final purchaseParam = _buildPurchaseParamForPlan(plan, product);
     final started = await _iap.buyNonConsumable(purchaseParam: purchaseParam);
     if (!started && mounted) {
+      _pendingPurchasePlanId = null;
       setState(() => _isPurchasing = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not start purchase flow.')),
@@ -423,12 +451,18 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   }
 
   Future<void> _finalizeSubscriptionForPurchase(PurchaseDetails purchase) async {
-    final plan = subscriptionPlans.where((p) {
-      return (p['storeProductId'] ?? '').toString() == purchase.productID;
-    }).firstWhere(
-      (_) => true,
-      orElse: () => _selectedPlanOrNull() ?? <String, dynamic>{},
-    );
+    final pendingPlanId = _pendingPurchasePlanId;
+    final plan = pendingPlanId != null
+        ? subscriptionPlans.firstWhere(
+            (p) => p['id'].toString() == pendingPlanId,
+            orElse: () => <String, dynamic>{},
+          )
+        : subscriptionPlans.where((p) {
+            return (p['storeProductId'] ?? '').toString() == purchase.productID;
+          }).firstWhere(
+            (_) => true,
+            orElse: () => _selectedPlanOrNull() ?? <String, dynamic>{},
+          );
     if (plan.isEmpty) return;
 
     await SubscriptionBackendService.finalizePurchase(
@@ -437,7 +471,25 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       purchase: purchase,
       couponCode: (_appliedCoupon?['id'] ?? '').toString(),
     );
+    _pendingPurchasePlanId = null;
     SubscriptionAccessService.clearCache();
+  }
+
+  String _friendlyPurchaseError(Object error) {
+    final message = error.toString().replaceFirst('Exception: ', '');
+    if (message.contains('Purchase product does not match the selected plan')) {
+      return 'Purchased Play product does not match this plan. Check storeProductId.';
+    }
+    if (message.contains('Missing purchase verification data')) {
+      return 'Purchase completed, but verification data was missing.';
+    }
+    if (message.contains('Subscription plan not found')) {
+      return 'Selected subscription plan was not found in Firebase.';
+    }
+    if (message.contains('Subscription plan is inactive')) {
+      return 'Selected subscription plan is inactive in Firebase.';
+    }
+    return message;
   }
 
   int _effectivePriceForPlan(
@@ -483,6 +535,52 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
 
     return (plan['storeProductId'] ?? '').toString().trim();
+  }
+
+  PurchaseParam _buildPurchaseParamForPlan(
+    Map<String, dynamic> plan,
+    ProductDetails product,
+  ) {
+    final basePlanId = (plan['playBasePlanId'] ?? '').toString().trim();
+    if (product is GooglePlayProductDetails && basePlanId.isNotEmpty) {
+      final offerToken = product.offerToken;
+      if ((offerToken ?? '').isNotEmpty) {
+        return GooglePlayPurchaseParam(
+          productDetails: product,
+          offerToken: offerToken,
+        );
+      }
+    }
+
+    return PurchaseParam(productDetails: product);
+  }
+
+  ProductDetails _selectProductDetailsForPlan(
+    Map<String, dynamic> plan,
+    List<ProductDetails> products,
+  ) {
+    final basePlanId = (plan['playBasePlanId'] ?? '').toString().trim();
+    if (basePlanId.isEmpty) {
+      return products.first;
+    }
+
+    for (final product in products) {
+      if (product is! GooglePlayProductDetails) {
+        continue;
+      }
+      final offers = product.productDetails.subscriptionOfferDetails;
+      if (offers == null ||
+          product.subscriptionIndex == null ||
+          product.subscriptionIndex! >= offers.length) {
+        continue;
+      }
+      final selectedOffer = offers[product.subscriptionIndex!];
+      if (selectedOffer.basePlanId == basePlanId) {
+        return product;
+      }
+    }
+
+    return products.first;
   }
 
   bool _couponAppliesToPlan(Map<String, dynamic> coupon, Map<String, dynamic> plan) {
