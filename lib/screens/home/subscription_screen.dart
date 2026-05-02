@@ -168,9 +168,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
       for (var doc in snapshot.docs) {
         final data = doc.data();
-        final features = Map<String, dynamic>.from(
-          data['features'] ?? const <String, dynamic>{},
-        );
+        final features = _asStringMap(data['features']);
         final isActive = _isPlanActive(data, features);
         if (!isActive) {
           continue;
@@ -225,8 +223,17 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                   .toString(),
           'playBasePlanId':
               (features['playBasePlanId'] ??
+                      features['googlePlayBasePlanId'] ??
                       data['playBasePlanId'] ??
+                      data['googlePlayBasePlanId'] ??
                       data['basePlanId'] ??
+                      '')
+                  .toString(),
+          'playOfferId':
+              (features['playOfferId'] ??
+                      features['googlePlayOfferId'] ??
+                      data['playOfferId'] ??
+                      data['googlePlayOfferId'] ??
                       '')
                   .toString(),
           'examsIncluded': examsIncluded,
@@ -438,8 +445,22 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       return;
     }
 
-    final product = _selectProductDetailsForPlan(plan, response.productDetails);
-    final purchaseParam = _buildPurchaseParamForPlan(plan, product);
+    final productSelection = _selectProductDetailsForPlan(
+      plan,
+      response.productDetails,
+    );
+    if (!productSelection.isValid) {
+      setState(() => _isPurchasing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(productSelection.errorMessage)),
+      );
+      return;
+    }
+
+    final purchaseParam = _buildPurchaseParamForPlan(
+      plan,
+      productSelection.product!,
+    );
     final started = await _iap.buyNonConsumable(purchaseParam: purchaseParam);
     if (!started && mounted) {
       _pendingPurchasePlanId = null;
@@ -477,6 +498,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
   String _friendlyPurchaseError(Object error) {
     final message = error.toString().replaceFirst('Exception: ', '');
+    if (message.contains('OR_CSE_05')) {
+      return 'Google Play could not open checkout for this subscription. Check the Play product id/base plan mapping in Firebase and confirm the product is active in Play Console.';
+    }
     if (message.contains('Purchase product does not match the selected plan')) {
       return 'Purchased Play product does not match this plan. Check storeProductId.';
     }
@@ -537,13 +561,28 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     return (plan['storeProductId'] ?? '').toString().trim();
   }
 
+  Map<String, dynamic> _asStringMap(Object? value) {
+    if (value is Map) {
+      return value.map(
+        (key, mapValue) => MapEntry(key.toString(), mapValue),
+      );
+    }
+    return const <String, dynamic>{};
+  }
+
   PurchaseParam _buildPurchaseParamForPlan(
     Map<String, dynamic> plan,
     ProductDetails product,
   ) {
     final basePlanId = (plan['playBasePlanId'] ?? '').toString().trim();
+    final offerId = (plan['playOfferId'] ?? '').toString().trim();
     if (product is GooglePlayProductDetails && basePlanId.isNotEmpty) {
-      final offerToken = product.offerToken;
+      final matchedOffer = _matchGooglePlayOffer(
+        product,
+        basePlanId,
+        offerId: offerId,
+      );
+      final offerToken = matchedOffer?.offerIdToken ?? product.offerToken;
       if ((offerToken ?? '').isNotEmpty) {
         return GooglePlayPurchaseParam(
           productDetails: product,
@@ -555,32 +594,56 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     return PurchaseParam(productDetails: product);
   }
 
-  ProductDetails _selectProductDetailsForPlan(
+  _ProductSelection _selectProductDetailsForPlan(
     Map<String, dynamic> plan,
     List<ProductDetails> products,
   ) {
     final basePlanId = (plan['playBasePlanId'] ?? '').toString().trim();
+    final offerId = (plan['playOfferId'] ?? '').toString().trim();
     if (basePlanId.isEmpty) {
-      return products.first;
+      return _ProductSelection.valid(products.first);
     }
 
     for (final product in products) {
       if (product is! GooglePlayProductDetails) {
         continue;
       }
-      final offers = product.productDetails.subscriptionOfferDetails;
-      if (offers == null ||
-          product.subscriptionIndex == null ||
-          product.subscriptionIndex! >= offers.length) {
-        continue;
-      }
-      final selectedOffer = offers[product.subscriptionIndex!];
-      if (selectedOffer.basePlanId == basePlanId) {
-        return product;
+      final matchedOffer = _matchGooglePlayOffer(
+        product,
+        basePlanId,
+        offerId: offerId,
+      );
+      if (matchedOffer != null) {
+        return _ProductSelection.valid(product);
       }
     }
 
-    return products.first;
+    final productId = _productIdForPlan(plan);
+    return _ProductSelection.invalid(
+      offerId.isNotEmpty
+          ? 'Google Play offer "$offerId" under base plan "$basePlanId" was not found for product "$productId".'
+          : 'Google Play base plan "$basePlanId" was not found for product "$productId".',
+    );
+  }
+
+  dynamic _matchGooglePlayOffer(
+    GooglePlayProductDetails product,
+    String basePlanId,
+    {String offerId = ''}
+  ) {
+    final offers = product.productDetails.subscriptionOfferDetails;
+    if (offers == null || offers.isEmpty) {
+      return null;
+    }
+
+    for (final offer in offers) {
+      final offerMatches = offerId.isEmpty || (offer.offerId ?? '') == offerId;
+      if (offer.basePlanId == basePlanId && offerMatches) {
+        return offer;
+      }
+    }
+
+    return null;
   }
 
   bool _couponAppliesToPlan(Map<String, dynamic> coupon, Map<String, dynamic> plan) {
@@ -1303,6 +1366,34 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     _purchaseSubscription?.cancel();
     _couponController.dispose();
     super.dispose();
+  }
+}
+
+class _ProductSelection {
+  final ProductDetails? product;
+  final String errorMessage;
+  final bool isValid;
+
+  const _ProductSelection._({
+    required this.product,
+    required this.errorMessage,
+    required this.isValid,
+  });
+
+  factory _ProductSelection.valid(ProductDetails product) {
+    return _ProductSelection._(
+      product: product,
+      errorMessage: '',
+      isValid: true,
+    );
+  }
+
+  factory _ProductSelection.invalid(String errorMessage) {
+    return _ProductSelection._(
+      product: null,
+      errorMessage: errorMessage,
+      isValid: false,
+    );
   }
 }
 

@@ -332,9 +332,7 @@ class _SelectExamHomeState extends State<SelectExamHome> {
 
       for (final doc in plansSnap.docs) {
         final data = doc.data();
-        final features = Map<String, dynamic>.from(
-          data['features'] ?? const <String, dynamic>{},
-        );
+        final features = _asStringMap(data['features']);
         final hasFeatureFlag = features['isActive'] is bool;
         final hasTopLevelFlag = data['isActive'] is bool;
         final isActive = hasFeatureFlag
@@ -360,6 +358,15 @@ class _SelectExamHomeState extends State<SelectExamHome> {
     }
 
     return false;
+  }
+
+  Map<String, dynamic> _asStringMap(Object? value) {
+    if (value is Map) {
+      return value.map(
+        (key, mapValue) => MapEntry(key.toString(), mapValue),
+      );
+    }
+    return const <String, dynamic>{};
   }
 
   Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
