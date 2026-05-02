@@ -888,12 +888,16 @@ class _SelectExamHomeState extends State<SelectExamHome> {
             const SizedBox(height: 14),
             ElevatedButton(
               onPressed: () {
-                Navigator.of(context).push(
+                Navigator.of(context).push<bool>(
                   MaterialPageRoute(
                     builder: (_) =>
                         SubscriptionScreen(initialExamId: activeExam?.examId),
                   ),
-                );
+                ).then((subscribed) {
+                  if (subscribed == true) {
+                    SubscriptionAccessService.clearCache();
+                  }
+                });
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,

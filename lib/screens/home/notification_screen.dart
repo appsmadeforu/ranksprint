@@ -9,6 +9,7 @@ import '../../services/result_data_service.dart';
 import '../../services/user_exam_preference_service.dart';
 import '../../widgets/top_header.dart';
 import 'package:rxdart/rxdart.dart';
+import '../../services/subscription_access_service.dart';
 import 'subscription_screen.dart';
 import 'test_history_screen.dart';
 import 'tests_screen.dart';
@@ -404,11 +405,15 @@ class _NotificationScreenState extends State<NotificationScreen> {
         await _openLatestResultForExam(examId);
         return;
       case 'offer':
-        Navigator.of(context).push(
+        Navigator.of(context).push<bool>(
           MaterialPageRoute(
             builder: (_) => SubscriptionScreen(initialExamId: examId),
           ),
-        );
+        ).then((subscribed) {
+          if (subscribed == true) {
+            SubscriptionAccessService.clearCache();
+          }
+        });
         return;
       default:
         if (!(data['isRead'] ?? false)) {
@@ -454,6 +459,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
                 userExamIds: const [],
                 onExamChanged: (_) {},
                 showExamDropdown: false,
+                showBackButton: true,
+                enableTitleNavigation: false,
                 onBellTap: () {
                   if (widget.onBellTap != null) {
                     widget.onBellTap!();

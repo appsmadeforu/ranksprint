@@ -444,7 +444,7 @@ class _TestsScreenState extends State<TestsScreen> {
           splashColor: const Color(0xFF2F6FEB).withValues(alpha: 0.1),
           onTap: () {
             if (isLocked) {
-              Navigator.push(
+              Navigator.push<bool>(
                 context,
                 MaterialPageRoute(
                   builder: (_) => SubscriptionScreen(
@@ -455,7 +455,12 @@ class _TestsScreenState extends State<TestsScreen> {
                     lockedItemType: 'test',
                   ),
                 ),
-              );
+              ).then((subscribed) {
+                if (subscribed == true) {
+                  SubscriptionAccessService.clearCache();
+                  _loadActivePlans();
+                }
+              });
               return;
             }
             if (limitReached) return;
@@ -522,7 +527,7 @@ class _TestsScreenState extends State<TestsScreen> {
                       ? null
                       : () {
                           if (isLocked) {
-                            Navigator.push(
+                            Navigator.push<bool>(
                               context,
                               MaterialPageRoute(
                                 builder: (_) => SubscriptionScreen(
@@ -534,7 +539,12 @@ class _TestsScreenState extends State<TestsScreen> {
                                   lockedItemType: 'test',
                                 ),
                               ),
-                            );
+                            ).then((subscribed) {
+                              if (subscribed == true) {
+                                SubscriptionAccessService.clearCache();
+                                _loadActivePlans();
+                              }
+                            });
                             return;
                           }
                           Navigator.push(

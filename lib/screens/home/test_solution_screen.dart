@@ -301,6 +301,8 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
                         userExamIds: vm.examId.isEmpty ? const [] : [vm.examId],
                         onExamChanged: (_) {},
                         showExamDropdown: false,
+                        showBackButton: true,
+                        enableTitleNavigation: false,
                       ),
                       Expanded(
                         child: SingleChildScrollView(

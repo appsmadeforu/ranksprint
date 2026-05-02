@@ -3,6 +3,7 @@ import 'tests_screen.dart';
 import 'pyq_screen.dart';
 import 'analytics_screen.dart';
 import 'profile_screen.dart';
+import '../../services/subscription_access_service.dart';
 import 'subscription_screen.dart';
 import 'select_exam_home.dart';
 
@@ -47,10 +48,14 @@ class _MainNavigationState extends State<MainNavigation> {
   }
 
   void navigateToSubscription() {
-    Navigator.push(
+    Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
-    );
+    ).then((subscribed) {
+      if (subscribed == true) {
+        SubscriptionAccessService.clearCache();
+      }
+    });
   }
 
   void switchToTab(int index, {String? analyticsExamId, int? analyticsTabIndex}) {

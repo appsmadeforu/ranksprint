@@ -58,6 +58,14 @@
           }
         },
         {
+          "client_id": "469236570222-cqlqeuim744kah3cfm8js7c8nue8js4g.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ranksprint.app",
+            "certificate_hash": "641a0b42f4864cf9108b8712cbfdacc0eb9fffe2"
+          }
+        },
+        {
           "client_id": "469236570222-hf5ggemmtku5totiuf3vv9p7n9kp8hmd.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

@@ -8,6 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'subscription_screen.dart';
 import 'payment_history_screen.dart';
+import '../../services/subscription_access_service.dart';
 import '../../services/auth_account_deletion_service.dart';
 import '../../services/auth_account_cleanup_service.dart';
 import '../../services/single_device_session_service.dart';
@@ -923,7 +924,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                               width: double.infinity,
                                               child: OutlinedButton(
                                                 onPressed: () {
-                                                  Navigator.push(
+                                                  Navigator.push<bool>(
                                                     context,
                                                     MaterialPageRoute(
                                                       builder: (_) =>
@@ -934,7 +935,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                                                 .initialPlanId,
                                                           ),
                                                     ),
-                                                  );
+                                                  ).then((subscribed) {
+                                                    if (subscribed == true) {
+                                                      SubscriptionAccessService.clearCache();
+                                                    }
+                                                  });
                                                 },
                                                 style: OutlinedButton.styleFrom(
                                                   side: const BorderSide(

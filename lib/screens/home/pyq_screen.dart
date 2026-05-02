@@ -344,7 +344,7 @@ class _PyqScreenState extends State<PyqScreen> {
                                                      ).withValues(alpha: 0.1),
                                                       onTap: () {
                                                         if (isLocked) {
-                                                          Navigator.push(
+                                                          Navigator.push<bool>(
                                                             context,
                                                             MaterialPageRoute(
                                                               builder: (_) =>
@@ -361,7 +361,12 @@ class _PyqScreenState extends State<PyqScreen> {
                                                                         'pyq',
                                                                   ),
                                                             ),
-                                                          );
+                                                          ).then((subscribed) {
+                                                            if (subscribed == true) {
+                                                              SubscriptionAccessService.clearCache();
+                                                              _loadActivePlans();
+                                                            }
+                                                          });
                                                           return;
                                                         }
                                                         Navigator.push(

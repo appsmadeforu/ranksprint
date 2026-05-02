@@ -92,12 +92,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             if (purchase.status == PurchaseStatus.error) {
               if (mounted) {
                 setState(() => _isPurchasing = false);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      purchase.error?.message ?? 'Purchase failed. Try again.',
-                    ),
-                  ),
+                _showPurchaseErrorDialog(
+                  _friendlyBillingError(purchase.error),
                 );
               }
             }
@@ -110,9 +106,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                   _isPurchasing = false;
                   _isRestoring = false;
                 });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Subscription activated.')),
-                );
+                _showSuccessAndPop();
               }
             }
 
@@ -129,13 +123,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                 _isPurchasing = false;
                 _isRestoring = false;
               });
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    _friendlyPurchaseError(error),
-                  ),
-                ),
-              );
+              _showPurchaseErrorDialog((
+                title: 'Activation Failed',
+                body: _friendlyPurchaseError(error),
+                code: null,
+              ));
             }
           } finally {
             if (purchase.pendingCompletePurchase) {
@@ -398,20 +390,22 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     final productId = _productIdForPlan(plan);
     if (productId.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Missing storeProductId in selected subscription plan.'),
-        ),
-      );
+      _showPurchaseErrorDialog((
+        title: 'Plan Not Configured',
+        body: 'This plan is not linked to a store product yet. Please contact support.',
+        code: 'MISSING_PRODUCT_ID',
+      ));
       return;
     }
 
     final available = await _iap.isAvailable();
     if (!available) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('In-app purchases are not available.')),
-      );
+      _showPurchaseErrorDialog((
+        title: 'Store Unavailable',
+        body: 'In-app purchases are not available on this device. Please make sure you are signed in to Google Play.',
+        code: 'IAP_UNAVAILABLE',
+      ));
       return;
     }
 
@@ -424,24 +418,22 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
     if (response.error != null) {
       setState(() => _isPurchasing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            response.error!.message.isNotEmpty
-                ? response.error!.message
-                : 'Unable to load product details.',
-          ),
-        ),
-      );
+      _showPurchaseErrorDialog((
+        title: 'Store Error',
+        body: 'Could not load product details from Google Play. Please check your internet connection and try again.',
+        code: response.error!.code,
+      ));
       return;
     }
 
     if (response.notFoundIDs.contains(productId) ||
         response.productDetails.isEmpty) {
       setState(() => _isPurchasing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Product not found in store: $productId')),
-      );
+      _showPurchaseErrorDialog((
+        title: 'Plan Unavailable',
+        body: 'This plan could not be found on Google Play. It may have been removed or is not available in your region.',
+        code: 'PRODUCT_NOT_FOUND',
+      ));
       return;
     }
 
@@ -465,9 +457,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     if (!started && mounted) {
       _pendingPurchasePlanId = null;
       setState(() => _isPurchasing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not start purchase flow.')),
-      );
+      _showPurchaseErrorDialog((
+        title: 'Purchase Not Started',
+        body: 'Google Play could not start the purchase. Please try again.',
+        code: null,
+      ));
     }
   }
 
@@ -496,24 +490,188 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     SubscriptionAccessService.clearCache();
   }
 
+  void _showSuccessAndPop() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        icon: const Icon(Icons.check_circle, color: Color(0xFF4CAF50), size: 56),
+        title: const Text('Subscription Activated!'),
+        content: Text(
+          widget.lockedItemLabel != null
+              ? '"${widget.lockedItemLabel}" is now unlocked. Redirecting you back...'
+              : 'Your subscription is now active. Enjoy full access!',
+          textAlign: TextAlign.center,
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2F6FEB),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                Navigator.of(context).pop(true);
+              },
+              child: const Text('Continue', style: TextStyle(fontSize: 16)),
+            ),
+          ),
+        ],
+      ),
+    ).then((_) {
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop(true);
+      }
+    });
+  }
+
   String _friendlyPurchaseError(Object error) {
     final message = error.toString().replaceFirst('Exception: ', '');
     if (message.contains('OR_CSE_05')) {
-      return 'Google Play could not open checkout for this subscription. Check the Play product id/base plan mapping in Firebase and confirm the product is active in Play Console.';
+      return 'Google Play could not open the checkout. Please try again later.';
     }
     if (message.contains('Purchase product does not match the selected plan')) {
-      return 'Purchased Play product does not match this plan. Check storeProductId.';
+      return 'The purchased product does not match the selected plan. Please contact support.';
     }
     if (message.contains('Missing purchase verification data')) {
-      return 'Purchase completed, but verification data was missing.';
+      return 'Payment completed but verification failed. Please contact support if your plan is not activated.';
     }
     if (message.contains('Subscription plan not found')) {
-      return 'Selected subscription plan was not found in Firebase.';
+      return 'This subscription plan is no longer available.';
     }
     if (message.contains('Subscription plan is inactive')) {
-      return 'Selected subscription plan is inactive in Firebase.';
+      return 'This subscription plan is currently unavailable.';
     }
-    return message;
+    if (message.contains('PERMISSION_DENIED') || message.contains('permission-denied')) {
+      return 'You do not have permission to complete this action. Please sign in again.';
+    }
+    if (message.contains('unauthenticated') || message.contains('UNAUTHENTICATED')) {
+      return 'Your session has expired. Please sign in again and retry.';
+    }
+    return 'Something went wrong. Please try again or contact support.';
+  }
+
+  ({String title, String body, String? code}) _friendlyBillingError(IAPError? error) {
+    final raw = error?.message ?? '';
+    final code = error?.code ?? '';
+
+    if (code.contains('developerError') || raw.contains('developerError')) {
+      return (
+        title: 'Purchase Unavailable',
+        body: 'This plan cannot be purchased right now. This is usually a temporary issue with the store configuration. Please try again later.',
+        code: 'DEV_ERROR',
+      );
+    }
+    if (code.contains('itemAlreadyOwned') || raw.contains('itemAlreadyOwned') || raw.contains('already extended')) {
+      return (
+        title: 'Already Subscribed',
+        body: 'You already own this plan. If your access is not active, try using "Restore Purchases" or contact support.',
+        code: 'ALREADY_OWNED',
+      );
+    }
+    if (code.contains('itemUnavailable') || raw.contains('itemUnavailable')) {
+      return (
+        title: 'Plan Unavailable',
+        body: 'This plan is not available for purchase in your region or on this device.',
+        code: 'UNAVAILABLE',
+      );
+    }
+    if (code.contains('userCanceled') || raw.contains('userCanceled')) {
+      return (
+        title: 'Purchase Cancelled',
+        body: 'You cancelled the purchase. No payment was made.',
+        code: null,
+      );
+    }
+    if (code.contains('serviceDisconnected') || raw.contains('serviceDisconnected')) {
+      return (
+        title: 'Connection Lost',
+        body: 'Google Play connection was lost. Please check your internet and try again.',
+        code: 'SERVICE_DISCONNECTED',
+      );
+    }
+    if (code.contains('serviceUnavailable') || raw.contains('serviceUnavailable')) {
+      return (
+        title: 'Store Unavailable',
+        body: 'Google Play is temporarily unavailable. Please try again in a few minutes.',
+        code: 'SERVICE_UNAVAILABLE',
+      );
+    }
+    if (code.contains('billingUnavailable') || raw.contains('billingUnavailable')) {
+      return (
+        title: 'Billing Unavailable',
+        body: 'Google Play billing is not available on this device. Make sure you are signed in to Google Play.',
+        code: 'BILLING_UNAVAILABLE',
+      );
+    }
+    if (code.contains('featureNotSupported') || raw.contains('featureNotSupported')) {
+      return (
+        title: 'Not Supported',
+        body: 'Subscriptions are not supported on this device. Please try on a different device.',
+        code: 'NOT_SUPPORTED',
+      );
+    }
+    if (raw.contains('network') || raw.contains('internet') || raw.contains('timeout')) {
+      return (
+        title: 'Network Error',
+        body: 'Please check your internet connection and try again.',
+        code: 'NETWORK',
+      );
+    }
+
+    return (
+      title: 'Purchase Failed',
+      body: 'Something went wrong with the purchase. Please try again or contact support.',
+      code: code.isNotEmpty ? code : null,
+    );
+  }
+
+  void _showPurchaseErrorDialog(({String title, String body, String? code}) info) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        icon: const Icon(Icons.error_outline, color: Color(0xFFE53935), size: 48),
+        title: Text(info.title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(info.body, textAlign: TextAlign.center),
+            if (info.code != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Error code: ${info.code}',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2F6FEB),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK', style: TextStyle(fontSize: 16)),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   int _effectivePriceForPlan(
@@ -791,11 +949,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       );
       if (result.activated) {
         SubscriptionAccessService.clearCache();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Coupon redeemed and subscription activated.'),
-          ),
-        );
+        if (mounted) _showSuccessAndPop();
+        return;
       }
     } catch (error) {
       if (!mounted) return;
@@ -839,9 +994,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       }
       SubscriptionAccessService.clearCache();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Coupon redeemed and subscription activated.')),
-      );
+      _showSuccessAndPop();
+      return;
     } finally {
       if (mounted) {
         setState(() => _isPurchasing = false);
