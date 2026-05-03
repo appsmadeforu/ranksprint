@@ -92,9 +92,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             if (purchase.status == PurchaseStatus.error) {
               if (mounted) {
                 setState(() => _isPurchasing = false);
-                _showPurchaseErrorDialog(
-                  _friendlyBillingError(purchase.error),
-                );
+                _showPurchaseErrorDialog(_friendlyBillingError(purchase.error));
               }
             }
 
@@ -190,16 +188,15 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           'durationDays': data['durationDays'] ?? 30,
           'duration': _getDurationString(data['durationDays'] ?? 30),
           'price': ((features['price'] ?? data['price'] ?? 0) as num).toInt(),
-          'discount': ((features['discountPercentage'] ??
-                      data['discountPercentage'] ??
-                      0)
-                  as num)
-              .toInt(),
+          'discount':
+              ((features['discountPercentage'] ??
+                          data['discountPercentage'] ??
+                          0)
+                      as num)
+                  .toInt(),
           'originalPrice': _calculateOriginalPrice(
             ((features['price'] ?? data['price'] ?? 0) as num).toInt(),
-            ((features['discountPercentage'] ??
-                        data['discountPercentage'] ??
-                        0)
+            ((features['discountPercentage'] ?? data['discountPercentage'] ?? 0)
                     as num)
                 .toInt(),
           ),
@@ -256,10 +253,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
   }
 
-  bool _isPlanActive(
-    Map<String, dynamic> data,
-    Map<String, dynamic> features,
-  ) {
+  bool _isPlanActive(Map<String, dynamic> data, Map<String, dynamic> features) {
     if (features['isActive'] is bool) {
       return features['isActive'] == true;
     }
@@ -392,7 +386,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       if (!mounted) return;
       _showPurchaseErrorDialog((
         title: 'Plan Not Configured',
-        body: 'This plan is not linked to a store product yet. Please contact support.',
+        body:
+            'This plan is not linked to a store product yet. Please contact support.',
         code: 'MISSING_PRODUCT_ID',
       ));
       return;
@@ -403,7 +398,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       if (!mounted) return;
       _showPurchaseErrorDialog((
         title: 'Store Unavailable',
-        body: 'In-app purchases are not available on this device. Please make sure you are signed in to Google Play.',
+        body:
+            'In-app purchases are not available on this device. Please make sure you are signed in to Google Play.',
         code: 'IAP_UNAVAILABLE',
       ));
       return;
@@ -420,7 +416,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       setState(() => _isPurchasing = false);
       _showPurchaseErrorDialog((
         title: 'Store Error',
-        body: 'Could not load product details from Google Play. Please check your internet connection and try again.',
+        body:
+            'Could not load product details from Google Play. Please check your internet connection and try again.',
         code: response.error!.code,
       ));
       return;
@@ -431,7 +428,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       setState(() => _isPurchasing = false);
       _showPurchaseErrorDialog((
         title: 'Plan Unavailable',
-        body: 'This plan could not be found on Google Play. It may have been removed or is not available in your region.',
+        body:
+            'This plan could not be found on Google Play. It may have been removed or is not available in your region.',
         code: 'PRODUCT_NOT_FOUND',
       ));
       return;
@@ -443,9 +441,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     );
     if (!productSelection.isValid) {
       setState(() => _isPurchasing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(productSelection.errorMessage)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(productSelection.errorMessage)));
       return;
     }
 
@@ -465,19 +463,24 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
   }
 
-  Future<void> _finalizeSubscriptionForPurchase(PurchaseDetails purchase) async {
+  Future<void> _finalizeSubscriptionForPurchase(
+    PurchaseDetails purchase,
+  ) async {
     final pendingPlanId = _pendingPurchasePlanId;
     final plan = pendingPlanId != null
         ? subscriptionPlans.firstWhere(
             (p) => p['id'].toString() == pendingPlanId,
             orElse: () => <String, dynamic>{},
           )
-        : subscriptionPlans.where((p) {
-            return (p['storeProductId'] ?? '').toString() == purchase.productID;
-          }).firstWhere(
-            (_) => true,
-            orElse: () => _selectedPlanOrNull() ?? <String, dynamic>{},
-          );
+        : subscriptionPlans
+              .where((p) {
+                return (p['storeProductId'] ?? '').toString() ==
+                    purchase.productID;
+              })
+              .firstWhere(
+                (_) => true,
+                orElse: () => _selectedPlanOrNull() ?? <String, dynamic>{},
+              );
     if (plan.isEmpty) return;
 
     await SubscriptionBackendService.finalizePurchase(
@@ -496,7 +499,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        icon: const Icon(Icons.check_circle, color: Color(0xFF4CAF50), size: 56),
+        icon: const Icon(
+          Icons.check_circle,
+          color: Color(0xFF4CAF50),
+          size: 56,
+        ),
         title: const Text('Subscription Activated!'),
         content: Text(
           widget.lockedItemLabel != null
@@ -549,37 +556,46 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     if (message.contains('Subscription plan is inactive')) {
       return 'This subscription plan is currently unavailable.';
     }
-    if (message.contains('PERMISSION_DENIED') || message.contains('permission-denied')) {
+    if (message.contains('PERMISSION_DENIED') ||
+        message.contains('permission-denied')) {
       return 'You do not have permission to complete this action. Please sign in again.';
     }
-    if (message.contains('unauthenticated') || message.contains('UNAUTHENTICATED')) {
+    if (message.contains('unauthenticated') ||
+        message.contains('UNAUTHENTICATED')) {
       return 'Your session has expired. Please sign in again and retry.';
     }
     return 'Something went wrong. Please try again or contact support.';
   }
 
-  ({String title, String body, String? code}) _friendlyBillingError(IAPError? error) {
+  ({String title, String body, String? code}) _friendlyBillingError(
+    IAPError? error,
+  ) {
     final raw = error?.message ?? '';
     final code = error?.code ?? '';
 
     if (code.contains('developerError') || raw.contains('developerError')) {
       return (
         title: 'Purchase Unavailable',
-        body: 'This plan cannot be purchased right now. This is usually a temporary issue with the store configuration. Please try again later.',
+        body:
+            'This plan cannot be purchased right now. This is usually a temporary issue with the store configuration. Please try again later.',
         code: 'DEV_ERROR',
       );
     }
-    if (code.contains('itemAlreadyOwned') || raw.contains('itemAlreadyOwned') || raw.contains('already extended')) {
+    if (code.contains('itemAlreadyOwned') ||
+        raw.contains('itemAlreadyOwned') ||
+        raw.contains('already extended')) {
       return (
         title: 'Already Subscribed',
-        body: 'You already own this plan. If your access is not active, try using "Restore Purchases" or contact support.',
+        body:
+            'You already own this plan. If your access is not active, try using "Restore Purchases" or contact support.',
         code: 'ALREADY_OWNED',
       );
     }
     if (code.contains('itemUnavailable') || raw.contains('itemUnavailable')) {
       return (
         title: 'Plan Unavailable',
-        body: 'This plan is not available for purchase in your region or on this device.',
+        body:
+            'This plan is not available for purchase in your region or on this device.',
         code: 'UNAVAILABLE',
       );
     }
@@ -590,35 +606,45 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         code: null,
       );
     }
-    if (code.contains('serviceDisconnected') || raw.contains('serviceDisconnected')) {
+    if (code.contains('serviceDisconnected') ||
+        raw.contains('serviceDisconnected')) {
       return (
         title: 'Connection Lost',
-        body: 'Google Play connection was lost. Please check your internet and try again.',
+        body:
+            'Google Play connection was lost. Please check your internet and try again.',
         code: 'SERVICE_DISCONNECTED',
       );
     }
-    if (code.contains('serviceUnavailable') || raw.contains('serviceUnavailable')) {
+    if (code.contains('serviceUnavailable') ||
+        raw.contains('serviceUnavailable')) {
       return (
         title: 'Store Unavailable',
-        body: 'Google Play is temporarily unavailable. Please try again in a few minutes.',
+        body:
+            'Google Play is temporarily unavailable. Please try again in a few minutes.',
         code: 'SERVICE_UNAVAILABLE',
       );
     }
-    if (code.contains('billingUnavailable') || raw.contains('billingUnavailable')) {
+    if (code.contains('billingUnavailable') ||
+        raw.contains('billingUnavailable')) {
       return (
         title: 'Billing Unavailable',
-        body: 'Google Play billing is not available on this device. Make sure you are signed in to Google Play.',
+        body:
+            'Google Play billing is not available on this device. Make sure you are signed in to Google Play.',
         code: 'BILLING_UNAVAILABLE',
       );
     }
-    if (code.contains('featureNotSupported') || raw.contains('featureNotSupported')) {
+    if (code.contains('featureNotSupported') ||
+        raw.contains('featureNotSupported')) {
       return (
         title: 'Not Supported',
-        body: 'Subscriptions are not supported on this device. Please try on a different device.',
+        body:
+            'Subscriptions are not supported on this device. Please try on a different device.',
         code: 'NOT_SUPPORTED',
       );
     }
-    if (raw.contains('network') || raw.contains('internet') || raw.contains('timeout')) {
+    if (raw.contains('network') ||
+        raw.contains('internet') ||
+        raw.contains('timeout')) {
       return (
         title: 'Network Error',
         body: 'Please check your internet connection and try again.',
@@ -628,17 +654,24 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
     return (
       title: 'Purchase Failed',
-      body: 'Something went wrong with the purchase. Please try again or contact support.',
+      body:
+          'Something went wrong with the purchase. Please try again or contact support.',
       code: code.isNotEmpty ? code : null,
     );
   }
 
-  void _showPurchaseErrorDialog(({String title, String body, String? code}) info) {
+  void _showPurchaseErrorDialog(
+    ({String title, String body, String? code}) info,
+  ) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        icon: const Icon(Icons.error_outline, color: Color(0xFFE53935), size: 48),
+        icon: const Icon(
+          Icons.error_outline,
+          color: Color(0xFFE53935),
+          size: 48,
+        ),
         title: Text(info.title),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -721,9 +754,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
   Map<String, dynamic> _asStringMap(Object? value) {
     if (value is Map) {
-      return value.map(
-        (key, mapValue) => MapEntry(key.toString(), mapValue),
-      );
+      return value.map((key, mapValue) => MapEntry(key.toString(), mapValue));
     }
     return const <String, dynamic>{};
   }
@@ -786,9 +817,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
   dynamic _matchGooglePlayOffer(
     GooglePlayProductDetails product,
-    String basePlanId,
-    {String offerId = ''}
-  ) {
+    String basePlanId, {
+    String offerId = '',
+  }) {
     final offers = product.productDetails.subscriptionOfferDetails;
     if (offers == null || offers.isEmpty) {
       return null;
@@ -804,7 +835,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     return null;
   }
 
-  bool _couponAppliesToPlan(Map<String, dynamic> coupon, Map<String, dynamic> plan) {
+  bool _couponAppliesToPlan(
+    Map<String, dynamic> coupon,
+    Map<String, dynamic> plan,
+  ) {
     final applicablePlanIds = List<String>.from(
       coupon['applicablePlanIds'] ?? const <String>[],
     );
@@ -960,9 +994,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         _couponFeedback = message;
         _couponFeedbackIsError = true;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } finally {
       if (mounted) {
         setState(() => _isApplyingCoupon = false);
@@ -1023,7 +1057,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       if (!mounted) return;
       setState(() => _isRestoring = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ),
       );
     }
   }
@@ -1122,7 +1158,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
 
     final effectivePrice = _effectivePriceForPlan(selectedPlan);
-    final hasCoupon = _appliedCoupon != null &&
+    final hasCoupon =
+        _appliedCoupon != null &&
         _couponAppliesToPlan(_appliedCoupon!, selectedPlan);
     if (hasCoupon) {
       selectedPlan['price'] = effectivePrice;
@@ -1136,348 +1173,360 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       body: SafeArea(
         child: Column(
           children: [
-          /// HEADER
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
-            color: const Color(0xFF2F3E8F),
-            child: Column(
-              children: const [
-                Icon(Icons.workspace_premium, color: Colors.orange, size: 40),
-                SizedBox(height: 8),
-                Text(
-                  "Unlock Premium",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  "Get unlimited access to all features",
-                  style: TextStyle(color: Colors.white70),
-                ),
-              ],
-            ),
-          ),
-
-          /// CONTENT
-          Expanded(
-            child: SingleChildScrollView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.all(16),
+            /// HEADER
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+              color: const Color(0xFF2F3E8F),
               child: Column(
-                children: [
-                  if ((widget.lockedItemLabel ?? '').isNotEmpty)
-                    _sectionCard(
-                      color: colorScheme.tertiaryContainer,
-                      child: Row(
-                        children: [
-                          Icon(Icons.lock_outline, color: colorScheme.tertiary),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Unlock ${widget.lockedItemType ?? 'content'}: ${widget.lockedItemLabel}',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: colorScheme.onTertiaryContainer,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                children: const [
+                  Icon(Icons.workspace_premium, color: Colors.orange, size: 40),
+                  SizedBox(height: 8),
+                  Text(
+                    "Unlock Premium",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
                     ),
-                  if ((selectedExamId ?? '').isNotEmpty)
-                    _sectionCard(
-                      color: colorScheme.primaryContainer,
-                      child: Row(
-                         children: [
-                           Icon(
-                             Icons.school_outlined,
-                             color: colorScheme.primary,
-                           ),
-                           const SizedBox(width: 10),
-                           Expanded(
-                             child: Text(
-                               'Showing plans for exam: ${_selectedExamName ?? selectedExamId}',
-                               style: TextStyle(
-                                 fontWeight: FontWeight.w600,
-                                 color: colorScheme.onPrimaryContainer,
-                               ),
-                             ),
-                           ),
-                        ],
-                      ),
-                    ),
-                  /// PLAN CARDS
-                  ...visiblePlans.map((plan) {
-                    final isSelected = plan['id'] == selectedPlanId;
-                    final isPopular = plan['durationDays'] == 180;
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    "Get unlimited access to all features",
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
 
-                    return GestureDetector(
-                      onTap: () => setState(() => selectedPlanId = plan['id']),
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: colorScheme.surface,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isSelected
-                                ? colorScheme.primary
-                                : colorScheme.outlineVariant,
-                            width: isSelected ? 2 : 1,
-                          ),
-                        ),
+            /// CONTENT
+            Expanded(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    if ((widget.lockedItemLabel ?? '').isNotEmpty)
+                      _sectionCard(
+                        color: colorScheme.tertiaryContainer,
                         child: Row(
                           children: [
                             Icon(
-                              isSelected
-                                  ? Icons.radio_button_checked
-                                  : Icons.radio_button_off,
-                              color: isSelected
-                                  ? colorScheme.primary
-                                  : colorScheme.onSurfaceVariant,
+                              Icons.lock_outline,
+                              color: colorScheme.tertiary,
                             ),
-                            const SizedBox(width: 12),
-
-                            /// TEXT
+                            const SizedBox(width: 10),
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Text(
-                                        plan['name'],
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          color: colorScheme.onSurface,
-                                        ),
-                                      ),
-                                      if (isPopular) ...[
-                                        const SizedBox(width: 6),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 6,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.orange,
-                                            borderRadius: BorderRadius.circular(
-                                              4,
-                                            ),
-                                          ),
-                                          child: const Text(
-                                            "Most Popular",
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    plan['duration'],
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
+                              child: Text(
+                                'Unlock ${widget.lockedItemType ?? 'content'}: ${widget.lockedItemLabel}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: colorScheme.onTertiaryContainer,
+                                ),
                               ),
                             ),
-
-                            /// PRICE
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(
-                                  "₹${plan['originalPrice']}",
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    decoration: TextDecoration.lineThrough,
-                                    color: Colors.grey[500],
-                                  ),
+                          ],
+                        ),
+                      ),
+                    if ((selectedExamId ?? '').isNotEmpty)
+                      _sectionCard(
+                        color: colorScheme.primaryContainer,
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.school_outlined,
+                              color: colorScheme.primary,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Showing plans for exam: ${_selectedExamName ?? selectedExamId}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: colorScheme.onPrimaryContainer,
                                 ),
-                                const SizedBox(height: 2),
-                                Row(
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    /// PLAN CARDS
+                    ...visiblePlans.map((plan) {
+                      final isSelected = plan['id'] == selectedPlanId;
+                      final isPopular = plan['durationDays'] == 180;
+
+                      return GestureDetector(
+                        onTap: () =>
+                            setState(() => selectedPlanId = plan['id']),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected
+                                  ? colorScheme.primary
+                                  : colorScheme.outlineVariant,
+                              width: isSelected ? 2 : 1,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                isSelected
+                                    ? Icons.radio_button_checked
+                                    : Icons.radio_button_off,
+                                color: isSelected
+                                    ? colorScheme.primary
+                                    : colorScheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: 12),
+
+                              /// TEXT
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      "₹${plan['price']}",
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                    Row(
+                                      children: [
+                                        Text(
+                                          plan['name'],
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            color: colorScheme.onSurface,
+                                          ),
+                                        ),
+                                        if (isPopular) ...[
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.orange,
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                            ),
+                                            child: const Text(
+                                              "Most Popular",
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
                                     ),
-                                    const SizedBox(width: 4),
+                                    const SizedBox(height: 4),
                                     Text(
-                                      "${plan['discount']}% OFF",
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.green,
-                                        fontWeight: FontWeight.bold,
+                                      plan['duration'],
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: colorScheme.onSurfaceVariant,
                                       ),
                                     ),
                                   ],
                                 ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
+                              ),
 
-                  /// INCLUDED
-                  _sectionCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text(
-                          "What's Included",
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        SizedBox(height: 10),
-                        _Feature("Access to all mock tests"),
-                        _Feature("Unlimited test attempts"),
-                        _Feature("Previous year questions"),
-                        _Feature("Detailed analytics"),
-                        _Feature("National rank comparison"),
-                        _Feature("Live doubt solving"),
-                        _Feature("Study materials"),
-                        _Feature("Ad-free experience"),
-                      ],
-                    ),
-                  ),
-
-                  /// COUPON
-                  _sectionCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "Have a Coupon Code?",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.onSurface,
+                              /// PRICE
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    "₹${plan['originalPrice']}",
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      decoration: TextDecoration.lineThrough,
+                                      color: Colors.grey[500],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        "₹${plan['price']}",
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        "${plan['discount']}% OFF",
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.green,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _couponController,
-                                decoration: InputDecoration(
-                                  hintText: "Enter coupon code",
-                                  hintStyle: TextStyle(
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                  isDense: true,
-                                  filled: true,
-                                  fillColor: colorScheme.surfaceContainerLowest,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
+                      );
+                    }),
+
+                    /// INCLUDED
+                    _sectionCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            "What's Included",
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          SizedBox(height: 10),
+                          _Feature("Access to all mock tests"),
+                          _Feature("Unlimited test attempts"),
+                          _Feature("Previous year questions"),
+                          _Feature("Detailed analytics"),
+                          _Feature("National rank comparison"),
+                          _Feature("Live doubt solving"),
+                          _Feature("Study materials"),
+                          _Feature("Ad-free experience"),
+                        ],
+                      ),
+                    ),
+
+                    /// COUPON
+                    _sectionCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Have a Coupon Code?",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: colorScheme.onSurface,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _couponController,
+                                  decoration: InputDecoration(
+                                    hintText: "Enter coupon code",
+                                    hintStyle: TextStyle(
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                    isDense: true,
+                                    filled: true,
+                                    fillColor:
+                                        colorScheme.surfaceContainerLowest,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
                                   ),
                                 ),
                               ),
+                              const SizedBox(width: 8),
+                              OutlinedButton(
+                                onPressed: _isApplyingCoupon
+                                    ? null
+                                    : _applyCoupon,
+                                child: _isApplyingCoupon
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Text("Apply"),
+                              ),
+                            ],
+                          ),
+                          if (hasCoupon) ...[
+                            const SizedBox(height: 10),
+                            Text(
+                              'Applied: ${_appliedCoupon!['id']}  |  Final price: Rs. $effectivePrice',
+                              style: const TextStyle(
+                                color: Colors.green,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                            const SizedBox(width: 8),
-                            OutlinedButton(
-                              onPressed: _isApplyingCoupon ? null : _applyCoupon,
-                              child: _isApplyingCoupon
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                    )
-                                  : const Text("Apply"),
+                            const SizedBox(height: 6),
+                            Text(
+                              ((_appliedCoupon!['googlePlayProductId'] ?? '')
+                                          .toString()
+                                          .trim()
+                                          .isNotEmpty) ||
+                                      effectivePrice == 0
+                                  ? 'This coupon is linked to the checkout flow.'
+                                  : 'Coupon saved, but add googlePlayProductId in Firebase if you want Play Store discounted billing.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
                             ),
                           ],
-                        ),
-                        if (hasCoupon) ...[
-                          const SizedBox(height: 10),
-                          Text(
-                            'Applied: ${_appliedCoupon!['id']}  |  Final price: Rs. $effectivePrice',
-                            style: const TextStyle(
-                              color: Colors.green,
-                              fontWeight: FontWeight.w600,
+                          if (_couponFeedback != null) ...[
+                            const SizedBox(height: 10),
+                            Text(
+                              _couponFeedback!,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: _couponFeedbackIsError
+                                    ? Colors.red.shade700
+                                    : Colors.green.shade700,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                    /// SECURE
+                    _sectionCard(
+                      color: colorScheme.primaryContainer,
+                      child: Row(
+                        children: [
+                          Icon(Icons.verified, color: colorScheme.primary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              "100% Secure Payment",
+                              style: TextStyle(
+                                color: colorScheme.onPrimaryContainer,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            ((_appliedCoupon!['googlePlayProductId'] ?? '')
-                                        .toString()
-                                        .trim()
-                                        .isNotEmpty) ||
-                                    effectivePrice == 0
-                                ? 'This coupon is linked to the checkout flow.'
-                                : 'Coupon saved, but add googlePlayProductId in Firebase if you want Play Store discounted billing.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
+                          TextButton(
+                            onPressed: _isPurchasing || _isRestoring
+                                ? null
+                                : _restorePurchases,
+                            child: _isRestoring
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text('Restore'),
                           ),
                         ],
-                        if (_couponFeedback != null) ...[
-                          const SizedBox(height: 10),
-                          Text(
-                            _couponFeedback!,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: _couponFeedbackIsError
-                                  ? Colors.red.shade700
-                                  : Colors.green.shade700,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ],
+                      ),
                     ),
-                  ),
 
-                  /// SECURE
-                  _sectionCard(
-                    color: colorScheme.primaryContainer,
-                    child: Row(
-                      children: [
-                        Icon(Icons.verified, color: colorScheme.primary),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            "100% Secure Payment",
-                            style: TextStyle(
-                              color: colorScheme.onPrimaryContainer,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: _isPurchasing || _isRestoring
-                              ? null
-                              : _restorePurchases,
-                          child: _isRestoring
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Text('Restore'),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  SizedBox(height: 88 + bottomInset),
-                ],
+                    SizedBox(height: 88 + bottomInset),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
         ),
       ),
 
@@ -1486,9 +1535,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         padding: EdgeInsets.fromLTRB(12, 12, 12, 12 + bottomInset),
         decoration: BoxDecoration(
           color: colorScheme.surface,
-          border: Border(
-            top: BorderSide(color: colorScheme.outlineVariant),
-          ),
+          border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
         ),
         child: Row(
           children: [
@@ -1501,13 +1548,17 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                 ),
               ),
             ),
-             ElevatedButton(
-               onPressed: (_isPurchasing || _isRestoring) ? null : _startPurchase,
+            ElevatedButton(
+              onPressed: (_isPurchasing || _isRestoring)
+                  ? null
+                  : _startPurchase,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange,
+                minimumSize: const Size(0, 42),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 24,
-                  vertical: 12,
+                  vertical: 8,
                 ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),

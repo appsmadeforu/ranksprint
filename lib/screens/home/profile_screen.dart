@@ -700,16 +700,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                                             _profileInitials(
                                                               data,
                                                             ),
-                                                            style:
-                                                                TextStyle(
-                                                                  color:
-                                                                      colorScheme
-                                                                          .onPrimary,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .bold,
-                                                                  fontSize: 20,
-                                                                ),
+                                                            style: TextStyle(
+                                                              color: colorScheme
+                                                                  .onPrimary,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                              fontSize: 20,
+                                                            ),
                                                           ),
                                                         );
                                                       },
@@ -717,7 +715,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                               : Text(
                                                   _profileInitials(data),
                                                   style: TextStyle(
-                                                    color: colorScheme.onPrimary,
+                                                    color:
+                                                        colorScheme.onPrimary,
                                                     fontWeight: FontWeight.bold,
                                                     fontSize: 20,
                                                   ),
@@ -739,8 +738,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                               height: 28,
                                               decoration: BoxDecoration(
                                                 shape: BoxShape.circle,
-                                                color:
-                                                    colorScheme.primaryContainer,
+                                                color: colorScheme
+                                                    .primaryContainer,
                                               ),
                                               child: Icon(
                                                 photoUrl.isNotEmpty
@@ -800,8 +799,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                               padding: const EdgeInsets.all(6),
                                               decoration: BoxDecoration(
                                                 border: Border.all(
-                                                  color:
-                                                      colorScheme.outlineVariant,
+                                                  color: colorScheme
+                                                      .outlineVariant,
                                                 ),
                                                 borderRadius:
                                                     BorderRadius.circular(8),
@@ -952,6 +951,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                                   side: const BorderSide(
                                                     color: Colors.white24,
                                                   ),
+                                                  minimumSize: const Size(
+                                                    0,
+                                                    40,
+                                                  ),
+                                                  tapTargetSize:
+                                                      MaterialTapTargetSize
+                                                          .shrinkWrap,
+                                                  visualDensity:
+                                                      VisualDensity.compact,
                                                   shape: RoundedRectangleBorder(
                                                     borderRadius:
                                                         BorderRadius.circular(
@@ -961,12 +969,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                                 ),
                                                 child: const Padding(
                                                   padding: EdgeInsets.symmetric(
-                                                    vertical: 12,
+                                                    vertical: 10,
                                                   ),
                                                   child: Text(
                                                     'Manage Subscription',
                                                     style: TextStyle(
                                                       color: Colors.white,
+                                                      fontSize: 13,
                                                     ),
                                                   ),
                                                 ),
