@@ -281,6 +281,8 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
     return FutureBuilder<_Vm>(
       future: _future,
       builder: (context, snapshot) {
+        final theme = Theme.of(context);
+        final colorScheme = theme.colorScheme;
         final vm = snapshot.data;
         return PopScope(
           canPop: vm == null || vm.examId.isEmpty,
@@ -290,7 +292,7 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
             }
           },
           child: Scaffold(
-          backgroundColor: const Color(0xFFF1F5F9),
+          backgroundColor: theme.scaffoldBackgroundColor,
           body: SafeArea(
             child: !snapshot.hasData
                 ? const Center(child: CircularProgressIndicator())
@@ -344,19 +346,18 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
                     child: SizedBox(
                       width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () => _openSolutions(vm!),
-                        icon: const Icon(
-                          Icons.visibility,
-                          size: 18,
-                          color: Colors.white,
-                        ),
-                        label: const Text(
+                        child: ElevatedButton.icon(
+                          onPressed: () => _openSolutions(vm!),
+                          icon: const Icon(
+                            Icons.visibility,
+                            size: 18,
+                          ),
+                        label: Text(
                           'View Solution',
-                          style: TextStyle(color: Colors.white),
+                          style: TextStyle(color: colorScheme.onPrimary),
                         ),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1E3A8A),
+                          backgroundColor: colorScheme.primary,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
                       ),
@@ -570,12 +571,16 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
   }
 
   Widget _animatedBar(String label, double value, Color color, int count) {
+    final colorScheme = Theme.of(context).colorScheme;
     final safe = value.clamp(0.0, 1.0);
     return Row(
       children: [
         SizedBox(
           width: 64,
-          child: Text(label, style: const TextStyle(fontSize: 12)),
+          child: Text(
+            label,
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurface),
+          ),
         ),
         Expanded(
           child: ClipRRect(
@@ -588,7 +593,7 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
                 return LinearProgressIndicator(
                   minHeight: 8,
                   value: v,
-                  backgroundColor: const Color(0xFFE5E7EB),
+                  backgroundColor: colorScheme.surfaceContainerHighest,
                   color: color,
                 );
               },
@@ -601,7 +606,10 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
           child: Text(
             '$count',
             textAlign: TextAlign.right,
-            style: const TextStyle(fontWeight: FontWeight.w600),
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: colorScheme.onSurface,
+            ),
           ),
         ),
       ],
@@ -609,6 +617,7 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
   }
 
   Widget _dotMetric(int value, String label, Color color) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       children: [
         Container(
@@ -617,10 +626,19 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(height: 6),
-        Text('$value', style: const TextStyle(fontWeight: FontWeight.w700)),
+        Text(
+          '$value',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: colorScheme.onSurface,
+          ),
+        ),
         Text(
           label,
-          style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
+          style: TextStyle(
+            fontSize: 11,
+            color: colorScheme.onSurfaceVariant,
+          ),
         ),
       ],
     );
@@ -630,9 +648,9 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
     if (vm.sections.isEmpty) {
       return _card(
         title: 'Section-wise Analysis',
-        child: const Text(
+        child: Text(
           'No section data found.',
-          style: TextStyle(color: Color(0xFF6B7280)),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       );
     }
@@ -678,9 +696,9 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
                 const SizedBox(height: 4),
                 Text(
                   '${s.correct} correct          ${s.incorrect} incorrect          ${s.skipped} skipped          ${s.attempted}/${s.total} attempted',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 10,
-                    color: Color(0xFF6B7280),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -696,9 +714,9 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
     if (sections.isEmpty) {
       return _card(
         title: 'Subject Breakdown',
-        child: const Text(
+        child: Text(
           'No subject data available yet.',
-          style: TextStyle(color: Color(0xFF6B7280)),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       );
     }
@@ -708,9 +726,12 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Correct answers in each subject, filled by percentage',
-            style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 14),
           ...sections.map((s) {
@@ -726,10 +747,10 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
                       s.name,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF1E293B),
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                   ),
@@ -745,7 +766,9 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
                           return LinearProgressIndicator(
                             minHeight: 14,
                             value: value,
-                            backgroundColor: const Color(0xFFE5E7EB),
+                            backgroundColor: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest,
                             color: const Color(0xFF16A34A),
                           );
                         },
@@ -758,10 +781,10 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
                     child: Text(
                       '${correctPct.toStringAsFixed(0)}% (${s.correct}/${s.total})',
                       textAlign: TextAlign.right,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                   ),
@@ -778,9 +801,9 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
     if (vm.trend.length < 2) {
       return _card(
         title: 'Attempt vs Accuracy Trend',
-        child: const Text(
+        child: Text(
           'Need at least 2 attempts to show trend.',
-          style: TextStyle(color: Color(0xFF6B7280)),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       );
     }
@@ -792,18 +815,25 @@ class _TestSolutionScreenState extends State<TestSolutionScreen> {
   }
 
   Widget _card({required String title, required Widget child}) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(
+            title,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: colorScheme.onSurface,
+            ),
+          ),
           const SizedBox(height: 10),
           child,
         ],

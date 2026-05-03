@@ -97,7 +97,7 @@ class _SplashScreenState extends State<SplashScreen> with WidgetsBindingObserver
     }
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: FutureBuilder<void>(
         future: _initializeVideoFuture,
         builder: (context, snapshot) {

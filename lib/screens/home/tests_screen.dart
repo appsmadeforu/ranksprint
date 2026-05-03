@@ -145,12 +145,14 @@ class _TestsScreenState extends State<TestsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     if (selectedExamId == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -174,7 +176,7 @@ class _TestsScreenState extends State<TestsScreen> {
             // =======================
             // TITLE SECTION
             // =======================
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: Align(
                 alignment: Alignment.centerLeft,
@@ -186,12 +188,16 @@ class _TestsScreenState extends State<TestsScreen> {
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurface,
                       ),
                     ),
                     SizedBox(height: 6),
                     Text(
                       "Practice full-length and sectional tests",
-                      style: TextStyle(fontSize: 14, color: Colors.grey),
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -217,13 +223,13 @@ class _TestsScreenState extends State<TestsScreen> {
                         ),
                         decoration: BoxDecoration(
                           color: selected
-                              ? const Color(0xFF2F3E8F)
-                              : Colors.white,
+                              ? colorScheme.primary
+                              : colorScheme.surface,
                           borderRadius: BorderRadius.circular(999),
                           border: Border.all(
                             color: selected
-                                ? const Color(0xFF2F3E8F)
-                                : const Color(0xFFD8DEEA),
+                                ? colorScheme.primary
+                                : colorScheme.outlineVariant,
                           ),
                         ),
                         child: Text(
@@ -232,8 +238,8 @@ class _TestsScreenState extends State<TestsScreen> {
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                             color: selected
-                                ? Colors.white
-                                : const Color(0xFF5B6478),
+                                ? colorScheme.onPrimary
+                                : colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ),
@@ -392,6 +398,7 @@ class _TestsScreenState extends State<TestsScreen> {
   }
 
   Widget _buildTestCard(QueryDocumentSnapshot test, int usedAttempts) {
+    final colorScheme = Theme.of(context).colorScheme;
     final title = test['name'] ?? test.id;
 
     final Map<String, dynamic>? testData = test.data() as Map<String, dynamic>?;
@@ -437,11 +444,11 @@ class _TestsScreenState extends State<TestsScreen> {
       margin: const EdgeInsets.only(bottom: 18),
       child: Material(
         borderRadius: BorderRadius.circular(18),
-        color: Colors.white,
+        color: colorScheme.surface,
         elevation: 3,
         child: InkWell(
           borderRadius: BorderRadius.circular(18),
-          splashColor: const Color(0xFF2F6FEB).withValues(alpha: 0.1),
+          splashColor: colorScheme.primary.withValues(alpha: 0.1),
           onTap: () {
             if (isLocked) {
               Navigator.push<bool>(
@@ -482,13 +489,15 @@ class _TestsScreenState extends State<TestsScreen> {
                   height: 52,
                   decoration: BoxDecoration(
                     color: isLocked
-                        ? Colors.grey.shade200
-                        : const Color(0xFFEFF3FF),
+                        ? colorScheme.surfaceContainerHighest
+                        : colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Icon(
                     isLocked ? Icons.lock_outline : Icons.assignment,
-                    color: isLocked ? Colors.grey : const Color(0xFF2F6FEB),
+                    color: isLocked
+                        ? colorScheme.onSurfaceVariant
+                        : colorScheme.primary,
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -498,25 +507,26 @@ class _TestsScreenState extends State<TestsScreen> {
                     children: [
                       Text(
                         title,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurface,
                         ),
                       ),
                       const SizedBox(height: 6),
                       Text(
                         "$duration min • $marks marks",
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
-                          color: Colors.grey,
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ),
                       const SizedBox(height: 6),
                       Text(
                         attemptsText,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Colors.grey,
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -559,8 +569,8 @@ class _TestsScreenState extends State<TestsScreen> {
                         },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: isLocked
-                        ? Colors.white
-                        : const Color(0xFF2F3E8F),
+                        ? colorScheme.surface
+                        : colorScheme.primary,
                     side: isLocked
                         ? const BorderSide(color: Colors.orange)
                         : null,
@@ -578,7 +588,9 @@ class _TestsScreenState extends State<TestsScreen> {
                     style: TextStyle(
                       color: isLocked
                           ? Colors.orange
-                          : (limitReached ? Colors.grey : Colors.white),
+                          : (limitReached
+                                ? colorScheme.onSurfaceVariant
+                                : colorScheme.onPrimary),
                     ),
                   ),
                 ),

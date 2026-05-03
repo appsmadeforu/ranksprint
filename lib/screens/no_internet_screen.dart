@@ -15,8 +15,11 @@ class NoInternetScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -35,20 +38,20 @@ class NoInternetScreen extends StatelessWidget {
                   Text(
                     title,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF555555),
+                      color: colorScheme.onSurface,
                     ),
                   ),
                   const SizedBox(height: 10),
                   Text(
                     message,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
                       height: 1.45,
-                      color: Color(0xFF8A8A8A),
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                   if (onRetry != null) ...[
@@ -58,8 +61,6 @@ class NoInternetScreen extends StatelessWidget {
                       child: ElevatedButton(
                         onPressed: onRetry,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1B86C8),
-                          foregroundColor: Colors.white,
                           elevation: 0,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(

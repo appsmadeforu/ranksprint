@@ -353,12 +353,13 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     if (FirebaseAuth.instance.currentUser?.uid == null) {
       return const Scaffold(body: Center(child: Text('User not logged in')));
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F4F6),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -518,6 +519,7 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
   }
 
   Widget _searchSection() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Row(
@@ -527,17 +529,18 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
               controller: _searchController,
               decoration: InputDecoration(
                 hintText: 'Search tests...',
-                prefixIcon: const Icon(Icons.search),
+                hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+                prefixIcon: Icon(Icons.search, color: colorScheme.onSurfaceVariant),
                 filled: true,
-                fillColor: const Color(0xFFF3F4F6),
+                fillColor: colorScheme.surface,
                 contentPadding: const EdgeInsets.symmetric(vertical: 0),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                  borderSide: BorderSide(color: colorScheme.outlineVariant),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                  borderSide: BorderSide(color: colorScheme.outlineVariant),
                 ),
               ),
             ),
@@ -547,13 +550,17 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
             height: 46,
             width: 46,
             decoration: BoxDecoration(
-              border: Border.all(color: const Color(0xFFD1D5DB)),
+              border: Border.all(color: colorScheme.outlineVariant),
               borderRadius: BorderRadius.circular(10),
-              color: const Color(0xFFF3F4F6),
+              color: colorScheme.surface,
             ),
             child: IconButton(
               onPressed: _openSortSheet,
-              icon: const Icon(Icons.tune, color: Colors.black87, size: 20),
+              icon: Icon(
+                Icons.tune,
+                color: colorScheme.onSurfaceVariant,
+                size: 20,
+              ),
             ),
           ),
         ],
@@ -605,6 +612,7 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
     required bool selected,
     required VoidCallback onTap,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     return InkWell(
       onTap: () {
         setState(() {
@@ -616,17 +624,19 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFF1E3A8A) : Colors.white,
+          color: selected ? colorScheme.primary : colorScheme.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: selected ? const Color(0xFF1E3A8A) : const Color(0xFFD1D5DB),
+            color: selected ? colorScheme.primary : colorScheme.outlineVariant,
           ),
         ),
         child: Text(
           label,
           style: TextStyle(
             fontSize: 12,
-            color: selected ? Colors.white : const Color(0xFF374151),
+            color: selected
+                ? colorScheme.onPrimary
+                : colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -977,6 +987,7 @@ class _AttemptCardState extends State<_AttemptCard> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final data = widget.doc.data();
     final normalizedCounts = ResultDataService.normalizeCounts(
       attempt: data,
@@ -1015,12 +1026,12 @@ class _AttemptCardState extends State<_AttemptCard> {
         margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: colorScheme.surface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFE5E7EB)),
+          border: Border.all(color: colorScheme.outlineVariant),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
+              color: colorScheme.shadow.withValues(alpha: 0.06),
               blurRadius: 8,
               offset: const Offset(0, 3),
             ),
@@ -1034,9 +1045,10 @@ class _AttemptCardState extends State<_AttemptCard> {
                 Expanded(
                   child: Text(
                     widget.testName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
+                      color: colorScheme.onSurface,
                     ),
                   ),
                 ),
@@ -1044,9 +1056,9 @@ class _AttemptCardState extends State<_AttemptCard> {
                   turns: _isExpanded ? 0.25 : 0,
                   duration: const Duration(milliseconds: 220),
                   curve: Curves.easeOutCubic,
-                  child: const Icon(
+                  child: Icon(
                     Icons.chevron_right,
-                    color: Color(0xFF9CA3AF),
+                    color: colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -1062,17 +1074,17 @@ class _AttemptCardState extends State<_AttemptCard> {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.calendar_today_outlined,
                       size: 14,
-                      color: Color(0xFF6B7280),
+                      color: colorScheme.onSurfaceVariant,
                     ),
                     const SizedBox(width: 4),
                     Text(
                       startedAt == null ? '' : widget.prettyDate(startedAt),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF6B7280),
+                        color: colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -1141,21 +1153,21 @@ class _AttemptCardState extends State<_AttemptCard> {
               ],
             ),
             const SizedBox(height: 10),
-            const Divider(height: 1, color: Color(0xFFE5E7EB)),
+            Divider(height: 1, color: colorScheme.outlineVariant),
             const SizedBox(height: 10),
             Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.access_time,
                   size: 16,
-                  color: Color(0xFF6B7280),
+                  color: colorScheme.onSurfaceVariant,
                 ),
                 const SizedBox(width: 6),
                 Text(
                   'Time: $timeTaken min',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF374151),
+                    color: colorScheme.onSurface,
                   ),
                 ),
                 const Spacer(),
@@ -1163,10 +1175,10 @@ class _AttemptCardState extends State<_AttemptCard> {
                   onTap: () {
                     widget.onOpenSolutions(data, widget.result);
                   },
-                  child: const Text(
+                  child: Text(
                     'View Solutions ->',
                     style: TextStyle(
-                      color: Color(0xFF1D4ED8),
+                      color: colorScheme.primary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -1228,17 +1240,18 @@ class _AttemptCardState extends State<_AttemptCard> {
   }
 
   Widget _cardChip(String label) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF4FF),
+        color: colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
         label,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 11,
-          color: Color(0xFF1D4ED8),
+          color: colorScheme.onPrimaryContainer,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -1248,12 +1261,14 @@ class _AttemptCardState extends State<_AttemptCard> {
   Widget _cardStatItem(
     String value,
     String label, {
-    Color valueColor = const Color(0xFF111827),
+    Color? valueColor,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final resolvedValueColor = valueColor ?? colorScheme.onSurfaceVariant;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF3F4F6),
+        color: colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
@@ -1262,13 +1277,16 @@ class _AttemptCardState extends State<_AttemptCard> {
             value,
             style: TextStyle(
               fontWeight: FontWeight.w700,
-              color: valueColor,
+              color: resolvedValueColor,
               fontSize: 26,
             ),
           ),
           Text(
             label,
-            style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+            style: TextStyle(
+              fontSize: 12,
+              color: colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),

@@ -3,8 +3,10 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
+import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
 import 'services/screenshot_protection_service.dart';
+import 'services/theme_mode_service.dart';
 // import 'dev/dummy_feeder.dart';
 
 void main() async {
@@ -22,6 +24,7 @@ void main() async {
     );
   }
   await ScreenshotProtectionService.syncWithConfig();
+  await ThemeModeService.instance.load();
 
   // Run feeder once in debug mode when you need dummy data.
   // Uncomment the import above, then uncomment this block:
@@ -41,9 +44,17 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: SplashScreen(),
+    return AnimatedBuilder(
+      animation: ThemeModeService.instance,
+      builder: (context, _) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: ThemeModeService.instance.themeMode,
+          home: const SplashScreen(),
+        );
+      },
     );
   }
 }

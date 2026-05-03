@@ -1136,10 +1136,12 @@ class _EditProfileScreenState extends State<EditProfileScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return WillPopScope(
       onWillPop: () async => await _confirmDiscardChanges(),
       child: Scaffold(
-        backgroundColor: const Color(0xFFF5F6FA),
+        backgroundColor: theme.scaffoldBackgroundColor,
         body: Stack(
           children: [
             SafeArea(
@@ -1200,14 +1202,14 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                                    child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                            children: [
-                             const Text(
-                                'Keep your details accurate so RankSprint can personalize your exam journey.',
-                                style: TextStyle(
-                                 fontSize: 14,
-                                 color: Color(0xFF6B7280),
-                                 height: 1.5,
-                               ),
-                             ),
+                              Text(
+                                 'Keep your details accurate so RankSprint can personalize your exam journey.',
+                                  style: TextStyle(
+                                   fontSize: 14,
+                                  color: colorScheme.onSurfaceVariant,
+                                  height: 1.5,
+                                ),
+                              ),
                              const SizedBox(height: 18),
                              _buildSectionCard(
                                title: 'Profile Photo',
@@ -1469,12 +1471,12 @@ class _EditProfileScreenState extends State<EditProfileScreen>
               Positioned.fill(
                 child: ColoredBox(
                   color: Colors.black.withValues(alpha: 0.12),
-                  child: const Center(
+                  child: Center(
                     child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.all(Radius.circular(18)),
-                      ),
+                                        decoration: BoxDecoration(
+                                          color: colorScheme.surface,
+                                          borderRadius: BorderRadius.all(Radius.circular(18)),
+                                        ),
                       child: Padding(
                         padding: EdgeInsets.symmetric(
                           horizontal: 20,
@@ -1494,7 +1496,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                color: Color(0xFF111827),
+                                color: colorScheme.onSurface,
                               ),
                             ),
                           ],
@@ -1515,15 +1517,16 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     required String subtitle,
     required List<Widget> children,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: colorScheme.shadow.withValues(alpha: 0.08),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -1534,18 +1537,18 @@ class _EditProfileScreenState extends State<EditProfileScreen>
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF111827),
+              color: colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             subtitle,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
-              color: Color(0xFF6B7280),
+              color: colorScheme.onSurfaceVariant,
               height: 1.4,
             ),
           ),
@@ -1557,6 +1560,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   }
 
   Widget _buildPhotoEditor() {
+    final colorScheme = Theme.of(context).colorScheme;
     final imageProvider = _avatarImageProvider();
     final initials = _profileInitials();
 
@@ -1605,21 +1609,21 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                 ),
               const SizedBox(height: 4),
               if (_isProcessingPhoto) ...[
-                const Text(
+                Text(
                   'Optimizing image for faster cropping...',
                   style: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF2F3E8F),
+                    color: colorScheme.primary,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 4),
               ],
-              const Text(
+              Text(
                 'JPG, PNG, or WebP. Maximum size 2 MB.',
                 style: TextStyle(
                   fontSize: 12,
-                  color: Color(0xFF6B7280),
+                  color: colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
@@ -1650,6 +1654,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   }
 
   Widget _buildGenderField() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: DropdownButtonFormField<String>(
@@ -1660,21 +1665,21 @@ class _EditProfileScreenState extends State<EditProfileScreen>
           margin: const EdgeInsets.only(right: 4),
           padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
-            color: const Color(0xFFEFF2FF),
+            color: colorScheme.primaryContainer,
             borderRadius: BorderRadius.circular(10),
           ),
-          child: const Icon(
+          child: Icon(
             Icons.keyboard_arrow_down_rounded,
             size: 18,
-            color: Color(0xFF2F3E8F),
+            color: colorScheme.primary,
           ),
         ),
-        dropdownColor: Colors.white,
+        dropdownColor: colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 15,
           fontWeight: FontWeight.w600,
-          color: Color(0xFF111827),
+          color: colorScheme.onSurface,
         ),
         decoration: _inputDecoration(
           'Gender',
@@ -1684,12 +1689,12 @@ class _EditProfileScreenState extends State<EditProfileScreen>
             color: Colors.transparent,
           ),
         ).copyWith(
-          prefixIcon: const Padding(
+          prefixIcon: Padding(
             padding: EdgeInsets.only(left: 14, right: 8),
             child: Icon(
               Icons.person_outline_rounded,
               size: 20,
-              color: Color(0xFF6B7280),
+              color: colorScheme.onSurfaceVariant,
             ),
           ),
           prefixIconConstraints: const BoxConstraints(
@@ -1697,9 +1702,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
             minHeight: 20,
           ),
           hintText: 'Select Gender',
-          hintStyle: const TextStyle(
+          hintStyle: TextStyle(
             fontSize: 15,
-            color: Color(0xFF9CA3AF),
+            color: colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -1718,7 +1723,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                         decoration: BoxDecoration(
                           color: gender == option
                               ? const Color(0xFF2F3E8F)
-                              : const Color(0xFFD1D5DB),
+                              : colorScheme.outlineVariant,
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -1745,6 +1750,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   }
 
   Widget _buildDobField() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: InkWell(
@@ -1752,10 +1758,10 @@ class _EditProfileScreenState extends State<EditProfileScreen>
         borderRadius: BorderRadius.circular(16),
         child: InputDecorator(
           decoration: _inputDecoration('Date of Birth').copyWith(
-            suffixIcon: const Icon(
+            suffixIcon: Icon(
               Icons.calendar_today_rounded,
               size: 18,
-              color: Color(0xFF6B7280),
+              color: colorScheme.onSurfaceVariant,
             ),
           ),
           child: Text(
@@ -1763,8 +1769,8 @@ class _EditProfileScreenState extends State<EditProfileScreen>
             style: TextStyle(
               fontSize: 15,
               color: dob != null
-                  ? const Color(0xFF111827)
-                  : const Color(0xFF9CA3AF),
+                  ? colorScheme.onSurface
+                  : colorScheme.onSurfaceVariant,
             ),
           ),
         ),
@@ -1806,12 +1812,29 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     String? helperText,
     Widget? suffixIcon,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     return InputDecoration(
       labelText: label,
       helperText: helperText,
       suffixIcon: suffixIcon,
+      labelStyle: TextStyle(
+        color: colorScheme.onSurface,
+        fontWeight: FontWeight.w600,
+      ),
+      floatingLabelStyle: TextStyle(
+        color: colorScheme.primary,
+        fontWeight: FontWeight.w700,
+      ),
+      helperStyle: TextStyle(
+        color: colorScheme.onSurfaceVariant,
+        fontSize: 12,
+      ),
+      errorStyle: const TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+      ),
       filled: true,
-      fillColor: const Color(0xFFF8FAFC),
+      fillColor: colorScheme.surfaceContainerLow,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
@@ -1819,15 +1842,20 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+        borderSide: BorderSide(
+          color: colorScheme.outline.withValues(alpha: 0.75),
+          width: 1.15,
+        ),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: Color(0xFF2F3E8F), width: 1.3),
+        borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
       ),
       disabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+        borderSide: BorderSide(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.85),
+        ),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),

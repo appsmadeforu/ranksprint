@@ -14,6 +14,7 @@ import '../../services/auth_account_cleanup_service.dart';
 import '../../services/single_device_session_service.dart';
 import '../../services/user_exam_preference_service.dart';
 import '../../widgets/offline_state.dart';
+import '../../widgets/theme_mode_tile.dart';
 import '../../widgets/top_header.dart';
 import 'edit_profile_screen.dart';
 import '../auth/login_screen.dart';
@@ -584,6 +585,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     if (currentUser == null) {
       return const Scaffold(body: Center(child: Text('User not logged in')));
@@ -674,9 +677,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         child: Container(
                                           width: 72,
                                           height: 72,
-                                          decoration: const BoxDecoration(
+                                          decoration: BoxDecoration(
                                             shape: BoxShape.circle,
-                                            color: Color(0xFF2F3E8F),
+                                            color: colorScheme.primary,
                                           ),
                                           alignment: Alignment.center,
                                           clipBehavior: Clip.antiAlias,
@@ -698,9 +701,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                                               data,
                                                             ),
                                                             style:
-                                                                const TextStyle(
-                                                                  color: Colors
-                                                                      .white,
+                                                                TextStyle(
+                                                                  color:
+                                                                      colorScheme
+                                                                          .onPrimary,
                                                                   fontWeight:
                                                                       FontWeight
                                                                           .bold,
@@ -712,8 +716,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                                 )
                                               : Text(
                                                   _profileInitials(data),
-                                                  style: const TextStyle(
-                                                    color: Colors.white,
+                                                  style: TextStyle(
+                                                    color: colorScheme.onPrimary,
                                                     fontWeight: FontWeight.bold,
                                                     fontSize: 20,
                                                   ),
@@ -724,7 +728,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         right: -2,
                                         bottom: -2,
                                         child: Material(
-                                          color: Colors.white,
+                                          color: colorScheme.surface,
                                           elevation: 3,
                                           shape: const CircleBorder(),
                                           child: InkWell(
@@ -733,9 +737,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                             child: Container(
                                               width: 28,
                                               height: 28,
-                                              decoration: const BoxDecoration(
+                                              decoration: BoxDecoration(
                                                 shape: BoxShape.circle,
-                                                color: Color(0xFFEEF2FF),
+                                                color:
+                                                    colorScheme.primaryContainer,
                                               ),
                                               child: Icon(
                                                 photoUrl.isNotEmpty
@@ -743,7 +748,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                                     : Icons
                                                           .add_a_photo_outlined,
                                                 size: 16,
-                                                color: const Color(0xFF2F3E8F),
+                                                color: colorScheme.primary,
                                               ),
                                             ),
                                           ),
@@ -756,10 +761,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     photoUrl.isNotEmpty
                                         ? 'Edit Photo'
                                         : 'Add Photo',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
-                                      color: Color(0xFF475569),
+                                      color: colorScheme.onSurfaceVariant,
                                     ),
                                   ),
                                 ],
@@ -776,9 +781,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                             name.isNotEmpty
                                                 ? name
                                                 : 'Rank Sprint User',
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontSize: 20,
                                               fontWeight: FontWeight.w700,
+                                              color: colorScheme.onSurface,
                                             ),
                                           ),
                                         ),
@@ -794,15 +800,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                               padding: const EdgeInsets.all(6),
                                               decoration: BoxDecoration(
                                                 border: Border.all(
-                                                  color: Colors.grey.shade300,
+                                                  color:
+                                                      colorScheme.outlineVariant,
                                                 ),
                                                 borderRadius:
                                                     BorderRadius.circular(8),
                                               ),
-                                              child: const Icon(
+                                              child: Icon(
                                                 Icons.edit_outlined,
                                                 size: 18,
-                                                color: Colors.black87,
+                                                color: colorScheme.onSurface,
                                               ),
                                             ),
                                           ),
@@ -812,8 +819,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     if (email.isNotEmpty)
                                       Text(
                                         email,
-                                        style: const TextStyle(
-                                          color: Colors.grey,
+                                        style: TextStyle(
+                                          color: colorScheme.onSurfaceVariant,
                                           fontSize: 14,
                                         ),
                                       ),
@@ -821,8 +828,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       const SizedBox(height: 4),
                                       Text(
                                         phone,
-                                        style: const TextStyle(
-                                          color: Colors.grey,
+                                        style: TextStyle(
+                                          color: colorScheme.onSurfaceVariant,
                                           fontSize: 14,
                                         ),
                                       ),
@@ -981,10 +988,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 'PERFORMANCE',
                                 style: TextStyle(
-                                  color: Colors.grey,
+                                  color: colorScheme.onSurfaceVariant,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -1044,10 +1051,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 'ACCOUNT',
                                 style: TextStyle(
-                                  color: Colors.grey,
+                                  color: colorScheme.onSurfaceVariant,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -1069,6 +1076,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           _openEditProfile();
                                         },
                                       ),
+                                    const Divider(height: 1),
+                                    const ThemeModeTile(),
                                     const Divider(height: 1),
                                     ListTile(
                                       leading: const Icon(
@@ -1102,10 +1111,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 'SUPPORT',
                                 style: TextStyle(
-                                  color: Colors.grey,
+                                  color: colorScheme.onSurfaceVariant,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -1179,10 +1188,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 'ACTIONS',
                                 style: TextStyle(
-                                  color: Colors.grey,
+                                  color: colorScheme.onSurfaceVariant,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -1234,7 +1243,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Text(
                             '$_appVersionLabel\n© 2026 Rank Sprint',
                             textAlign: TextAlign.center,
-                            style: const TextStyle(color: Colors.grey),
+                            style: TextStyle(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 40),

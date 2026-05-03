@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+
 import '../../widgets/static_top_header.dart';
 
 class HelpFaqScreen extends StatefulWidget {
@@ -20,7 +21,7 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
     return html
         .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
         .replaceAll(RegExp(r'</p>', caseSensitive: false), '\n\n')
-        .replaceAll(RegExp(r'<li>', caseSensitive: false), '• ')
+        .replaceAll(RegExp(r'<li>', caseSensitive: false), '- ')
         .replaceAll(RegExp(r'</li>', caseSensitive: false), '\n')
         .replaceAll(RegExp(r'<[^>]*>'), '')
         .replaceAll('&nbsp;', ' ')
@@ -48,8 +49,11 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: const StaticTopHeader(title: 'Help & FAQ'),
       body: SafeArea(
         top: false,
@@ -63,9 +67,13 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text(
+                      Text(
                         'Could not load FAQs right now.',
                         textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          height: 1.4,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       ElevatedButton(
@@ -84,16 +92,27 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
 
             if (snapshot.connectionState == ConnectionState.waiting &&
                 !snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
+              return Center(
+                child: CircularProgressIndicator(color: colorScheme.primary),
+              );
             }
 
             final docsList = snapshot.data?.docs ?? [];
             if (docsList.isEmpty) {
-              return const Center(child: Text('No FAQs available'));
+              return Center(
+                child: Text(
+                  'No FAQs available',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              );
             }
 
             final faqs = docsList
-                .map((doc) => _FaqItem.fromMap(doc.data() as Map<String, dynamic>))
+                .map(
+                  (doc) => _FaqItem.fromMap(doc.data() as Map<String, dynamic>),
+                )
                 .toList()
               ..sort((a, b) => a.priority.compareTo(b.priority));
 
@@ -110,12 +129,11 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
                   const SizedBox(height: 14),
                   _buildCategoryChips(categories),
                   const SizedBox(height: 22),
-                  const Text(
+                  Text(
                     'Frequently Asked Questions',
-                    style: TextStyle(
-                      fontSize: 28,
+                    style: theme.textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF1E293B),
+                      color: colorScheme.onSurface,
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -186,13 +204,15 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
   }
 
   Widget _buildSearchBar() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: colorScheme.shadow.withValues(alpha: 0.08),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -202,27 +222,30 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
         controller: _searchController,
         onChanged: (value) => setState(() => _searchQuery = value),
         decoration: InputDecoration(
-          hintText: 'Search Help...',
-          prefixIcon: const Icon(Icons.search, color: Color(0xFF94A3B8)),
-          suffixIcon: TextButton(
-            onPressed: () {
-              _searchController.clear();
-              setState(() => _searchQuery = '');
-            },
-            child: const Text(
-              'Cancel',
-              style: TextStyle(
-                color: Color(0xFF6B8CCF),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+          hintText: 'Search help...',
+          hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+          prefixIcon: Icon(Icons.search, color: colorScheme.onSurfaceVariant),
+          suffixIcon: _searchQuery.isEmpty
+              ? null
+              : TextButton(
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
+                  child: Text(
+                    'Clear',
+                    style: TextStyle(
+                      color: colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(18),
             borderSide: BorderSide.none,
           ),
           filled: true,
-          fillColor: Colors.white,
+          fillColor: colorScheme.surface,
           contentPadding: const EdgeInsets.symmetric(vertical: 16),
         ),
       ),
@@ -230,6 +253,7 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
   }
 
   Widget _buildCategoryChips(List<String> categories) {
+    final colorScheme = Theme.of(context).colorScheme;
     return SizedBox(
       height: 40,
       child: ListView.separated(
@@ -247,13 +271,13 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
                 color: selected
-                    ? const Color(0xFFDCEBFF)
-                    : const Color(0xFFF1F5F9),
+                    ? colorScheme.primaryContainer
+                    : colorScheme.surfaceContainerLowest,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
                   color: selected
-                      ? const Color(0xFFBBD7FF)
-                      : const Color(0xFFE5E7EB),
+                      ? colorScheme.primary
+                      : colorScheme.outlineVariant,
                 ),
               ),
               child: Text(
@@ -262,8 +286,8 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: selected
-                      ? const Color(0xFF264A7F)
-                      : const Color(0xFF64748B),
+                      ? colorScheme.onPrimaryContainer
+                      : colorScheme.onSurfaceVariant,
                 ),
               ),
             ),
@@ -274,18 +298,20 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
   }
 
   Widget _buildEmptyState() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
-      child: const Text(
+      child: Text(
         'No FAQs matched your search. Try another keyword or category.',
         style: TextStyle(
           fontSize: 14,
-          color: Color(0xFF64748B),
+          color: colorScheme.onSurfaceVariant,
           height: 1.5,
         ),
       ),
@@ -293,14 +319,16 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
   }
 
   Widget _buildHelpFooter() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
@@ -308,15 +336,15 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF1E293B),
+              color: colorScheme.onSurface,
             ),
           ),
-          SizedBox(height: 6),
+          const SizedBox(height: 6),
           Text(
             'Reach out to the RankSprint support team from the app if your answer is not listed here.',
             style: TextStyle(
               fontSize: 14,
-              color: Color(0xFF64748B),
+              color: colorScheme.onSurfaceVariant,
               height: 1.5,
             ),
           ),
@@ -339,14 +367,16 @@ class _FaqSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: colorScheme.shadow.withValues(alpha: 0.08),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -358,8 +388,8 @@ class _FaqSection extends StatelessWidget {
           initiallyExpanded: true,
           tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          iconColor: const Color(0xFF64748B),
-          collapsedIconColor: const Color(0xFF64748B),
+          iconColor: colorScheme.onSurfaceVariant,
+          collapsedIconColor: colorScheme.onSurfaceVariant,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
@@ -372,17 +402,17 @@ class _FaqSection extends StatelessWidget {
                 width: 4,
                 height: 22,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFAED1FF),
+                  color: colorScheme.primary,
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
               const SizedBox(width: 10),
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF334155),
+                  color: colorScheme.onSurface,
                 ),
               ),
             ],
@@ -412,20 +442,21 @@ class _FaqTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFFBFCFE),
+        color: colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFEEF2F7)),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
           childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-          iconColor: const Color(0xFF64748B),
-          collapsedIconColor: const Color(0xFF64748B),
+          iconColor: colorScheme.onSurfaceVariant,
+          collapsedIconColor: colorScheme.onSurfaceVariant,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -435,22 +466,22 @@ class _FaqTile extends StatelessWidget {
           title: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Padding(
-                padding: EdgeInsets.only(top: 2),
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
                 child: Icon(
                   Icons.info,
                   size: 17,
-                  color: Color(0xFF466A9C),
+                  color: colorScheme.primary,
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   question,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF1E293B),
+                    color: colorScheme.onSurface,
                     height: 1.35,
                   ),
                 ),
@@ -462,10 +493,10 @@ class _FaqTile extends StatelessWidget {
               padding: const EdgeInsets.only(left: 27),
               child: Text(
                 answer,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   height: 1.6,
-                  color: Color(0xFF475569),
+                  color: colorScheme.onSurfaceVariant,
                 ),
               ),
             ),

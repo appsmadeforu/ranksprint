@@ -3,13 +3,7 @@ import 'package:ranksprint/sections/section_bean.dart';
 import 'package:ranksprint/services/html_helper.dart';
 import 'package:ranksprint/screens/home/main_navigation.dart';
 
-enum ResultFilter {
-  all,
-  correct,
-  incorrect,
-  answered,
-  unanswered
-}
+enum ResultFilter { all, correct, incorrect, answered, unanswered }
 
 class ExamResultScreen extends StatefulWidget {
   final List questions;
@@ -37,7 +31,6 @@ class ExamResultScreen extends StatefulWidget {
 
 class ExamResultScreenState extends State<ExamResultScreen>
     with SingleTickerProviderStateMixin {
-
   late TabController _tabController;
 
   Map<String, List> groupedQuestions = {};
@@ -50,10 +43,7 @@ class ExamResultScreenState extends State<ExamResultScreen>
 
     groupedQuestions = groupQuestions();
 
-    _tabController = TabController(
-      length: widget.section.length,
-      vsync: this,
-    );
+    _tabController = TabController(length: widget.section.length, vsync: this);
   }
 
   /// OPTION LETTER
@@ -119,11 +109,9 @@ class ExamResultScreenState extends State<ExamResultScreen>
 
   /// GROUP QUESTIONS BY SECTION
   Map<String, List> groupQuestions() {
-
     Map<String, List> map = {};
 
     for (var q in widget.questions) {
-
       final secId = q['sectionId'] ?? '';
 
       if (!map.containsKey(secId)) {
@@ -138,23 +126,19 @@ class ExamResultScreenState extends State<ExamResultScreen>
 
   /// APPLY FILTER
   List applyFilter(List questions) {
-
     if (selectedFilter == ResultFilter.all) return questions;
 
     return questions.where((q) {
-
       final qid = q['__id'];
       final selected = widget.answers[qid];
       final correct = optionLetter(q['correctOption']);
 
       if (selectedFilter == ResultFilter.correct) {
-        return selected != null &&
-            selected.toString() == correct.toString();
+        return selected != null && selected.toString() == correct.toString();
       }
 
       if (selectedFilter == ResultFilter.incorrect) {
-        return selected != null &&
-            selected.toString() != correct.toString();
+        return selected != null && selected.toString() != correct.toString();
       }
 
       if (selectedFilter == ResultFilter.answered) {
@@ -166,12 +150,11 @@ class ExamResultScreenState extends State<ExamResultScreen>
       }
 
       return true;
-
     }).toList();
   }
 
   /// SUMMARY CARD
-/*  Widget buildSummary() {
+  /*  Widget buildSummary() {
 
     int total = widget.questions.length;
 
@@ -320,6 +303,7 @@ class ExamResultScreenState extends State<ExamResultScreen>
 
   /// FILTER BAR
   Widget buildFilterBar() {
+    final colorScheme = Theme.of(context).colorScheme;
     Widget chip(String label, ResultFilter filter) {
       bool selected = selectedFilter == filter;
       return GestureDetector(
@@ -332,14 +316,18 @@ class ExamResultScreenState extends State<ExamResultScreen>
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           margin: const EdgeInsets.only(right: 8),
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFF263D9A) : const Color(0xFFF1F5FF),
+            color: selected
+                ? colorScheme.primary
+                : colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(20),
           ),
           child: Text(
             label,
             style: TextStyle(
               fontWeight: FontWeight.w600,
-              color: selected ? Colors.white : const Color(0xFF475569),
+              color: selected
+                  ? colorScheme.onPrimary
+                  : colorScheme.onSurfaceVariant,
             ),
           ),
         ),
@@ -365,17 +353,19 @@ class ExamResultScreenState extends State<ExamResultScreen>
 
   /// QUESTION CARD
   Widget questionCard(
-      int number,
-      dynamic q,
-      dynamic selected,
-      dynamic correct,
-      ) {
+    int number,
+    dynamic q,
+    dynamic selected,
+    dynamic correct,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
 
     final options = q['options'];
     final questionText = (q['questionText'] ?? '').toString();
     final questionImages = _questionImageUrls(Map<String, dynamic>.from(q));
 
-    final isCorrectAnswer = selected != null && selected.toString() == optionLetter(correct);
+    final isCorrectAnswer =
+        selected != null && selected.toString() == optionLetter(correct);
     final accentColor = selected == null
         ? const Color(0xFF94A3B8)
         : isCorrectAnswer
@@ -385,14 +375,14 @@ class ExamResultScreenState extends State<ExamResultScreen>
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [
+        border: Border.all(color: colorScheme.outlineVariant),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x120F172A),
+            color: colorScheme.shadow.withValues(alpha: 0.08),
             blurRadius: 12,
-            offset: Offset(0, 4),
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -404,7 +394,10 @@ class ExamResultScreenState extends State<ExamResultScreen>
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: accentColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(999),
@@ -431,10 +424,10 @@ class ExamResultScreenState extends State<ExamResultScreen>
                   ? null
                   : '<span style="font-weight:600;">Q$number. </span>$questionText',
               imageUrls: questionImages,
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.w600,
                 fontSize: 16,
-                color: Color(0xFF111827),
+                color: colorScheme.onSurface,
               ),
             ),
 
@@ -455,7 +448,7 @@ class ExamResultScreenState extends State<ExamResultScreen>
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Column(
@@ -472,7 +465,7 @@ class ExamResultScreenState extends State<ExamResultScreen>
                   const SizedBox(height: 4),
                   Text(
                     "Correct Answer: ${optionLetter(correct)}",
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Colors.green,
                       fontWeight: FontWeight.bold,
                     ),
@@ -487,13 +480,13 @@ class ExamResultScreenState extends State<ExamResultScreen>
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(14),
               ),
               child: HtmlHelper.renderContent(
                 html:
                     '<span style="font-weight:600;">Explanation: </span>${(q['explanationText'] ?? '').toString()}',
-                style: const TextStyle(color: Colors.black87),
+                style: TextStyle(color: colorScheme.onSurface),
               ),
             ),
           ],
@@ -504,14 +497,15 @@ class ExamResultScreenState extends State<ExamResultScreen>
 
   /// OPTION TILE
   Widget optionTile(
-      int index,
-      String text,
-      dynamic selected,
-      dynamic correct,
-      [Map<String, dynamic>? optionData]
-      ) {
+    int index,
+    String text,
+    dynamic selected,
+    dynamic correct, [
+    Map<String, dynamic>? optionData,
+  ]) {
+    final colorScheme = Theme.of(context).colorScheme;
 
-    Color color = Colors.black;
+    Color color = colorScheme.onSurface;
 
     if (index.toString() == correct.toString()) {
       color = Colors.green;
@@ -528,12 +522,9 @@ class ExamResultScreenState extends State<ExamResultScreen>
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
+          color: colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: color.withValues(alpha: 0.22),
-            width: 1.2,
-          ),
+          border: Border.all(color: color.withValues(alpha: 0.22), width: 1.2),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -545,7 +536,9 @@ class ExamResultScreenState extends State<ExamResultScreen>
             Expanded(
               child: HtmlHelper.renderContent(
                 html: text,
-                imageUrls: optionData == null ? const [] : _optionImageUrls(optionData),
+                imageUrls: optionData == null
+                    ? const []
+                    : _optionImageUrls(optionData),
                 style: TextStyle(color: color),
               ),
             ),
@@ -556,6 +549,7 @@ class ExamResultScreenState extends State<ExamResultScreen>
   }
 
   Widget buildSectionSelector() {
+    final colorScheme = Theme.of(context).colorScheme;
     return SizedBox(
       height: 58,
       child: AnimatedBuilder(
@@ -582,18 +576,20 @@ class ExamResultScreenState extends State<ExamResultScreen>
                     vertical: 12,
                   ),
                   decoration: BoxDecoration(
-                    color: isSelected ? const Color(0xFF263D9A) : Colors.white,
+                    color: isSelected
+                        ? colorScheme.primary
+                        : colorScheme.surface,
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(
                       color: isSelected
-                          ? const Color(0xFF263D9A)
-                          : const Color(0xFFDCE3F4),
+                          ? colorScheme.primary
+                          : colorScheme.outlineVariant,
                     ),
-                    boxShadow: const [
+                    boxShadow: [
                       BoxShadow(
-                        color: Color(0x0F0F172A),
+                        color: colorScheme.shadow.withValues(alpha: 0.06),
                         blurRadius: 10,
-                        offset: Offset(0, 3),
+                        offset: const Offset(0, 3),
                       ),
                     ],
                   ),
@@ -601,7 +597,9 @@ class ExamResultScreenState extends State<ExamResultScreen>
                     child: Text(
                       sec.name ?? 'Section',
                       style: TextStyle(
-                        color: isSelected ? Colors.white : const Color(0xFF475569),
+                        color: isSelected
+                            ? colorScheme.onPrimary
+                            : colorScheme.onSurfaceVariant,
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
                       ),
@@ -619,6 +617,7 @@ class ExamResultScreenState extends State<ExamResultScreen>
   Widget buildSectionTab(SectionBean sec) {
     final secQuestions = groupedQuestions[sec.id] ?? [];
     final filteredQuestions = applyFilter(secQuestions);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return ListView(
       padding: const EdgeInsets.only(bottom: 16),
@@ -627,12 +626,12 @@ class ExamResultScreenState extends State<ExamResultScreen>
         buildFilterBar(),
         const SizedBox(height: 10),
         if (filteredQuestions.isEmpty)
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(top: 40),
             child: Center(
               child: Text(
                 'No questions match this filter.',
-                style: TextStyle(color: Color(0xFF64748B)),
+                style: TextStyle(color: colorScheme.onSurfaceVariant),
               ),
             ),
           )
@@ -643,12 +642,7 @@ class ExamResultScreenState extends State<ExamResultScreen>
             final correctOption = q['correctOption'];
             final number = widget.questions.indexOf(q) + 1;
 
-            return questionCard(
-              number,
-              q,
-              selected,
-              correctOption,
-            );
+            return questionCard(number, q, selected, correctOption);
           }),
       ],
     );
@@ -664,71 +658,76 @@ class ExamResultScreenState extends State<ExamResultScreen>
         }
       },
       child: Scaffold(
-      backgroundColor: const Color(0xFFF3F5FC),
-      body: SafeArea(
-        child: NestedScrollView(
-          headerSliverBuilder: (context, innerBoxIsScrolled) {
-            return [
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
-                  child: Row(
-                    children: [
-                      InkWell(
-                        onTap: () {
-                          if (widget.returnToTestsExamId != null) {
-                            _goToTestsScreen();
-                          } else {
-                            Navigator.of(context).maybePop();
-                          }
-                        },
-                        borderRadius: BorderRadius.circular(14),
-                        child: Container(
-                          height: 34,
-                          width: 34,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: const Color(0xFFDCE3F4)),
-                          ),
-                          child: const Icon(
-                            Icons.chevron_left_rounded,
-                            size: 20,
-                            color: Color(0xFF27408B),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      const Expanded(
-                        child: Text(
-                          'Exam Result',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF18306B),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: SafeArea(
+          child: NestedScrollView(
+            headerSliverBuilder: (context, innerBoxIsScrolled) {
+              return [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+                    child: Row(
+                      children: [
+                        InkWell(
+                          onTap: () {
+                            if (widget.returnToTestsExamId != null) {
+                              _goToTestsScreen();
+                            } else {
+                              Navigator.of(context).maybePop();
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            height: 34,
+                            width: 34,
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surface,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.outlineVariant,
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.chevron_left_rounded,
+                              size: 20,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Exam Result',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
+                SliverToBoxAdapter(child: buildSummaryCard()),
+                SliverToBoxAdapter(child: buildSectionSelector()),
+              ];
+            },
+            body: Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: TabBarView(
+                controller: _tabController,
+                children: widget.section.map((sec) {
+                  return buildSectionTab(sec);
+                }).toList(),
               ),
-              SliverToBoxAdapter(child: buildSummaryCard()),
-              SliverToBoxAdapter(child: buildSectionSelector()),
-            ];
-          },
-          body: Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: TabBarView(
-              controller: _tabController,
-              children: widget.section.map((sec) {
-                return buildSectionTab(sec);
-              }).toList(),
             ),
           ),
         ),
       ),
-    ));
+    );
   }
 
   void _goToTestsScreen() {
@@ -736,10 +735,8 @@ class ExamResultScreenState extends State<ExamResultScreen>
     if (examId == null || examId.isEmpty) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
-        builder: (_) => MainNavigation(
-          initialIndex: 1,
-          initialTestsExamId: examId,
-        ),
+        builder: (_) =>
+            MainNavigation(initialIndex: 1, initialTestsExamId: examId),
       ),
       (route) => route.isFirst,
     );

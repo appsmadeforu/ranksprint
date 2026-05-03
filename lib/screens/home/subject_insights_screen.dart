@@ -119,12 +119,13 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
   @override
   Widget build(BuildContext context) {
     final userId = FirebaseAuth.instance.currentUser?.uid;
+    final theme = Theme.of(context);
     if (userId == null) {
       return const Scaffold(body: Center(child: Text('User not logged in')));
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F5FC),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: _attemptsQuery(userId).snapshots(),
@@ -333,12 +334,12 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                   },
                 ),
                 const SizedBox(height: 14),
-                const Text(
+                Text(
                   'All Tests',
                   style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF14213D),
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -407,6 +408,7 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
   }
 
   Widget _header(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -417,19 +419,19 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
             height: 28,
             width: 28,
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: colorScheme.surface,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFDCE3F4)),
+              border: Border.all(color: colorScheme.outlineVariant),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.chevron_left_rounded,
               size: 18,
-              color: Color(0xFF27408B),
+              color: colorScheme.onSurface,
             ),
           ),
         ),
         const SizedBox(width: 10),
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -438,13 +440,16 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF18306B),
+                  color: colorScheme.onSurface,
                 ),
               ),
               SizedBox(height: 2),
               Text(
                 'Full trend analysis with live subject insights',
-                style: TextStyle(fontSize: 11, color: Color(0xFF7A849B)),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ),
@@ -459,20 +464,21 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     required String change,
     required bool positive,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     final changeColor = positive
         ? const Color(0xFF22B15D)
         : const Color(0xFFEF4444);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE3E8F5)),
-        boxShadow: const [
+        border: Border.all(color: colorScheme.outlineVariant),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x120E1A33),
+            color: colorScheme.shadow.withValues(alpha: 0.08),
             blurRadius: 12,
-            offset: Offset(0, 4),
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -482,15 +488,18 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
           Text(
             label,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 10, color: Color(0xFF97A1BA)),
+            style: TextStyle(
+              fontSize: 10,
+              color: colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF1A2E68),
+              color: colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 4),
@@ -516,12 +525,13 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
   }
 
   Widget _metricTabs(_InsightMetric selectedMetric) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: const Color(0xFFE1E6F2)),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Row(
         children: _InsightMetric.values.map((metric) {
@@ -535,7 +545,7 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
                   color: selected
-                      ? const Color(0xFF273B83)
+                      ? colorScheme.primary
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -545,7 +555,9 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: selected ? Colors.white : const Color(0xFF6E7890),
+                    color: selected
+                        ? colorScheme.onPrimary
+                        : colorScheme.onSurfaceVariant,
                   ),
                 ),
               ),
@@ -561,17 +573,18 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     _InsightMetric metric, {
     _SubjectInsightsVm? detailedVm,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE1E6F2)),
-        boxShadow: const [
+        border: Border.all(color: colorScheme.outlineVariant),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x100E1A33),
+            color: colorScheme.shadow.withValues(alpha: 0.06),
             blurRadius: 14,
-            offset: Offset(0, 4),
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -607,6 +620,7 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     _InsightMetric metric, {
     _SubjectInsightsVm? detailedVm,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     final subjectsLoading =
         metric == _InsightMetric.subjects &&
         (detailedVm == null || detailedVm.subjectSeries.isEmpty);
@@ -621,10 +635,10 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
               : metric == _InsightMetric.subjects
               ? _subjectTrendTitle(displayVm)
               : 'Score Trend',
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w800,
-            color: Color(0xFF1D2D5B),
+            color: colorScheme.onSurface,
           ),
         ),
         const SizedBox(height: 2),
@@ -634,7 +648,10 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
               : metric == _InsightMetric.subjects
               ? _subjectTrendSubtitle(displayVm)
               : '',
-          style: const TextStyle(fontSize: 10, color: Color(0xFF97A1BA)),
+          style: TextStyle(
+            fontSize: 10,
+            color: colorScheme.onSurfaceVariant,
+          ),
         ),
         SizedBox(height: metric == _InsightMetric.score ? 8 : 12),
         Expanded(
@@ -716,6 +733,7 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
   }
 
   Widget _attemptCard(_AttemptInsight attempt) {
+    final colorScheme = Theme.of(context).colorScheme;
     final value = attempt.scoreListLabel;
     final change = attempt.scoreDeltaLabel;
     final positive = attempt.scoreDelta >= 0;
@@ -728,14 +746,14 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
         child: Ink(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: colorScheme.surface,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFFE0E6F4)),
-            boxShadow: const [
+            border: Border.all(color: colorScheme.outlineVariant),
+            boxShadow: [
               BoxShadow(
-                color: Color(0x120E1A33),
+                color: colorScheme.shadow.withValues(alpha: 0.08),
                 blurRadius: 10,
-                offset: Offset(0, 4),
+                offset: const Offset(0, 4),
               ),
             ],
           ),
@@ -745,13 +763,13 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                 height: 38,
                 width: 38,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEFF3FF),
+                  color: colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.bar_chart_rounded,
                   size: 20,
-                  color: Color(0xFF5065B8),
+                  color: colorScheme.primary,
                 ),
               ),
               const SizedBox(width: 12),
@@ -762,21 +780,21 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            attempt.testName,
-                            style: const TextStyle(
+                           child: Text(
+                             attempt.testName,
+                            style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF1C2F67),
+                              color: colorScheme.onSurface,
                             ),
                           ),
                         ),
                         Text(
                           value,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F1E4A),
+                            color: colorScheme.onSurface,
                           ),
                         ),
                       ],
@@ -784,18 +802,18 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                     const SizedBox(height: 2),
                     Text(
                       attempt.dateLabel,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF445A93),
+                        color: colorScheme.primary,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       '${attempt.rankLabel} - ${attempt.percentileLabel} - ${attempt.subjectCount} subjects',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 10,
-                        color: Color(0xFF97A1BA),
+                        color: colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -835,11 +853,12 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
+        final colorScheme = Theme.of(sheetContext).colorScheme;
         return FractionallySizedBox(
           heightFactor: 0.72,
           child: Container(
-            decoration: const BoxDecoration(
-              color: Color(0xFFFDFEFF),
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
               borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
             ),
             child: SafeArea(
@@ -854,7 +873,7 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                         width: 44,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFD9DFEE),
+                          color: colorScheme.outlineVariant,
                           borderRadius: BorderRadius.circular(999),
                         ),
                       ),
@@ -868,18 +887,18 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                             children: [
                               Text(
                                 attempt.testName,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 28,
                                   fontWeight: FontWeight.w800,
-                                  color: Color(0xFF1C2F67),
+                                  color: colorScheme.onSurface,
                                 ),
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 'Test attempt breakdown',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 12,
-                                  color: Color(0xFF8B97B3),
+                                  color: colorScheme.onSurfaceVariant,
                                 ),
                               ),
                             ],
@@ -891,13 +910,13 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                           child: Container(
                             height: 40,
                             width: 40,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFF0F4FF),
+                            decoration: BoxDecoration(
+                              color: colorScheme.surfaceContainerHighest,
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.close_rounded,
-                              color: Color(0xFF7B89AE),
+                              color: colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ),
@@ -930,97 +949,116 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
                       ],
                     ),
                     const SizedBox(height: 18),
-                    const Text(
+                    Text(
                       'Subject Breakdown',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF22356B),
+                        color: colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 12),
-                     Expanded(
-                        child: attempt.subjectBreakdown.isEmpty
-                            ? const Center(
-                                child: Text(
-                                  'No subject breakdown available for this test.',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(color: Color(0xFF7A849B)),
+                    Expanded(
+                      child: attempt.subjectBreakdown.isEmpty
+                          ? Center(
+                              child: Text(
+                                'No subject breakdown available for this test.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: colorScheme.onSurfaceVariant,
                                 ),
-                              )
-                            : ListView.separated(
-                         itemCount: attempt.subjectBreakdown.length,
-                         separatorBuilder: (_, _) => const SizedBox(height: 14),
-                         itemBuilder: (context, index) {
-                           final subject = attempt.subjectBreakdown[index];
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      subject.name,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFF1B2E61),
-                                      ),
-                                   ),
-                                  ),
-                                  Text(
-                                    '${subject.value.toStringAsFixed(0)}%',
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF1B2E61),
+                              ),
+                            )
+                          : ListView.separated(
+                              itemCount: attempt.subjectBreakdown.length,
+                              separatorBuilder: (_, _) =>
+                                  const SizedBox(height: 14),
+                              itemBuilder: (context, index) {
+                                final subject = attempt.subjectBreakdown[index];
+                                return Container(
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.surfaceContainerLowest,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: colorScheme.outlineVariant,
                                     ),
                                   ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                               ClipRRect(
-                                 borderRadius: BorderRadius.circular(999),
-                                 child: LinearProgressIndicator(
-                                   value: (subject.value / 100).clamp(0.0, 1.0),
-                                   minHeight: 8,
-                                   backgroundColor: const Color(0xFFE7ECF8),
-                                   color: const Color(0xFF22B15D),
-                                 ),
-                               ),
-                             ],
-                           );
-                          },
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              subject.name,
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w700,
+                                                color: colorScheme.onSurface,
+                                              ),
+                                            ),
+                                          ),
+                                          Text(
+                                            '${subject.value.toStringAsFixed(0)}%',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w800,
+                                              color: colorScheme.onSurface,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      ClipRRect(
+                                        borderRadius:
+                                            BorderRadius.circular(999),
+                                        child: LinearProgressIndicator(
+                                          value: (subject.value / 100).clamp(
+                                            0.0,
+                                            1.0,
+                                          ),
+                                          minHeight: 8,
+                                          backgroundColor: colorScheme
+                                              .surfaceContainerHighest,
+                                          color: const Color(0xFF22B15D),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          Navigator.of(sheetContext).pop();
+                          await _openExamResultScreen(attempt);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: colorScheme.primary,
+                          foregroundColor: colorScheme.onPrimary,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: const Text(
+                          'View Solution',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                     const SizedBox(height: 16),
-                     SizedBox(
-                       width: double.infinity,
-                       child: ElevatedButton(
-                         onPressed: () async {
-                           Navigator.of(sheetContext).pop();
-                           await _openExamResultScreen(attempt);
-                         },
-                         style: ElevatedButton.styleFrom(
-                           backgroundColor: const Color(0xFF1C2F67),
-                           foregroundColor: Colors.white,
-                           padding: const EdgeInsets.symmetric(vertical: 14),
-                           shape: RoundedRectangleBorder(
-                             borderRadius: BorderRadius.circular(16),
-                           ),
-                         ),
-                         child: const Text(
-                           'View Solution',
-                           style: TextStyle(
-                             fontSize: 15,
-                             fontWeight: FontWeight.w700,
-                           ),
-                         ),
-                       ),
-                     ),
-                   ],
-                 ),
-               ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         );
@@ -1036,10 +1074,11 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
     double? progress,
     Color? progressColor,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF2F5FF),
+        color: colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
@@ -1047,15 +1086,18 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
         children: [
           Text(
             label,
-            style: const TextStyle(fontSize: 11, color: Color(0xFF7B89AE)),
+            style: TextStyle(
+              fontSize: 11,
+              color: colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 6),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF203775),
+              color: colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 6),
@@ -1074,7 +1116,7 @@ class _SubjectInsightsScreenState extends State<SubjectInsightsScreen> {
               child: LinearProgressIndicator(
                 value: progress.clamp(0.0, 1.0),
                 minHeight: 8,
-                backgroundColor: const Color(0xFFE1E8F8),
+                backgroundColor: colorScheme.surfaceContainerHighest,
                 color: progressColor ?? const Color(0xFF22B15D),
               ),
             ),
@@ -2165,6 +2207,7 @@ class _LegendDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -2180,7 +2223,10 @@ class _LegendDot extends StatelessWidget {
         const SizedBox(width: 6),
         Text(
           label,
-          style: const TextStyle(fontSize: 10, color: Color(0xFF7A849B)),
+          style: TextStyle(
+            fontSize: 10,
+            color: colorScheme.onSurfaceVariant,
+          ),
         ),
       ],
     );
@@ -2236,6 +2282,7 @@ class _InsightTrendChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     if (points.length < 2) {
       return const Center(child: Text('Need at least 2 tests to show a trend'));
     }
@@ -2247,7 +2294,7 @@ class _InsightTrendChart extends StatelessWidget {
               ? 'Need at least 2 ranked tests to show rank trend'
               : 'Not enough subject data to show a trend yet',
           textAlign: TextAlign.center,
-          style: const TextStyle(color: Color(0xFF7A849B)),
+          style: TextStyle(color: colorScheme.onSurfaceVariant),
         ),
       );
     }
@@ -2736,12 +2783,13 @@ class _SubjectInsightsSkeletonCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFDCE3F4)),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: _SkeletonBlock(width: double.infinity, height: height),
     );
@@ -2759,13 +2807,14 @@ class _SkeletonBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
         width: width,
         height: height,
         decoration: BoxDecoration(
-          color: const Color(0xFFE2E8F0),
+          color: colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(12),
         ),
       ),

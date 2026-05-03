@@ -329,6 +329,7 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
   }
 
   Widget _buildOtpBox(int index) {
+    final theme = Theme.of(context);
     return SizedBox(
       width: 45,
       child: Focus(
@@ -366,7 +367,7 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
           decoration: InputDecoration(
             counterText: "",
             filled: true,
-            fillColor: Colors.grey[200],
+            fillColor: theme.inputDecorationTheme.fillColor,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide.none,
@@ -424,6 +425,8 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Scaffold(
       resizeToAvoidBottomInset: true,
       body: SafeArea(
@@ -457,28 +460,28 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
                         ),
                       ),
 
-                      const Icon(
+                      Icon(
                         Icons.mail_outline,
                         size: 40,
-                        color: Color(0xFF1F3A8A),
+                        color: colorScheme.primary,
                       ),
 
                       const SizedBox(height: 12),
 
-                      const Text(
+                      Text(
                         "Verify OTP",
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF1F3A8A),
+                          color: colorScheme.primary,
                         ),
                       ),
 
                       const SizedBox(height: 6),
 
-                      const Text(
+                      Text(
                         "Enter the 6-digit code sent to your phone",
-                        style: TextStyle(color: Colors.grey),
+                        style: TextStyle(color: colorScheme.onSurfaceVariant),
                         textAlign: TextAlign.center,
                       ),
 
@@ -497,8 +500,7 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
                         child: ElevatedButton(
                           onPressed: _loading ? null : _verifyOtp,
                           style: ElevatedButton.styleFrom(
-                            textStyle: const TextStyle(color: Colors.white),
-                            backgroundColor: const Color(0xFF1F3A8A),
+                            textStyle: TextStyle(color: colorScheme.onPrimary),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
                             ),
@@ -507,9 +509,9 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
                               ? const CircularProgressIndicator(
                                   color: Colors.white,
                                 )
-                              : const Text(
+                              : Text(
                                   "Verify & Continue",
-                                  style: TextStyle(color: Colors.white),
+                                  style: TextStyle(color: colorScheme.onPrimary),
                                 ),
                         ),
                       ),
@@ -525,7 +527,7 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
                             _autofillListening
                                 ? 'Waiting for OTP SMS...'
                                 : 'Autofill from SMS',
-                            style: const TextStyle(color: Color(0xFF1F3A8A)),
+                            style: TextStyle(color: colorScheme.primary),
                           ),
                         ),
 
@@ -540,7 +542,7 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
                           _resendSeconds == 0
                               ? (_resending ? "Resending..." : "Resend OTP")
                               : "Resend OTP in 00:${_resendSeconds.toString().padLeft(2, '0')}",
-                          style: const TextStyle(color: Color(0xFF1F3A8A)),
+                          style: TextStyle(color: colorScheme.primary),
                         ),
                       ),
 
@@ -550,16 +552,16 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFFF8E1),
+                          color: colorScheme.tertiaryContainer,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.orange.shade300),
+                          border: Border.all(color: colorScheme.tertiary),
                         ),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.info_outline,
-                              color: Colors.orange,
+                              color: colorScheme.tertiary,
                             ),
 
                             const SizedBox(width: 12),
@@ -567,11 +569,12 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
-                                children: const [
+                                children: [
                                   Text(
                                     "Single Device Policy",
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
+                                      color: colorScheme.onTertiaryContainer,
                                     ),
                                   ),
 
@@ -579,7 +582,10 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
 
                                   Text(
                                     "Your account can only be active on one device at a time. Logging in on a new device will automatically log you out from other devices.",
-                                    style: TextStyle(fontSize: 13),
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: colorScheme.onTertiaryContainer,
+                                    ),
                                   ),
                                 ],
                               ),

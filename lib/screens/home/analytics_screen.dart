@@ -212,8 +212,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F5FB),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -246,27 +248,30 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                           child: Container(
                             padding: const EdgeInsets.all(6),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: colorScheme.surface,
                               borderRadius: BorderRadius.circular(18),
-                              boxShadow: const [
+                              boxShadow: [
                                 BoxShadow(
-                                  color: Color(0x120F172A),
+                                  color: colorScheme.shadow.withValues(
+                                    alpha: 0.10,
+                                  ),
                                   blurRadius: 18,
-                                  offset: Offset(0, 8),
+                                  offset: const Offset(0, 8),
                                 ),
                               ],
                             ),
                             child: TabBar(
                               controller: _tabController,
                               indicator: BoxDecoration(
-                                color: Color(0xFF263D9A),
-                                borderRadius: BorderRadius.all(
+                                color: colorScheme.primary,
+                                borderRadius: const BorderRadius.all(
                                   Radius.circular(14),
                                 ),
                               ),
                               indicatorSize: TabBarIndicatorSize.tab,
-                              labelColor: Colors.white,
-                              unselectedLabelColor: Color(0xFF67728A),
+                              labelColor: colorScheme.onPrimary,
+                              unselectedLabelColor:
+                                  colorScheme.onSurfaceVariant,
                               dividerColor: Colors.transparent,
                               tabs: [
                                 Tab(text: 'Dashboard'),
@@ -581,15 +586,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   }
 
   Widget _buildLeaderboardSearch() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x120F172A),
+            color: colorScheme.shadow.withValues(alpha: 0.08),
             blurRadius: 14,
-            offset: Offset(0, 6),
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -602,13 +608,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         },
         decoration: InputDecoration(
           hintText: 'Search by name or rank...',
-          prefixIcon: const Icon(Icons.search),
+          hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+          prefixIcon: Icon(Icons.search, color: colorScheme.onSurfaceVariant),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
             borderSide: BorderSide.none,
           ),
           filled: true,
-          fillColor: Colors.white,
+          fillColor: colorScheme.surface,
         ),
       ),
     );
@@ -706,6 +713,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     required _LeaderboardRow row,
     required bool isCurrentUser,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     final rank = row.rank;
     final badgeColor = isCurrentUser
         ? const Color(0xFF2F6FEB)
@@ -721,12 +729,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         : const Color(0xFF2F6FEB);
     final cardBorderColor = isCurrentUser
         ? const Color(0xFF2F6FEB)
-        : const Color(0x00000000);
-    final titleColor = isCurrentUser ? const Color(0xFF163B78) : null;
-    final captionColor = isCurrentUser ? const Color(0xFF4B648B) : Colors.grey;
+        : Colors.transparent;
+    final titleColor = isCurrentUser ? colorScheme.onPrimary : colorScheme.onSurface;
+    final captionColor = isCurrentUser
+        ? colorScheme.onPrimary.withValues(alpha: 0.82)
+        : colorScheme.onSurfaceVariant;
     final scoreColor = isCurrentUser
-        ? const Color(0xFF163B78)
-        : const Color(0xFF0F172A);
+        ? colorScheme.onPrimary
+        : colorScheme.onSurface;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -743,7 +753,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                     end: Alignment.bottomRight,
                   )
                 : null,
-            color: isCurrentUser ? null : Colors.white,
+            color: isCurrentUser ? null : colorScheme.surface,
             boxShadow: isCurrentUser
                 ? const [
                     BoxShadow(
@@ -758,7 +768,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(22),
-              color: isCurrentUser ? const Color(0xFFF4F8FF) : Colors.white,
+              color: isCurrentUser
+                  ? colorScheme.primaryContainer.withValues(alpha: 0.20)
+                  : colorScheme.surface,
               border: Border.all(color: cardBorderColor, width: 1.5),
             ),
             child: Row(
@@ -992,6 +1004,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   }
 
   Widget _dashboardHero(_DashboardVm vm) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1001,10 +1014,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'My Analytics',
                     style: TextStyle(
-                      color: Color(0xFF1E2A67),
+                      color: colorScheme.onSurface,
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
                     ),
@@ -1012,8 +1025,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                   const SizedBox(height: 4),
                   Text(
                     '${vm.testsTaken} tests analyzed - Updated ${_relativeTime(vm.lastUpdated)}',
-                    style: const TextStyle(
-                      color: Color(0xFF8A93AB),
+                    style: TextStyle(
+                      color: colorScheme.onSurfaceVariant,
                       fontSize: 11,
                     ),
                   ),
@@ -1060,11 +1073,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         const SizedBox(height: 14),
         Row(
           children: [
-            const Expanded(
+            Expanded(
               child: Text(
                 'Performance Overview',
                 style: TextStyle(
-                  color: Color(0xFF1E2A67),
+                  color: colorScheme.onSurface,
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
                 ),
@@ -1072,10 +1085,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             ),
             GestureDetector(
               onTap: _goToNextHeroPage,
-              child: const Text(
+              child: Text(
                 'Swipe ->',
                 style: TextStyle(
-                  color: Color(0xFF3F63E0),
+                  color: colorScheme.primary,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1984,34 +1997,35 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   }
 
   Widget _deferredSectionsPlaceholder() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x120F172A),
+            color: colorScheme.shadow.withValues(alpha: 0.10),
             blurRadius: 18,
-            offset: Offset(0, 8),
+            offset: const Offset(0, 8),
           ),
         ],
       ),
-      child: const Row(
+      child: Row(
         children: [
-          SizedBox(
+          const SizedBox(
             width: 20,
             height: 20,
             child: CircularProgressIndicator(strokeWidth: 2.2),
           ),
-          SizedBox(width: 12),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               'Loading the rest of your analytics...',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF475569),
+                color: colorScheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -2040,12 +2054,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   }
 
   Widget _leaderboardSkeletonCard() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE4EAF8), width: 1.2),
+        border: Border.all(color: colorScheme.outlineVariant, width: 1.2),
       ),
       child: const Row(
         children: [
@@ -2276,6 +2291,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   }
 
   Widget _competitionComparisonCard(_DashboardVm vm) {
+    final colorScheme = Theme.of(context).colorScheme;
     final competitionFuture = _competitionFutureFor(vm);
     return _dashboardSection(
       title: 'Competition Comparison',
@@ -2291,9 +2307,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
           final competition = competitionSnap.data;
           if (competition == null) {
-            return const Text(
+            return Text(
               'Competition data is not available right now.',
-              style: TextStyle(color: Color(0xFF6C748A)),
+              style: TextStyle(color: colorScheme.onSurfaceVariant),
             );
           }
 
@@ -2309,14 +2325,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                 width: double.infinity,
                 padding: const EdgeInsets.all(13),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEFF4FF),
+                  color: colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Text(
                   competition.rankGapText,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF2846A3),
+                    color: colorScheme.onPrimaryContainer,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -2329,6 +2345,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   }
 
   Widget _comparisonRow(_ComparisonRow row) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2337,16 +2354,19 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             Expanded(
               child: Text(
                 row.label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF2B3551),
+                  color: colorScheme.onSurface,
                 ),
               ),
             ),
             Text(
               row.totalLabel,
-              style: const TextStyle(fontSize: 11, color: Color(0xFF7B849A)),
+              style: TextStyle(
+                fontSize: 11,
+                color: colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -2361,6 +2381,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   }
 
   Widget _compareLine(String label, double value, Color color) {
+    final colorScheme = Theme.of(context).colorScheme;
     final safeValue = value.clamp(0.0, 100.0);
     return Row(
       children: [
@@ -2368,7 +2389,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           width: 52,
           child: Text(
             label,
-            style: const TextStyle(fontSize: 11, color: Color(0xFF6C748A)),
+            style: TextStyle(
+              fontSize: 11,
+              color: colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
         Expanded(
@@ -2377,7 +2401,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             child: LinearProgressIndicator(
               value: safeValue / 100,
               minHeight: 8,
-              backgroundColor: const Color(0xFFE8ECF6),
+              backgroundColor: colorScheme.surfaceContainerHighest,
               color: color,
             ),
           ),
@@ -2388,10 +2412,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           child: Text(
             safeValue.toStringAsFixed(0),
             textAlign: TextAlign.right,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF2B3551),
+              color: colorScheme.onSurface,
             ),
           ),
         ),
@@ -2400,6 +2424,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   }
 
   Widget _consistencyRadarCard(_DashboardVm vm) {
+    final colorScheme = Theme.of(context).colorScheme;
     return _dashboardSection(
       title: 'Consistency Radar',
       subtitle: 'Multi-dimension performance snapshot',
@@ -2436,10 +2461,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'Your routine stays steadier when you keep a fixed test rhythm.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 11, color: Color(0xFF7B849A)),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -2591,18 +2619,19 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     String? subtitle,
     Widget? trailing,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E7F1)),
-        boxShadow: const [
+        border: Border.all(color: colorScheme.outlineVariant),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x0F0F172A),
+            color: colorScheme.shadow.withValues(alpha: 0.06),
             blurRadius: 14,
-            offset: Offset(0, 6),
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -2618,19 +2647,19 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF1C2747),
+                        color: colorScheme.onSurface,
                       ),
                     ),
                     if (subtitle != null) ...[
                       const SizedBox(height: 4),
                       Text(
                         subtitle,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
-                          color: Color(0xFF7B849A),
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -2653,11 +2682,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     required ValueChanged<T> onChanged,
     bool expand = false,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: expand ? double.infinity : null,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F4FA),
+        color: colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -2671,7 +2701,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
               alignment: Alignment.center,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(
-                color: selected ? const Color(0xFF2A48C8) : Colors.transparent,
+                color: selected ? colorScheme.primary : Colors.transparent,
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
@@ -2680,7 +2710,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
-                  color: selected ? Colors.white : const Color(0xFF6C748A),
+                  color: selected
+                      ? colorScheme.onPrimary
+                      : colorScheme.onSurfaceVariant,
                 ),
               ),
             ),
@@ -2693,22 +2725,23 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   }
 
   Widget _miniSurface({required String title, required Widget child}) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF9FBFF),
+        color: colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E7F1)),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF3E4A69),
+              color: colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 10),
@@ -2724,6 +2757,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     required String subtitle,
     required _RiskTone tone,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     final style = switch (tone) {
       _RiskTone.red => (
         bg: const Color(0xFFFFF0EF),
@@ -2755,7 +2789,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         children: [
           Text(
             label,
-            style: const TextStyle(fontSize: 10, color: Color(0xFF7B849A)),
+            style: TextStyle(
+              fontSize: 10,
+              color: colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
@@ -2769,7 +2806,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           const SizedBox(height: 4),
           Text(
             subtitle,
-            style: const TextStyle(fontSize: 10, color: Color(0xFF7B849A)),
+            style: TextStyle(
+              fontSize: 10,
+              color: colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
@@ -2820,6 +2860,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   }
 
   List<Widget> _groupedChapterRows(List<_ChapterMetric> chapters) {
+    final colorScheme = Theme.of(context).colorScheme;
     if (chapters.isEmpty) {
       return const [Text('No chapter-level data available yet')];
     }
@@ -2839,10 +2880,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           children: [
             Text(
               entry.key,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF243158),
+                color: colorScheme.onSurface,
               ),
             ),
             const SizedBox(height: 8),
@@ -2868,10 +2909,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                     children: [
                       Text(
                         chapter.shortName,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF2B3551),
+                          color: colorScheme.onSurface,
                         ),
                       ),
                       const SizedBox(height: 3),
@@ -4437,11 +4478,12 @@ class _SkeletonBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: const Color(0xFFE9EEF8),
+        color: colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(radius),
       ),
     );
@@ -4502,13 +4544,14 @@ class _DashboardSkeletonCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       height: height,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: const Color(0xFFE7ECF7)),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -4754,6 +4797,8 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final filteredAttempts = _filteredAttempts();
     final chapterAccuracy = filteredAttempts.isEmpty
         ? 0.0
@@ -4782,7 +4827,7 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
               filteredAttempts.length;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F5FE),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
@@ -4801,20 +4846,20 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
                             height: 34,
                             width: 34,
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: colorScheme.surface,
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: const Color(0xFFDCE3F4),
+                                color: colorScheme.outlineVariant,
                               ),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.chevron_left_rounded,
-                              color: Color(0xFF27408B),
+                              color: colorScheme.onSurface,
                             ),
                           ),
                         ),
                         const SizedBox(width: 10),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -4823,7 +4868,7 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
                                 style: TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.w800,
-                                  color: Color(0xFF172B67),
+                                  color: colorScheme.onSurface,
                                 ),
                               ),
                               SizedBox(height: 2),
@@ -4831,7 +4876,7 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
                                 'Filter and explore chapter-level trends from recent tests',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: Color(0xFF8C96AF),
+                                  color: colorScheme.onSurfaceVariant,
                                 ),
                               ),
                             ],
@@ -4844,12 +4889,12 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'Filter & Explore',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF67728A),
+                              color: colorScheme.onSurfaceVariant,
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -4913,7 +4958,7 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
                             width: double.infinity,
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF4F5FE),
+                              color: colorScheme.surfaceContainerLowest,
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: Row(
@@ -4925,10 +4970,10 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
                                     children: [
                                       Text(
                                         '${_selectedSubject ?? 'General'} - ${_selectedChapter ?? 'Overview'}',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.w700,
-                                          color: Color(0xFF4D61DA),
+                                          color: colorScheme.primary,
                                         ),
                                       ),
                                       const SizedBox(height: 4),
@@ -4936,9 +4981,9 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
                                         filteredAttempts.isEmpty
                                             ? 'No matching chapter data yet'
                                             : 'Showing last ${filteredAttempts.length} tests',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 11,
-                                          color: Color(0xFF8C96AF),
+                                          color: colorScheme.onSurfaceVariant,
                                         ),
                                       ),
                                     ],
@@ -4949,17 +4994,17 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
                                   children: [
                                     Text(
                                       '${chapterAccuracy.toStringAsFixed(0)}%',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 20,
                                         fontWeight: FontWeight.w800,
-                                        color: Color(0xFF4D61DA),
+                                        color: colorScheme.primary,
                                       ),
                                     ),
-                                    const Text(
+                                    Text(
                                       'Avg Accuracy',
                                       style: TextStyle(
                                         fontSize: 10,
-                                        color: Color(0xFF9AA3B8),
+                                        color: colorScheme.onSurfaceVariant,
                                       ),
                                     ),
                                   ],
@@ -5104,9 +5149,9 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
                       alignment: Alignment.centerRight,
                       child: Text(
                         'Avg skipped ${avgSkipped.toStringAsFixed(1)} questions',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
-                          color: Color(0xFF8C96AF),
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ),
@@ -5146,18 +5191,19 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
   }
 
   Widget _explorerCard({String? title, Widget? footer, required Widget child}) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE3E8F5)),
-        boxShadow: const [
+        border: Border.all(color: colorScheme.outlineVariant),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x120E1A33),
+            color: colorScheme.shadow.withValues(alpha: 0.08),
             blurRadius: 14,
-            offset: Offset(0, 4),
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -5167,10 +5213,10 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
           if (title != null) ...[
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF21356C),
+                color: colorScheme.onSurface,
               ),
             ),
             const SizedBox(height: 12),
@@ -5191,15 +5237,16 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
     required List<String> items,
     required ValueChanged<String?> onChanged,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label.toUpperCase(),
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 10,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF9AA3B8),
+            color: colorScheme.onSurfaceVariant,
           ),
         ),
         const SizedBox(height: 6),
@@ -5223,9 +5270,9 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
                       child: Text(
                         item,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
-                          color: Color(0xFF23356F),
+                          color: colorScheme.onSurface,
                         ),
                       ),
                     ),
@@ -5272,28 +5319,32 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
   }
 
   Widget _miniInsightCard({required String label, required String value}) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE3E8F5)),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Column(
         children: [
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF24386F),
+              color: colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             label,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 10, color: Color(0xFF8C96AF)),
+            style: TextStyle(
+              fontSize: 10,
+              color: colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
@@ -5333,6 +5384,8 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final subject = _selectedSubject;
     final subjectAttempts = _subjectSeries();
     final chapterHeatmap =
@@ -5343,7 +5396,7 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
     final chapterTimeBars = _chapterTimeSeries();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F5FE),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
@@ -5362,20 +5415,20 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
                             height: 34,
                             width: 34,
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: colorScheme.surface,
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: const Color(0xFFDCE3F4),
+                                color: colorScheme.outlineVariant,
                               ),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.chevron_left_rounded,
-                              color: Color(0xFF27408B),
+                              color: colorScheme.onSurface,
                             ),
                           ),
                         ),
                         const SizedBox(width: 10),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -5384,7 +5437,7 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
                                 style: TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.w800,
-                                  color: Color(0xFF172B67),
+                                  color: colorScheme.onSurface,
                                 ),
                               ),
                               SizedBox(height: 2),
@@ -5392,7 +5445,7 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
                                 'Subject-wise analytics from your actual exam subjects',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: Color(0xFF8C96AF),
+                                  color: colorScheme.onSurfaceVariant,
                                 ),
                               ),
                             ],
@@ -5554,10 +5607,7 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
                       title: 'Avg. Time per Chapter (min/q)',
                       footer: const Text(
                         'Shorter bars = faster solving. Ideal: <2.5 min/question',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Color(0xFF8C96AF),
-                        ),
+                        style: TextStyle(fontSize: 10),
                       ),
                       child: chapterTimeBars.isEmpty
                           ? const _ExplorerEmptyState(
@@ -5666,18 +5716,19 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
     Widget? footer,
     required Widget child,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE3E8F5)),
-        boxShadow: const [
+        border: Border.all(color: colorScheme.outlineVariant),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x120E1A33),
+            color: colorScheme.shadow.withValues(alpha: 0.08),
             blurRadius: 14,
-            offset: Offset(0, 4),
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -5686,10 +5737,10 @@ class _SubjectExplorerScreenState extends State<_SubjectExplorerScreen> {
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF21356C),
+              color: colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 12),
@@ -5754,6 +5805,7 @@ class _HeatmapLegend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -5765,7 +5817,10 @@ class _HeatmapLegend extends StatelessWidget {
         const SizedBox(width: 6),
         Text(
           label,
-          style: const TextStyle(fontSize: 10, color: Color(0xFF8C96AF)),
+          style: TextStyle(
+            fontSize: 10,
+            color: colorScheme.onSurfaceVariant,
+          ),
         ),
       ],
     );
@@ -5839,12 +5894,16 @@ class _ExplorerEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return SizedBox(
       height: 180,
       child: Center(
         child: Text(
           message,
-          style: const TextStyle(fontSize: 12, color: Color(0xFF8C96AF)),
+          style: TextStyle(
+            fontSize: 12,
+            color: colorScheme.onSurfaceVariant,
+          ),
         ),
       ),
     );

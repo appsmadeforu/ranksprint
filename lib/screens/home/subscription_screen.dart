@@ -1128,8 +1128,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       selectedPlan['price'] = effectivePrice;
     }
 
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -1168,38 +1171,42 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                 children: [
                   if ((widget.lockedItemLabel ?? '').isNotEmpty)
                     _sectionCard(
-                      color: const Color(0xFFFFF4E8),
+                      color: colorScheme.tertiaryContainer,
                       child: Row(
                         children: [
-                          const Icon(Icons.lock_outline, color: Colors.orange),
+                          Icon(Icons.lock_outline, color: colorScheme.tertiary),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
                               'Unlock ${widget.lockedItemType ?? 'content'}: ${widget.lockedItemLabel}',
-                              style: const TextStyle(fontWeight: FontWeight.w600),
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: colorScheme.onTertiaryContainer,
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
                   if ((selectedExamId ?? '').isNotEmpty)
-                   _sectionCard(
-                     color: const Color(0xFFEAF4FF),
-                     child: Row(
-                        children: [
-                          const Icon(
-                            Icons.school_outlined,
-                            color: Color(0xFF2F3E8F),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Showing plans for exam: ${_selectedExamName ?? selectedExamId}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
+                    _sectionCard(
+                      color: colorScheme.primaryContainer,
+                      child: Row(
+                         children: [
+                           Icon(
+                             Icons.school_outlined,
+                             color: colorScheme.primary,
+                           ),
+                           const SizedBox(width: 10),
+                           Expanded(
+                             child: Text(
+                               'Showing plans for exam: ${_selectedExamName ?? selectedExamId}',
+                               style: TextStyle(
+                                 fontWeight: FontWeight.w600,
+                                 color: colorScheme.onPrimaryContainer,
+                               ),
+                             ),
+                           ),
                         ],
                       ),
                     ),
@@ -1214,12 +1221,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                         margin: const EdgeInsets.only(bottom: 12),
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: colorScheme.surface,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color: isSelected
-                                ? const Color(0xFF2F3E8F)
-                                : Colors.grey.shade300,
+                                ? colorScheme.primary
+                                : colorScheme.outlineVariant,
                             width: isSelected ? 2 : 1,
                           ),
                         ),
@@ -1230,8 +1237,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                                   ? Icons.radio_button_checked
                                   : Icons.radio_button_off,
                               color: isSelected
-                                  ? const Color(0xFF2F3E8F)
-                                  : Colors.grey,
+                                  ? colorScheme.primary
+                                  : colorScheme.onSurfaceVariant,
                             ),
                             const SizedBox(width: 12),
 
@@ -1244,8 +1251,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                                     children: [
                                       Text(
                                         plan['name'],
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontWeight: FontWeight.w600,
+                                          color: colorScheme.onSurface,
                                         ),
                                       ),
                                       if (isPopular) ...[
@@ -1277,7 +1285,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                                     plan['duration'],
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: Colors.grey[600],
+                                      color: colorScheme.onSurfaceVariant,
                                     ),
                                   ),
                                 ],
@@ -1351,9 +1359,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           "Have a Coupon Code?",
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: colorScheme.onSurface,
+                          ),
                         ),
                         const SizedBox(height: 10),
                         Row(
@@ -1363,7 +1374,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                                 controller: _couponController,
                                 decoration: InputDecoration(
                                   hintText: "Enter coupon code",
+                                  hintStyle: TextStyle(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
                                   isDense: true,
+                                  filled: true,
+                                  fillColor: colorScheme.surfaceContainerLowest,
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(8),
                                   ),
@@ -1401,9 +1417,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                                     effectivePrice == 0
                                 ? 'This coupon is linked to the checkout flow.'
                                 : 'Coupon saved, but add googlePlayProductId in Firebase if you want Play Store discounted billing.',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: Color(0xFF6B7280),
+                              color: colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ],
@@ -1426,12 +1442,20 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
                   /// SECURE
                   _sectionCard(
-                    color: const Color(0xFFEAF4FF),
+                    color: colorScheme.primaryContainer,
                     child: Row(
                       children: [
-                        const Icon(Icons.verified, color: Colors.green),
+                        Icon(Icons.verified, color: colorScheme.primary),
                         const SizedBox(width: 8),
-                        const Expanded(child: Text("100% Secure Payment")),
+                        Expanded(
+                          child: Text(
+                            "100% Secure Payment",
+                            style: TextStyle(
+                              color: colorScheme.onPrimaryContainer,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
                         TextButton(
                           onPressed: _isPurchasing || _isRestoring
                               ? null
@@ -1460,7 +1484,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       /// BOTTOM BAR
       bottomNavigationBar: Container(
         padding: EdgeInsets.fromLTRB(12, 12, 12, 12 + bottomInset),
-        color: Colors.white,
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          border: Border(
+            top: BorderSide(color: colorScheme.outlineVariant),
+          ),
+        ),
         child: Row(
           children: [
             Expanded(
@@ -1502,14 +1531,15 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   }
 
   Widget _sectionCard({required Widget child, Color? color}) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: color ?? Colors.white,
+        color: color ?? colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: child,
     );
@@ -1558,13 +1588,17 @@ class _Feature extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
         children: [
           const Icon(Icons.check_circle, color: Colors.green, size: 16),
           const SizedBox(width: 8),
-          Text(text, style: const TextStyle(fontSize: 13)),
+          Text(
+            text,
+            style: TextStyle(fontSize: 13, color: colorScheme.onSurface),
+          ),
         ],
       ),
     );

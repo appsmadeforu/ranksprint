@@ -146,12 +146,14 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(widget.subjectName),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        backgroundColor: colorScheme.surface,
+        foregroundColor: colorScheme.onSurface,
         elevation: 0,
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -204,9 +206,9 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
               Container(
                 margin: const EdgeInsets.only(bottom: 18),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: colorScheme.surface,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFDCE4F5)),
+                  border: Border.all(color: colorScheme.outlineVariant),
                 ),
                 child: TextField(
                   controller: _searchController,
@@ -217,9 +219,9 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
                   },
                   decoration: InputDecoration(
                     hintText: 'Search lessons...',
-                    prefixIcon: const Icon(
+                    prefixIcon: Icon(
                       Icons.search_rounded,
-                      color: Color(0xFF64748B),
+                      color: colorScheme.onSurfaceVariant,
                     ),
                     suffixIcon: _searchQuery.isEmpty
                         ? null
@@ -230,9 +232,9 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
                                 _searchQuery = '';
                               });
                             },
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.close_rounded,
-                              color: Color(0xFF64748B),
+                              color: colorScheme.onSurfaceVariant,
                             ),
                           ),
                     border: InputBorder.none,
@@ -260,10 +262,10 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
                   final pdfUrl = data['pdfUrl'] ?? data['notesPdfUrl'] ?? '';
                   final qCount = data['questionCount']?.toString() ?? '';
                   final isFavorite = _isFavoriteLesson(doc.id);
-                  final cardColor = Colors.white;
-                  final iconTileColor = const Color(0xFFEFF3FF);
-                  final titleColor = const Color(0xFF111827);
-                  final metaColor = Colors.grey;
+                  final cardColor = colorScheme.surface;
+                  final iconTileColor = colorScheme.primaryContainer;
+                  final titleColor = colorScheme.onSurface;
+                  final metaColor = colorScheme.onSurfaceVariant;
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 16),
@@ -273,7 +275,7 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
                       elevation: isFavorite ? 4 : 3,
                       child: InkWell(
                         borderRadius: BorderRadius.circular(18),
-                        splashColor: const Color(0xFF2F6FEB).withValues(alpha: 0.1),
+                        splashColor: colorScheme.primary.withValues(alpha: 0.1),
                         onTap: () {
                           if (pdfUrl.isNotEmpty && allPdfUrls.isNotEmpty) {
                             Navigator.push(
@@ -299,8 +301,8 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
                             borderRadius: BorderRadius.circular(18),
                             border: Border.all(
                               color: isFavorite
-                                  ? const Color(0xFFD7E3FF)
-                                  : const Color(0x00000000),
+                                  ? colorScheme.primaryContainer
+                                  : Colors.transparent,
                               width: 1.2,
                             ),
                           ),
@@ -316,8 +318,8 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
                                 child: Center(
                                   child: Text(
                                     '${index + 1}',
-                                    style: const TextStyle(
-                                      color: Color(0xFF2F6FEB),
+                                    style: TextStyle(
+                                      color: colorScheme.primary,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
@@ -366,14 +368,14 @@ class _PyqChaptersScreenState extends State<PyqChaptersScreen> {
                                         ? Icons.favorite_rounded
                                         : Icons.favorite_border_rounded,
                                     color: isFavorite
-                                        ? const Color(0xFF2F6FEB)
-                                        : const Color(0xFF94A3B8),
+                                        ? colorScheme.primary
+                                        : colorScheme.onSurfaceVariant,
                                   ),
                                 ),
                               ),
                               Icon(
                                 Icons.chevron_right,
-                                color: Colors.grey,
+                                color: colorScheme.onSurfaceVariant,
                               ),
                             ],
                           ),

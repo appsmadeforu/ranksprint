@@ -66,11 +66,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        backgroundColor: colorScheme.surface,
+        foregroundColor: colorScheme.onSurface,
         elevation: 0,
         actions: [
           IconButton(
@@ -87,6 +88,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         ],
       ),
       bottomNavigationBar: BottomAppBar(
+        color: colorScheme.surface,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
@@ -99,9 +101,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               ),
               Text(
                 'Paper ${_currentIndex + 1} of ${widget.pdfUrls.length}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
+                  color: colorScheme.onSurface,
                 ),
               ),
               ElevatedButton.icon(
@@ -148,18 +151,19 @@ class _PdfLoadingOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      color: Colors.white.withValues(alpha: 0.92),
+      color: colorScheme.surface.withValues(alpha: 0.92),
       alignment: Alignment.center,
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        children: const [
+        children: [
           SizedBox(
             width: 44,
             height: 44,
             child: CircularProgressIndicator(
               strokeWidth: 3.2,
-              color: Color(0xFF2F6FEB),
+              color: colorScheme.primary,
             ),
           ),
           SizedBox(height: 18),
@@ -168,7 +172,7 @@ class _PdfLoadingOverlay extends StatelessWidget {
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF0F172A),
+              color: colorScheme.onSurface,
             ),
           ),
           SizedBox(height: 8),
@@ -176,7 +180,7 @@ class _PdfLoadingOverlay extends StatelessWidget {
             'This may take a few seconds',
             style: TextStyle(
               fontSize: 14,
-              color: Color(0xFF64748B),
+              color: colorScheme.onSurfaceVariant,
             ),
           ),
         ],

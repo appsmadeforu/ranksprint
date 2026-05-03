@@ -11,6 +11,7 @@ class CommonBottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return BottomNavigationBar(
       currentIndex: currentIndex,
       onTap: (index) {
@@ -37,8 +38,8 @@ class CommonBottomNavBar extends StatelessWidget {
           (route) => false,
         );
       },
-      selectedItemColor: const Color(0xFF2F3E8F),
-      unselectedItemColor: Colors.grey,
+      selectedItemColor: colorScheme.primary,
+      unselectedItemColor: colorScheme.onSurfaceVariant,
       type: BottomNavigationBarType.fixed,
       items: const [
         BottomNavigationBarItem(

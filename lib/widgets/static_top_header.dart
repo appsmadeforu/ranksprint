@@ -13,16 +13,19 @@ class StaticTopHeader extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return SafeArea(
       bottom: false,
       child: Container(
         height: preferredSize.height,
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
           border: Border(
             bottom: BorderSide(
-              color: Color(0xFFE5E7EB),
+              color: theme.dividerColor,
               width: 1,
             ),
           ),
@@ -31,10 +34,10 @@ class StaticTopHeader extends StatelessWidget implements PreferredSizeWidget {
           children: [
             IconButton(
               onPressed: () => Navigator.of(context).maybePop(),
-              icon: const Icon(
+              icon: Icon(
                 Icons.arrow_back_ios_new_rounded,
                 size: 20,
-                color: Color(0xFF111827),
+                color: colorScheme.onSurface,
               ),
             ),
             Expanded(
@@ -42,10 +45,10 @@ class StaticTopHeader extends StatelessWidget implements PreferredSizeWidget {
                 title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF111827),
+                  color: colorScheme.onSurface,
                 ),
               ),
             ),

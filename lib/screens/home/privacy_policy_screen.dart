@@ -16,8 +16,10 @@ class PrivacyPolicyScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: const StaticTopHeader(title: 'Privacy Policy'),
       body: FutureBuilder<QuerySnapshot>(
         future: FirebaseFirestore.instance
@@ -52,7 +54,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: colorScheme.shadow.withOpacity(0.12),
                     blurRadius: 15,
                     offset: const Offset(0, 8),
                   ),
@@ -61,15 +63,15 @@ class PrivacyPolicyScreen extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: colorScheme.surface,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
                   text,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     height: 1.7,
-                    color: Colors.black87,
+                    color: colorScheme.onSurface,
                   ),
                 ),
               ),

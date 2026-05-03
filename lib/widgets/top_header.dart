@@ -101,22 +101,24 @@ class _TopHeaderState extends State<TopHeader> {
   @override
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Container(
       height: 55,
       padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB), width: 1)),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        border: Border(bottom: BorderSide(color: theme.dividerColor, width: 1)),
       ),
       child: Row(
         children: [
           if (widget.showBackButton)
             IconButton(
               onPressed: () => Navigator.of(context).maybePop(),
-              icon: const Icon(
+              icon: Icon(
                 Icons.arrow_back_ios_new_rounded,
                 size: 20,
-                color: Color(0xFF111827),
+                color: colorScheme.onSurface,
               ),
             ),
           Expanded(
@@ -129,7 +131,7 @@ class _TopHeaderState extends State<TopHeader> {
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: RichText(
-                    text: const TextSpan(
+                    text: TextSpan(
                       children: [
                         TextSpan(
                           text: 'RankSprintAI',
@@ -137,7 +139,7 @@ class _TopHeaderState extends State<TopHeader> {
                             fontSize: 19,
                             fontWeight: FontWeight.w800,
                             letterSpacing: -0.1,
-                            color: Color(0xFF3A53B7),
+                            color: colorScheme.primary,
                           ),
                         ),
                       ],
@@ -203,10 +205,10 @@ class _TopHeaderState extends State<TopHeader> {
                                             child: Text(
                                               label,
                                               overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                 fontSize: 14,
                                                 fontWeight: FontWeight.w600,
-                                                color: Color(0xFF1F2937),
+                                                color: colorScheme.onSurface,
                                               ),
                                             ),
                                           ),
@@ -214,14 +216,14 @@ class _TopHeaderState extends State<TopHeader> {
                                       ),
                                     );
                                   }),
-                                  const DropdownMenuItem<String>(
+                                  DropdownMenuItem<String>(
                                     value: _addExamMenuValue,
                                     child: Row(
                                       children: [
                                         Icon(
                                           Icons.add_circle_outline_rounded,
                                           size: 18,
-                                          color: Color(0xFF31459B),
+                                          color: colorScheme.primary,
                                         ),
                                         SizedBox(width: 8),
                                         Expanded(
@@ -231,7 +233,7 @@ class _TopHeaderState extends State<TopHeader> {
                                             style: TextStyle(
                                               fontSize: 14,
                                               fontWeight: FontWeight.w700,
-                                              color: Color(0xFF31459B),
+                                              color: colorScheme.primary,
                                             ),
                                           ),
                                         ),
@@ -259,10 +261,10 @@ class _TopHeaderState extends State<TopHeader> {
                                     horizontal: 12,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFF8FAFF),
+                                    color: colorScheme.surfaceContainerHighest,
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
-                                      color: const Color(0xFFDCE4F5),
+                                      color: colorScheme.outlineVariant,
                                     ),
                                   ),
                                   child: DropdownButtonHideUnderline(
@@ -272,16 +274,16 @@ class _TopHeaderState extends State<TopHeader> {
                                       ),
                                       value: validSelectedExamId,
                                       isExpanded: true,
-                                      icon: const Icon(
+                                      icon: Icon(
                                         Icons.keyboard_arrow_down_rounded,
-                                        color: Color(0xFF64748B),
+                                        color: colorScheme.onSurfaceVariant,
                                       ),
                                       borderRadius: BorderRadius.circular(16),
-                                      dropdownColor: Colors.white,
-                                      style: const TextStyle(
+                                      dropdownColor: colorScheme.surface,
+                                      style: TextStyle(
                                         fontSize: 15,
                                         fontWeight: FontWeight.w700,
-                                        color: Color(0xFF1F2937),
+                                        color: colorScheme.onSurface,
                                       ),
                                       selectedItemBuilder: (context) {
                                         return <Widget>[
@@ -295,15 +297,15 @@ class _TopHeaderState extends State<TopHeader> {
                                                 label,
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(
+                                                style: TextStyle(
                                                   fontSize: 15,
                                                   fontWeight: FontWeight.w700,
-                                                  color: Color(0xFF1F2937),
+                                                  color: colorScheme.onSurface,
                                                 ),
                                               ),
                                             );
                                           }),
-                                          const Align(
+                                          Align(
                                             alignment: Alignment.centerLeft,
                                             child: Text(
                                               'Add exam',
@@ -312,7 +314,7 @@ class _TopHeaderState extends State<TopHeader> {
                                               style: TextStyle(
                                                 fontSize: 15,
                                                 fontWeight: FontWeight.w700,
-                                                color: Color(0xFF1F2937),
+                                                color: colorScheme.onSurface,
                                               ),
                                             ),
                                           ),
@@ -353,9 +355,13 @@ class _TopHeaderState extends State<TopHeader> {
                       builder: (context, notifSnap) {
                         final user = FirebaseAuth.instance.currentUser;
                         if (!notifSnap.hasData || user == null) {
-                          return const SizedBox(
+                          return SizedBox(
                             width: 28,
-                            child: Icon(Icons.notifications_none, size: 28),
+                            child: Icon(
+                              Icons.notifications_none,
+                              size: 28,
+                              color: colorScheme.onSurface,
+                            ),
                           );
                         }
                         return StreamBuilder<QuerySnapshot>(

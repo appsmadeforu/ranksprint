@@ -82,12 +82,15 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     if (!initialized) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: FutureBuilder<List<QueryDocumentSnapshot>>(
         future: _fetchExams(),
         builder: (context, snapshot) {
@@ -104,9 +107,13 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
                 children: [
                   const SizedBox(height: 30),
 
-                  const Text(
+                  Text(
                     "Select Your Exams",
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.onSurface,
+                    ),
                   ),
 
                   const SizedBox(height: 24),
@@ -126,7 +133,7 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
                           margin: const EdgeInsets.only(bottom: 18),
                           child: Material(
                             borderRadius: BorderRadius.circular(18),
-                            color: Colors.white,
+                            color: colorScheme.surface,
                             elevation: 3,
                             child: InkWell(
                               borderRadius: BorderRadius.circular(18),
@@ -140,8 +147,8 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
                                       height: 52,
                                       decoration: BoxDecoration(
                                         color: isSelected
-                                            ? const Color(0xFFEFF3FF)
-                                            : Colors.grey.shade100,
+                                            ? colorScheme.primaryContainer
+                                            : colorScheme.surfaceContainerHighest,
                                         borderRadius: BorderRadius.circular(14),
                                       ),
                                       child: Icon(
@@ -149,8 +156,8 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
                                             ? Icons.check
                                             : Icons.school_outlined,
                                         color: isSelected
-                                            ? const Color(0xFF2F6FEB)
-                                            : Colors.grey,
+                                            ? colorScheme.primary
+                                            : colorScheme.onSurfaceVariant,
                                       ),
                                     ),
 
@@ -163,17 +170,18 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
                                         children: [
                                           Text(
                                             title,
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontSize: 16,
                                               fontWeight: FontWeight.w600,
+                                              color: colorScheme.onSurface,
                                             ),
                                           ),
                                           const SizedBox(height: 6),
                                           Text(
                                             desc,
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontSize: 13,
-                                              color: Colors.grey,
+                                              color: colorScheme.onSurfaceVariant,
                                             ),
                                           ),
                                         ],
@@ -195,7 +203,6 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
                     child: ElevatedButton(
                       onPressed: loading ? null : _saveExams,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2F3E8F),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
@@ -204,9 +211,9 @@ class _SelectExamScreenState extends State<SelectExamScreen> {
                           ? const CircularProgressIndicator(color: Colors.white)
                           : Text(
                               "Continue (${selectedExamIds.length} selected)",
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: TextStyle(
                                 fontWeight: FontWeight.bold,
+                                color: colorScheme.onPrimary,
                               ),
                             ),
                     ),

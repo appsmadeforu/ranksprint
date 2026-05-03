@@ -16,8 +16,11 @@ class TermsConditionsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: const StaticTopHeader(title: 'Terms & Conditions'),
       body: FutureBuilder<QuerySnapshot>(
         future: FirebaseFirestore.instance
@@ -29,19 +32,31 @@ class TermsConditionsScreen extends StatelessWidget {
             .timeout(const Duration(seconds: 12)),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return const Center(
-              child: Text('Could not load Terms & Conditions'),
+            return Center(
+              child: Text(
+                'Could not load Terms & Conditions',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
             );
           }
 
           if (snapshot.connectionState == ConnectionState.waiting &&
               !snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
+            return Center(
+              child: CircularProgressIndicator(color: colorScheme.primary),
+            );
           }
 
-          if (snapshot.data!.docs.isEmpty) {
-            return const Center(
-              child: Text("Terms & Conditions not available"),
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return Center(
+              child: Text(
+                'Terms & Conditions not available',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
             );
           }
 
@@ -54,9 +69,12 @@ class TermsConditionsScreen extends StatelessWidget {
             child: Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: colorScheme.outlineVariant),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: colorScheme.shadow.withOpacity(
+                      theme.brightness == Brightness.dark ? 0.18 : 0.06,
+                    ),
                     blurRadius: 20,
                     offset: const Offset(0, 10),
                   ),
@@ -65,15 +83,15 @@ class TermsConditionsScreen extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(28),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: colorScheme.surface,
                   borderRadius: BorderRadius.circular(24),
                 ),
                 child: Text(
                   text,
-                  style: const TextStyle(
+                  style: theme.textTheme.bodyMedium?.copyWith(
                     fontSize: 15,
                     height: 1.8,
-                    color: Colors.black87,
+                    color: colorScheme.onSurface,
                   ),
                 ),
               ),

@@ -1,6 +1,6 @@
 {
     "java.configuration.updateBuildConfiguration": "interactive",
-    "git.enabled": false,
+    "git.enabled": true,
     "git.enableStatusBarSync": false,
     "git.blame.statusBarItem.enabled": false,
     "git.decorations.enabled": false,

@@ -205,6 +205,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Scaffold(
       resizeToAvoidBottomInset: true,
       body: SafeArea(
@@ -244,7 +246,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             hintText: "Enter Mobile Number",
                             counterText: "",
                             filled: true,
-                            fillColor: Colors.grey[200],
+                            fillColor: theme.inputDecorationTheme.fillColor,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
                               borderSide: BorderSide.none,
@@ -258,7 +260,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: ElevatedButton(
                             onPressed: _loading ? null : _sendOtp,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1F3A8A),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
@@ -267,10 +268,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ? const CircularProgressIndicator(
                                     color: Colors.white,
                                   )
-                                : const Text(
+                                : Text(
                                     "Send OTP",
                                     style: TextStyle(
-                                      color: Colors.white,
+                                      color: colorScheme.onPrimary,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
@@ -294,8 +295,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: OutlinedButton(
                             onPressed: _loading ? null : _signInWithGoogle,
                             style: OutlinedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              side: const BorderSide(color: Colors.grey),
+                              backgroundColor: colorScheme.surface,
+                              side: BorderSide(color: colorScheme.outline),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
@@ -308,10 +309,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                   height: 22,
                                 ),
                                 const SizedBox(width: 12),
-                                const Text(
+                                Text(
                                   "Continue with Google",
                                   style: TextStyle(
-                                    color: Colors.black87,
+                                    color: colorScheme.onSurface,
                                     fontSize: 15,
                                     fontWeight: FontWeight.w500,
                                   ),
@@ -324,15 +325,18 @@ class _LoginScreenState extends State<LoginScreen> {
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFFF3E0),
+                            color: colorScheme.tertiaryContainer,
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.orange),
+                            border: Border.all(color: colorScheme.tertiary),
                           ),
-                          child: const Text(
+                          child: Text(
                             "Single Device Policy\n"
                             "Your account can only be active on one device at a time. "
                             "Logging in on a new device will automatically log you out from other devices.",
-                            style: TextStyle(fontSize: 12),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: colorScheme.onTertiaryContainer,
+                            ),
                           ),
                         ),
                       ],

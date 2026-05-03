@@ -444,8 +444,10 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: WillPopScope(
           onWillPop: () async {
@@ -480,6 +482,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       return Center(
                         child: Text(
                           'Error loading notifications:\n${snapshot.error}',
+                          style: TextStyle(color: colorScheme.onSurface),
                         ),
                       );
                     }
@@ -488,7 +491,12 @@ class _NotificationScreenState extends State<NotificationScreen> {
                     }
                     final docs = snapshot.data!;
                     if (docs.isEmpty) {
-                      return const Center(child: Text("No notifications"));
+                      return Center(
+                        child: Text(
+                          'No notifications',
+                          style: TextStyle(color: colorScheme.onSurfaceVariant),
+                        ),
+                      );
                     }
                     // Apply client-side filtering based on selectedFilter
                     final filtered = docs.where((data) {
@@ -525,10 +533,10 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                 children: [
                                   Text(
                                     _filterSummary(filtered.length),
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w600,
-                                      color: Color(0xFF64748B),
+                                      color: colorScheme.onSurfaceVariant,
                                     ),
                                   ),
                                   const Spacer(),
@@ -663,11 +671,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                   ),
                                   child: Container(
                                     margin: const EdgeInsets.only(bottom: 12),
-                                    child: Material(
-                                      borderRadius: BorderRadius.circular(16),
-                                      color: Colors.white,
-                                      elevation: 2,
-                                      child: InkWell(
+                                      child: Material(
+                                        borderRadius: BorderRadius.circular(16),
+                                        color: colorScheme.surface,
+                                        elevation: 2,
+                                        child: InkWell(
                                         borderRadius: BorderRadius.circular(16),
                                         onTap: () =>
                                             _handleNotificationTap(data),
@@ -686,9 +694,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                                 width: 40,
                                                 height: 40,
                                                 decoration: BoxDecoration(
-                                                  color: const Color(
-                                                    0xFFEFF3FF,
-                                                  ),
+                                                  color: colorScheme
+                                                      .primaryContainer,
                                                   borderRadius:
                                                       BorderRadius.circular(12),
                                                 ),
@@ -706,22 +713,21 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                                                 context,
                                                                 error,
                                                                 stackTrace,
-                                                              ) => const Icon(
+                                                              ) => Icon(
                                                                 Icons
                                                                     .notifications,
                                                                 size: 24,
-                                                                color: Color(
-                                                                  0xFF2F6FEB,
-                                                                ),
+                                                                color:
+                                                                    colorScheme
+                                                                        .primary,
                                                               ),
                                                         ),
                                                       )
-                                                    : const Icon(
+                                                    : Icon(
                                                         Icons.notifications,
                                                         size: 24,
-                                                        color: Color(
-                                                          0xFF2F6FEB,
-                                                        ),
+                                                        color:
+                                                            colorScheme.primary,
                                                       ),
                                               ),
                                               const SizedBox(width: 12),
@@ -739,13 +745,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                                             overflow:
                                                                 TextOverflow
                                                                     .ellipsis,
-                                                            style:
-                                                                const TextStyle(
-                                                                  fontSize: 16,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .w700,
-                                                                ),
+                                                            style: TextStyle(
+                                                              fontSize: 16,
+                                                              fontWeight:
+                                                                  FontWeight.w700,
+                                                              color: colorScheme
+                                                                  .onSurface,
+                                                            ),
                                                           ),
                                                         ),
                                                         if (!isRead)
@@ -765,14 +771,12 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                                       child:
                                                           HtmlHelper.renderHtml(
                                                             message,
-                                                            style:
-                                                                const TextStyle(
-                                                                  color: Color(
-                                                                    0xFF667085,
-                                                                  ),
-                                                                  fontSize: 14,
-                                                                  height: 1.35,
-                                                                ),
+                                                            style: TextStyle(
+                                                              color: colorScheme
+                                                                  .onSurfaceVariant,
+                                                              fontSize: 14,
+                                                              height: 1.35,
+                                                            ),
                                                             maxLines: 2,
                                                             overflow:
                                                                 TextOverflow
@@ -786,16 +790,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                                       children: [
                                                         Text(
                                                           createdLabel,
-                                                          style:
-                                                              const TextStyle(
-                                                                fontSize: 12,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w500,
-                                                                color: Color(
-                                                                  0xFF98A2B3,
-                                                                ),
-                                                              ),
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            fontWeight:
+                                                                FontWeight.w500,
+                                                            color: colorScheme
+                                                                .onSurfaceVariant,
+                                                          ),
                                                         ),
                                                         TextButton(
                                                           style: TextButton.styleFrom(
@@ -827,6 +828,10 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                                             isRead
                                                                 ? "Mark as unread"
                                                                 : "Mark as read",
+                                                            style: TextStyle(
+                                                              color:
+                                                                  colorScheme.primary,
+                                                            ),
                                                           ),
                                                         ),
                                                       ],
@@ -858,6 +863,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
   }
 
   Widget _buildChip(String label) {
+    final colorScheme = Theme.of(context).colorScheme;
     final selected = selectedFilter == label;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
@@ -869,14 +875,16 @@ class _NotificationScreenState extends State<NotificationScreen> {
             selectedFilter = label;
           });
         },
-        selectedColor: const Color(0xFF2F6FEB),
-        backgroundColor: Colors.white,
+        selectedColor: colorScheme.primary,
+        backgroundColor: colorScheme.surface,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         showCheckmark: true,
-        labelStyle: TextStyle(color: selected ? Colors.white : Colors.black87),
+        labelStyle: TextStyle(
+          color: selected ? colorScheme.onPrimary : colorScheme.onSurfaceVariant,
+        ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: Colors.grey.shade300),
+          side: BorderSide(color: colorScheme.outlineVariant),
         ),
       ),
     );

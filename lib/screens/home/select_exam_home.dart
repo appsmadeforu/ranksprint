@@ -499,13 +499,15 @@ class _SelectExamHomeState extends State<SelectExamHome> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       return const Scaffold(body: Center(child: Text('User not logged in')));
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
           key: ValueKey('select-exam-home-${user.uid}-$_reloadTick'),
@@ -572,29 +574,29 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                           children: [
                             Text(
                               'Hello, ${vm.greetingName} 👋',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 28,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF0F172A),
+                                color: colorScheme.onSurface,
                               ),
                             ),
                             const SizedBox(height: 6),
-                            const Text(
+                            Text(
                               'Ready to boost your rank today?',
                               style: TextStyle(
                                 fontSize: 15,
-                                color: Color(0xFF64748B),
+                                color: colorScheme.onSurfaceVariant,
                               ),
                             ),
                             const SizedBox(height: 18),
                             _buildQuoteCard(vm.quote),
                             const SizedBox(height: 22),
-                            const Text(
+                            Text(
                               'Current Goal',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF0F172A),
+                                color: colorScheme.onSurface,
                               ),
                             ),
                             const SizedBox(height: 14),
@@ -609,12 +611,12 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                               ),
                             ),
                             const SizedBox(height: 26),
-                            const Text(
+                            Text(
                               'Your Selected Exams',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF0F172A),
+                                color: colorScheme.onSurface,
                               ),
                             ),
                             const SizedBox(height: 14),
@@ -719,8 +721,6 @@ class _SelectExamHomeState extends State<SelectExamHome> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF31459B),
-        foregroundColor: Colors.white,
         onPressed: () {
           Navigator.of(
             context,
@@ -732,36 +732,40 @@ class _SelectExamHomeState extends State<SelectExamHome> {
   }
 
   Widget _buildQuoteCard(String quote) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x120F172A),
+            color: colorScheme.shadow.withValues(alpha: 0.08),
             blurRadius: 20,
-            offset: Offset(0, 10),
+            offset: const Offset(0, 10),
           ),
         ],
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(top: 6),
-            child: Icon(Icons.format_quote_rounded, color: Color(0xFFC7D2FE)),
+            child: Icon(
+              Icons.format_quote_rounded,
+              color: colorScheme.primary.withValues(alpha: 0.3),
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               '"$quote"',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 15,
                 fontStyle: FontStyle.italic,
                 height: 1.6,
-                color: Color(0xFF334155),
+                color: colorScheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -776,6 +780,7 @@ class _SelectExamHomeState extends State<SelectExamHome> {
     required bool showViewPlan,
     required VoidCallback onEdit,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     final remainingDays = goal?.targetDate == null
         ? null
         : math.max(0, goal!.targetDate!.difference(DateTime.now()).inDays);
@@ -852,10 +857,10 @@ class _SelectExamHomeState extends State<SelectExamHome> {
             goal == null && activeExam == null
                 ? 'Pick an exam to unlock your personalized study journey.'
                 : description,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               height: 1.6,
-              color: Color(0xFFE6EBFF),
+              color: colorScheme.onPrimary.withValues(alpha: 0.88),
             ),
           ),
           if (deadlineLabel != null || daysLeftLabel != null) ...[
@@ -900,8 +905,8 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                 });
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF31459B),
+                backgroundColor: colorScheme.onPrimary,
+                foregroundColor: colorScheme.primary,
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
@@ -930,6 +935,7 @@ class _SelectExamHomeState extends State<SelectExamHome> {
   }
 
   Widget _buildGoalMetaChip({required IconData icon, required String label}) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
@@ -939,14 +945,14 @@ class _SelectExamHomeState extends State<SelectExamHome> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: Colors.white),
+          Icon(icon, size: 14, color: colorScheme.onPrimary),
           const SizedBox(width: 6),
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: Colors.white,
+              color: colorScheme.onPrimary,
             ),
           ),
         ],
@@ -955,17 +961,18 @@ class _SelectExamHomeState extends State<SelectExamHome> {
   }
 
   Widget _buildExamCard(_ExamCardVm exam) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x120F172A),
+            color: colorScheme.shadow.withValues(alpha: 0.08),
             blurRadius: 18,
-            offset: Offset(0, 8),
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -976,12 +983,12 @@ class _SelectExamHomeState extends State<SelectExamHome> {
             width: 72,
             height: 72,
             decoration: BoxDecoration(
-              color: const Color(0xFFEDF3FF),
+              color: colorScheme.primaryContainer,
               borderRadius: BorderRadius.circular(16),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.school_rounded,
-              color: Color(0xFF31459B),
+              color: colorScheme.primary,
               size: 34,
             ),
           ),
@@ -992,10 +999,10 @@ class _SelectExamHomeState extends State<SelectExamHome> {
               children: [
                 Text(
                   exam.title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF111827),
+                    color: colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -1003,10 +1010,10 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                   exam.description,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     height: 1.55,
-                    color: Color(0xFF6B7280),
+                    color: colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -1022,16 +1029,17 @@ class _SelectExamHomeState extends State<SelectExamHome> {
   }
 
   Widget _buildEmptyExamCard() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: const Text(
+      child: Text(
         'No exams selected yet. Tap the + button to add one.',
-        style: TextStyle(color: Color(0xFF64748B)),
+        style: TextStyle(color: colorScheme.onSurfaceVariant),
       ),
     );
   }
@@ -1041,15 +1049,16 @@ class _SelectExamHomeState extends State<SelectExamHome> {
     required String actionLabel,
     required VoidCallback onTap,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Row(
       children: [
         Expanded(
           child: Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF0F172A),
+              color: colorScheme.onSurface,
             ),
           ),
         ),
@@ -1057,10 +1066,10 @@ class _SelectExamHomeState extends State<SelectExamHome> {
           onPressed: onTap,
           child: Text(
             actionLabel,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF31459B),
+              color: colorScheme.primary,
             ),
           ),
         ),
@@ -1160,11 +1169,12 @@ class _SelectExamHomeState extends State<SelectExamHome> {
   }
 
   Widget _buildStatCard(_StatCardVm vm) {
+    final colorScheme = Theme.of(context).colorScheme;
     final child = Container(
       height: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
@@ -1175,10 +1185,10 @@ class _SelectExamHomeState extends State<SelectExamHome> {
           const SizedBox(height: 14),
           Text(
             vm.value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF111827),
+              color: colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 4),
@@ -1186,10 +1196,10 @@ class _SelectExamHomeState extends State<SelectExamHome> {
             vm.label,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               height: 1.3,
-              color: Color(0xFF6B7280),
+              color: colorScheme.onSurfaceVariant,
             ),
           ),
         ],
@@ -1211,18 +1221,19 @@ class _SelectExamHomeState extends State<SelectExamHome> {
   }
 
   Widget _buildFeaturedCard(_FeaturedCardVm item) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-        boxShadow: const [
+        border: Border.all(color: colorScheme.outlineVariant),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x120F172A),
+            color: colorScheme.shadow.withValues(alpha: 0.08),
             blurRadius: 18,
-            offset: Offset(0, 8),
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -1232,7 +1243,7 @@ class _SelectExamHomeState extends State<SelectExamHome> {
             width: 72,
             height: 72,
             decoration: BoxDecoration(
-              color: const Color(0xFFF3F4F6),
+              color: colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(16),
             ),
             child: Icon(item.icon, color: item.iconTint, size: 36),
@@ -1246,10 +1257,10 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                   item.title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF111827),
+                    color: colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -1279,9 +1290,9 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                         item.meta,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
-                          color: Color(0xFF6B7280),
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ),
@@ -1314,14 +1325,18 @@ class _SelectExamHomeState extends State<SelectExamHome> {
     String message =
         'No featured practice items available for your selected exam yet.',
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(message, style: const TextStyle(color: Color(0xFF64748B))),
+      child: Text(
+        message,
+        style: TextStyle(color: colorScheme.onSurfaceVariant),
+      ),
     );
   }
 
@@ -1646,8 +1661,10 @@ class _EditGoalDialogState extends State<_EditGoalDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return AlertDialog(
-      backgroundColor: const Color(0xFFF8FAFF),
+      backgroundColor: colorScheme.surface,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       titlePadding: const EdgeInsets.fromLTRB(22, 20, 22, 0),
@@ -1656,12 +1673,12 @@ class _EditGoalDialogState extends State<_EditGoalDialog> {
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Edit Goal',
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF31459B),
+              color: colorScheme.primary,
             ),
           ),
         ],
@@ -1677,7 +1694,7 @@ class _EditGoalDialogState extends State<_EditGoalDialog> {
                 labelText: 'Goal title',
                 hintText: 'Crack JEE Main 2026',
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: theme.inputDecorationTheme.fillColor,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
                   borderSide: const BorderSide(color: Color(0xFFDCE4F5)),
@@ -1703,7 +1720,7 @@ class _EditGoalDialogState extends State<_EditGoalDialog> {
                 labelText: 'Goal description',
                 hintText: 'Complete weekly mocks and revise weak areas.',
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: theme.inputDecorationTheme.fillColor,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
                   borderSide: const BorderSide(color: Color(0xFFDCE4F5)),
@@ -1722,17 +1739,17 @@ class _EditGoalDialogState extends State<_EditGoalDialog> {
               ),
             ),
             const SizedBox(height: 14),
-            const Text(
+            Text(
               'Deadline',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF374151),
+                color: colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 8),
             Material(
-              color: Colors.white,
+              color: colorScheme.surface,
               borderRadius: BorderRadius.circular(16),
               child: InkWell(
                 onTap: _isSaving ? null : _pickDate,
@@ -1749,10 +1766,10 @@ class _EditGoalDialogState extends State<_EditGoalDialog> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.calendar_today_rounded,
                         size: 18,
-                        color: Color(0xFF31459B),
+                        color: colorScheme.primary,
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -1764,8 +1781,8 @@ class _EditGoalDialogState extends State<_EditGoalDialog> {
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                             color: _selectedDate == null
-                                ? const Color(0xFF6B7280)
-                                : const Color(0xFF111827),
+                                ? colorScheme.onSurfaceVariant
+                                : colorScheme.onSurface,
                           ),
                         ),
                       ),
@@ -1781,7 +1798,7 @@ class _EditGoalDialogState extends State<_EditGoalDialog> {
         TextButton(
           onPressed: _isSaving ? null : () => Navigator.of(context).pop(false),
           style: TextButton.styleFrom(
-            foregroundColor: const Color(0xFF64748B),
+            foregroundColor: colorScheme.onSurfaceVariant,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           ),
           child: const Text(

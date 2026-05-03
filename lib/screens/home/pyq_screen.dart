@@ -184,16 +184,18 @@ class _PyqScreenState extends State<PyqScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final effectiveSelectedExamId =
         selectedExamId != null && userExamIds.contains(selectedExamId)
         ? selectedExamId
         : (userExamIds.isNotEmpty ? userExamIds.first : null);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Container(
-          color: const Color(0xFFF5F6FA),
+          color: theme.scaffoldBackgroundColor,
           child: Column(
             children: [
               TopHeader(
@@ -269,19 +271,20 @@ class _PyqScreenState extends State<PyqScreen> {
                                          crossAxisAlignment: CrossAxisAlignment.start,
                                          children: [
                                            const SizedBox(height: 12),
-                                           const Text(
+                                           Text(
                                              "Previous Year Questions",
                                              style: TextStyle(
                                                fontSize: 22,
                                                fontWeight: FontWeight.bold,
+                                               color: colorScheme.onSurface,
                                              ),
                                            ),
                                            const SizedBox(height: 6),
-                                            const Text(
+                                            Text(
                                               "Access exam questions organized by subject and chapter",
                                               style: TextStyle(
                                                 fontSize: 14,
-                                                color: Colors.grey,
+                                                color: colorScheme.onSurfaceVariant,
                                              ),
                                            ),
                                            const SizedBox(height: 20),
@@ -328,20 +331,20 @@ class _PyqScreenState extends State<PyqScreen> {
                                                     access.requiredPlanIds;
                                                 final isLocked = access.isLocked;
                                                 return Container(
-                                                  margin: const EdgeInsets.only(
+                                                 margin: const EdgeInsets.only(
                                                     bottom: 16,
                                                   ),
                                                  child: Material(
                                                    borderRadius:
                                                        BorderRadius.circular(18),
-                                                   color: Colors.white,
+                                                   color: colorScheme.surface,
                                                    elevation: 3,
                                                    child: InkWell(
                                                      borderRadius:
                                                          BorderRadius.circular(18),
-                                                     splashColor: const Color(
-                                                       0xFF2F6FEB,
-                                                     ).withValues(alpha: 0.1),
+                                                     splashColor: colorScheme
+                                                         .primary
+                                                         .withValues(alpha: 0.1),
                                                       onTap: () {
                                                         if (isLocked) {
                                                           Navigator.push<bool>(
@@ -394,10 +397,8 @@ class _PyqScreenState extends State<PyqScreen> {
                                                              height: 52,
                                                              decoration: BoxDecoration(
                                                                 color: isLocked
-                                                                    ? Colors.grey.shade200
-                                                                    : const Color(
-                                                                        0xFFEFF3FF,
-                                                                      ),
+                                                                    ? colorScheme.surfaceContainerHighest
+                                                                    : colorScheme.primaryContainer,
                                                                borderRadius:
                                                                    BorderRadius.circular(
                                                                      14,
@@ -408,10 +409,8 @@ class _PyqScreenState extends State<PyqScreen> {
                                                                     ? Icons.lock_outline
                                                                     : Icons.menu_book,
                                                                 color: isLocked
-                                                                    ? Colors.grey
-                                                                    : const Color(
-                                                                        0xFF2F6FEB,
-                                                                      ),
+                                                                    ? colorScheme.onSurfaceVariant
+                                                                    : colorScheme.primary,
                                                               ),
                                                            ),
                                                            const SizedBox(width: 16),
@@ -423,26 +422,26 @@ class _PyqScreenState extends State<PyqScreen> {
                                                                children: [
                                                                  Text(
                                                                    title,
-                                                                   style:
-                                                                       const TextStyle(
-                                                                         fontSize: 16,
-                                                                         fontWeight:
-                                                                             FontWeight
-                                                                                 .w600,
-                                                                       ),
+                                                                   style: TextStyle(
+                                                                     fontSize: 16,
+                                                                     fontWeight:
+                                                                         FontWeight
+                                                                             .w600,
+                                                                     color:
+                                                                         colorScheme
+                                                                             .onSurface,
+                                                                   ),
                                                                  ),
                                                                  const SizedBox(
                                                                    height: 4,
                                                                  ),
                                                                   Text(
                                                                     "$questionCount questions available",
-                                                                    style:
-                                                                        const TextStyle(
-                                                                         fontSize:
-                                                                             13,
-                                                                         color: Colors
-                                                                             .grey,
-                                                                       ),
+                                                                    style: TextStyle(
+                                                                      fontSize: 13,
+                                                                      color: colorScheme
+                                                                          .onSurfaceVariant,
+                                                                    ),
                                                                  ),
                                                                ],
                                                              ),

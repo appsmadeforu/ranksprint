@@ -136,8 +136,9 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: FutureBuilder<_PaymentHistoryVm>(
         future: _vmFuture,
         builder: (context, snapshot) {
@@ -177,6 +178,8 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
   }
 
   Widget _buildEmptyState(String? examId) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Container(
@@ -184,11 +187,11 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
         constraints: const BoxConstraints(maxWidth: 520),
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: colorScheme.shadow.withOpacity(0.12),
               blurRadius: 20,
               offset: const Offset(0, 10),
             ),
@@ -202,31 +205,31 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
               width: 68,
               height: 68,
               decoration: BoxDecoration(
-                color: const Color(0xFFEAF1FF),
+                color: colorScheme.primaryContainer,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.receipt_long_rounded,
                 size: 34,
-                color: Color(0xFF2F3E8F),
+                color: colorScheme.primary,
               ),
             ),
             const SizedBox(height: 18),
-            const Text(
+            Text(
               'Payment History',
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF111827),
+                color: colorScheme.onSurface,
               ),
             ),
             const SizedBox(height: 10),
-            const Text(
+            Text(
               'No subscriptions taken so far.',
               style: TextStyle(
                 fontSize: 15,
                 height: 1.6,
-                color: Color(0xFF6B7280),
+                color: colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 24),
@@ -248,8 +251,6 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                   });
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2F3E8F),
-                  foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 15),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -273,14 +274,15 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
       itemCount: payments.length + 1,
       itemBuilder: (context, index) {
         if (index == 0) {
-          return const Padding(
+          final colorScheme = Theme.of(context).colorScheme;
+          return Padding(
             padding: EdgeInsets.fromLTRB(8, 8, 8, 16),
             child: Text(
               'Payment History',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF111827),
+                color: colorScheme.onSurface,
               ),
             ),
           );
@@ -291,6 +293,8 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
   }
 
   Widget _buildPaymentCard(_PaymentRecord record) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final statusColor = _statusColor(record.status);
     final statusLabel = _statusLabel(record.status);
     final sourceLabel = _sourceLabel(record.source);
@@ -298,11 +302,11 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: colorScheme.shadow.withOpacity(0.1),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -338,18 +342,18 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                     children: [
                       Text(
                         record.planName,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF111827),
+                          color: colorScheme.onSurface,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         sourceLabel,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Color(0xFF9CA3AF),
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -377,7 +381,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFFF9FAFB),
+                color: colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
@@ -393,9 +397,9 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                     _buildDetailRow(
                       'Original Price',
                       '₹${record.originalPrice}',
-                      valueStyle: const TextStyle(
+                      valueStyle: TextStyle(
                         fontSize: 13,
-                        color: Color(0xFF9CA3AF),
+                        color: colorScheme.onSurfaceVariant,
                         decoration: TextDecoration.lineThrough,
                       ),
                     ),
@@ -428,20 +432,21 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
   }
 
   Widget _buildDetailRow(String label, String value, {TextStyle? valueStyle}) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+          style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
         ),
         Text(
           value,
           style: valueStyle ??
-              const TextStyle(
+              TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF111827),
+                color: colorScheme.onSurface,
               ),
         ),
       ],

@@ -137,13 +137,14 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
       return const Scaffold(body: Center(child: Text('User not logged in')));
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF2F4F8),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -295,6 +296,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
   }
 
   Widget _hero(_Vm vm, {required String bestSubject}) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -307,7 +309,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -332,14 +334,15 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: colorScheme.onPrimary,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   _window.label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
+                    color: colorScheme.primary,
                   ),
                 ),
               ),
@@ -375,6 +378,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
   }
 
   Widget _metric(String title, String value, String delta) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -389,7 +393,10 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(color: Colors.white70, fontSize: 10),
+                  style: TextStyle(
+                    color: colorScheme.onPrimary.withValues(alpha: 0.78),
+                    fontSize: 10,
+                  ),
                 ),
               ),
               if (delta.isNotEmpty)
@@ -420,12 +427,13 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
   }
 
   Widget _windowRow() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Row(
         children: _Window.values.map((w) {
@@ -445,8 +453,8 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 7),
                   decoration: BoxDecoration(
                     color: s
-                        ? const Color(0xFF1E3A8A)
-                        : const Color(0xFFF3F4F6),
+                        ? colorScheme.primary
+                        : colorScheme.surfaceContainerLowest,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -455,7 +463,9 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: s ? Colors.white : const Color(0xFF374151),
+                      color: s
+                          ? colorScheme.onPrimary
+                          : colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
@@ -516,9 +526,13 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
   }
 
   Widget _small(String l, String v, Color c) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       children: [
-        Text(l, style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+        Text(
+          l,
+          style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+        ),
         const SizedBox(height: 4),
         Text(
           v,
@@ -529,6 +543,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
   }
 
   Widget _subjectCard(List<_SubjectMetric> subjects, {bool isLoading = false}) {
+    final colorScheme = Theme.of(context).colorScheme;
     return _card(
       'Subject-wise Performance',
       isLoading
@@ -537,7 +552,10 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
               child: Center(child: CircularProgressIndicator()),
             )
           : subjects.isEmpty
-          ? const Text('No subject data available')
+          ? Text(
+              'No subject data available',
+              style: TextStyle(color: colorScheme.onSurfaceVariant),
+            )
           : Column(
               children: subjects.map((s) {
                 return Padding(
@@ -549,7 +567,10 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                         child: Text(
                           s.name,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 11),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: colorScheme.onSurface,
+                          ),
                         ),
                       ),
                       Expanded(
@@ -558,8 +579,9 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                           child: LinearProgressIndicator(
                             value: (s.accuracy / 100).clamp(0.0, 1.0),
                             minHeight: 12,
-                            backgroundColor: const Color(0xFFE5E7EB),
-                            color: const Color(0xFF1E3A8A),
+                            backgroundColor:
+                                colorScheme.surfaceContainerHighest,
+                            color: colorScheme.primary,
                           ),
                         ),
                       ),
@@ -569,9 +591,9 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                         child: Text(
                           s.accuracy.toStringAsFixed(0),
                           textAlign: TextAlign.right,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 11,
-                            color: Color(0xFF6B7280),
+                            color: colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ),
@@ -584,6 +606,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
   }
 
   Widget _skills(_Vm vm, _DeferredVmData deferred) {
+    final colorScheme = Theme.of(context).colorScheme;
     return _card(
       'Skills Assessment',
       Column(
@@ -600,31 +623,31 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
               ],
             ),
           ),
-          const Divider(height: 20, color: Color(0xFFE5E7EB)),
+          Divider(height: 20, color: colorScheme.outlineVariant),
           Row(
             children: [
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEFF4FF),
+                    color: colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Column(
                     children: [
-                      const Text(
+                      Text(
                         'Best Skill',
                         style: TextStyle(
                           fontSize: 10,
-                          color: Color(0xFF6B7280),
+                          color: colorScheme.onPrimaryContainer,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         deferred.bestSkill,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
-                          color: Color(0xFF1E40AF),
+                          color: colorScheme.onPrimaryContainer,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -642,11 +665,11 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                   ),
                   child: Column(
                     children: [
-                      const Text(
+                      Text(
                         'Focus Area',
                         style: TextStyle(
                           fontSize: 10,
-                          color: Color(0xFF6B7280),
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -670,19 +693,23 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
   }
 
   Widget _weeklyActivity(_Vm vm) {
+    final colorScheme = Theme.of(context).colorScheme;
     return _card(
       'Weekly Activity',
       vm.weekly.isEmpty
-          ? const Text('No weekly activity yet')
+          ? Text(
+              'No weekly activity yet',
+              style: TextStyle(color: colorScheme.onSurfaceVariant),
+            )
           : Column(
               children: vm.weekly.map((w) {
                 return Container(
                   margin: const EdgeInsets.only(bottom: 10),
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
+                    color: colorScheme.surfaceContainerLowest,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFE5E7EB)),
+                    border: Border.all(color: colorScheme.outlineVariant),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -691,16 +718,16 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                         children: [
                           Text(
                             w.label,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF111827),
+                              color: colorScheme.onSurface,
                             ),
                           ),
                           const Spacer(),
                           Text(
                             '${w.score.toStringAsFixed(0)}%',
-                            style: const TextStyle(
-                              color: Color(0xFF1E3A8A),
+                            style: TextStyle(
+                              color: colorScheme.primary,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -711,17 +738,17 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                         children: [
                           Text(
                             '${w.attempts} tests',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 10,
-                              color: Color(0xFF6B7280),
+                              color: colorScheme.onSurfaceVariant,
                             ),
                           ),
                           const SizedBox(width: 12),
                           Text(
                             _fmtMins(w.minutes),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 10,
-                              color: Color(0xFF6B7280),
+                              color: colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ],
@@ -732,8 +759,9 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                         child: LinearProgressIndicator(
                           minHeight: 6,
                           value: (w.score / 100).clamp(0.0, 1.0),
-                          backgroundColor: const Color(0xFFE5E7EB),
-                          color: const Color(0xFF1E3A8A),
+                          backgroundColor:
+                              colorScheme.surfaceContainerHighest,
+                          color: colorScheme.primary,
                         ),
                       ),
                     ],
@@ -745,28 +773,33 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
   }
 
   Widget _performanceInsights(_Vm vm, _DeferredVmData deferred) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF4FF),
+        color: colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFBFD3FF)),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
               CircleAvatar(
                 radius: 10,
-                backgroundColor: Color(0xFF1E3A8A),
-                child: Icon(Icons.lightbulb, color: Colors.white, size: 12),
+                backgroundColor: colorScheme.primary,
+                child: Icon(
+                  Icons.lightbulb,
+                  color: colorScheme.onPrimary,
+                  size: 12,
+                ),
               ),
               SizedBox(width: 8),
               Text(
                 'Performance Insights',
                 style: TextStyle(
-                  color: Color(0xFF1E3A8A),
+                  color: colorScheme.onPrimaryContainer,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -775,7 +808,10 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
           const SizedBox(height: 6),
           Text(
             'You\'ve improved by ${vm.delta.toStringAsFixed(0)}% in the last ${_window.label.toLowerCase()}',
-            style: const TextStyle(fontSize: 11, color: Color(0xFF374151)),
+            style: TextStyle(
+              fontSize: 11,
+              color: colorScheme.onPrimaryContainer,
+            ),
           ),
           const SizedBox(height: 8),
           ...deferred.insights.map(
@@ -794,9 +830,9 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                   Expanded(
                     child: Text(
                       i,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
-                        color: Color(0xFF374151),
+                        color: colorScheme.onPrimaryContainer,
                       ),
                     ),
                   ),
@@ -810,6 +846,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
   }
 
   Widget _actionButtons(_Vm vm) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Row(
       children: [
         Expanded(
@@ -830,16 +867,16 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                     );
                   },
             style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: Color(0xFFCBD5E1)),
+              side: BorderSide(color: colorScheme.outlineVariant),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
               padding: const EdgeInsets.symmetric(vertical: 12),
             ),
-            child: const Text(
+            child: Text(
               'View Solution',
               style: TextStyle(
-                color: Color(0xFF111827),
+                color: colorScheme.onSurface,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -860,15 +897,18 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
               );
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1E3A8A),
+              backgroundColor: colorScheme.primary,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
               padding: const EdgeInsets.symmetric(vertical: 12),
             ),
-            child: const Text(
+            child: Text(
               'Take New Test',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+              style: TextStyle(
+                color: colorScheme.onPrimary,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ),
@@ -877,19 +917,24 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
   }
 
   Widget _card(String title, Widget child) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: colorScheme.onSurface,
+            ),
           ),
           const SizedBox(height: 10),
           child,
@@ -914,24 +959,25 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
   }
 
   Widget _deferredSectionsPlaceholder() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          _SkeletonBlock(width: 20, height: 20),
-          SizedBox(width: 12),
+          const _SkeletonBlock(width: 20, height: 20),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               'Loading the rest of your performance insights...',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF475569),
+                color: colorScheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -999,12 +1045,13 @@ class _PerformanceSkeletonCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1031,13 +1078,19 @@ class _SkeletonBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final resolvedColor = color == const Color(0xFFE2E8F0)
+        ? colorScheme.surfaceContainerHighest
+        : color;
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
         width: width,
         height: height,
         decoration: BoxDecoration(
-          color: color.withValues(alpha: color == Colors.white ? 0.2 : 1),
+          color: resolvedColor.withValues(
+            alpha: color == Colors.white ? 0.2 : 1,
+          ),
           borderRadius: BorderRadius.circular(10),
         ),
       ),
@@ -1053,6 +1106,7 @@ class _TrendChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return CustomPaint(
       painter: _TrendPainter(points, platformAvg),
       child: Padding(
@@ -1062,11 +1116,17 @@ class _TrendChart extends StatelessWidget {
           children: [
             Text(
               _fmt(points.first.date),
-              style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280)),
+              style: TextStyle(
+                fontSize: 10,
+                color: colorScheme.onSurfaceVariant,
+              ),
             ),
             Text(
               _fmt(points.last.date),
-              style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280)),
+              style: TextStyle(
+                fontSize: 10,
+                color: colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),

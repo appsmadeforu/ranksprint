@@ -64,21 +64,25 @@ class TestDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: FutureBuilder<Map<String, dynamic>>(
-          future: Future.wait<dynamic>([
-            _loadTest(),
-            _loadCompletedAttemptCount(),
-          ]).then((values) {
-            final testDoc = values[0] as DocumentSnapshot<Map<String, dynamic>>;
-            final completedAttempts = values[1] as int;
-            return {
-              'test': testDoc.data() ?? <String, dynamic>{},
-              'completedAttempts': completedAttempts,
-            };
-          }),
+          future:
+              Future.wait<dynamic>([
+                _loadTest(),
+                _loadCompletedAttemptCount(),
+              ]).then((values) {
+                final testDoc =
+                    values[0] as DocumentSnapshot<Map<String, dynamic>>;
+                final completedAttempts = values[1] as int;
+                return {
+                  'test': testDoc.data() ?? <String, dynamic>{},
+                  'completedAttempts': completedAttempts,
+                };
+              }),
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
@@ -127,9 +131,10 @@ class TestDetailScreen extends StatelessWidget {
                       Expanded(
                         child: Text(
                           title,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
+                            color: colorScheme.onSurface,
                           ),
                         ),
                       ),
@@ -189,11 +194,12 @@ class TestDetailScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Instructions',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
+                            color: colorScheme.onSurface,
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -206,11 +212,11 @@ class TestDetailScreen extends StatelessWidget {
                               children: [
                                 CircleAvatar(
                                   radius: 10,
-                                  backgroundColor: const Color(0xFFEFF3FF),
+                                  backgroundColor: colorScheme.primaryContainer,
                                   child: Text(
                                     '${i + 1}',
-                                    style: const TextStyle(
-                                      color: Color(0xFF2F3E8F),
+                                    style: TextStyle(
+                                      color: colorScheme.primary,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -219,8 +225,8 @@ class TestDetailScreen extends StatelessWidget {
                                 Expanded(
                                   child: Text(
                                     it,
-                                    style: const TextStyle(
-                                      color: Colors.black87,
+                                    style: TextStyle(
+                                      color: colorScheme.onSurface,
                                     ),
                                   ),
                                 ),
@@ -236,14 +242,18 @@ class TestDetailScreen extends StatelessWidget {
                           width: double.infinity,
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAFF),
+                            color: colorScheme.surface,
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: const Color(0xFFE3E8F5)),
-                            boxShadow: const [
+                            border: Border.all(
+                              color: colorScheme.outlineVariant,
+                            ),
+                            boxShadow: [
                               BoxShadow(
-                                color: Color(0x120E1A33),
+                                color: colorScheme.shadow.withValues(
+                                  alpha: 0.08,
+                                ),
                                 blurRadius: 12,
-                                offset: Offset(0, 4),
+                                offset: const Offset(0, 4),
                               ),
                             ],
                           ),
@@ -253,11 +263,11 @@ class TestDetailScreen extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Row(
-                                  children: const [
+                                  children: [
                                     Icon(
                                       Icons.flag_outlined,
                                       size: 18,
-                                      color: Color(0xFF3046A5),
+                                      color: colorScheme.primary,
                                     ),
                                     SizedBox(width: 8),
                                     Text(
@@ -265,7 +275,7 @@ class TestDetailScreen extends StatelessWidget {
                                       style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w700,
-                                        color: Color(0xFF172554),
+                                        color: colorScheme.onSurface,
                                       ),
                                     ),
                                   ],
@@ -309,20 +319,23 @@ class TestDetailScreen extends StatelessWidget {
                           width: double.infinity,
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFFF7ED),
+                            color: colorScheme.tertiaryContainer,
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFFFFE6C6)),
+                            border: Border.all(color: colorScheme.tertiary),
                           ),
                           child: Row(
-                            children: const [
+                            children: [
                               Icon(
                                 Icons.info_outline,
-                                color: Color(0xFFB76B00),
+                                color: colorScheme.tertiary,
                               ),
                               SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   'Important: Make sure you have a stable internet connection during the test.',
+                                  style: TextStyle(
+                                    color: colorScheme.onTertiaryContainer,
+                                  ),
                                 ),
                               ),
                             ],
@@ -355,21 +368,21 @@ class TestDetailScreen extends StatelessWidget {
                         );
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2F3E8F),
+                        backgroundColor: colorScheme.primary,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 14),
-                          child: Text(
-                            completedAttempts > 0 ? 'Reattempt' : 'Start Test',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                            ),
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 5),
+                        child: Text(
+                          completedAttempts > 0 ? 'Reattempt' : 'Start Test',
+                          style: TextStyle(
+                            color: colorScheme.onPrimary,
+                            fontSize: 15,
                           ),
                         ),
+                      ),
                     ),
                   ),
                 ),
@@ -390,6 +403,7 @@ class _LegendChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
@@ -411,10 +425,10 @@ class _LegendChip extends StatelessWidget {
           const SizedBox(width: 8),
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF1F2937),
+              color: colorScheme.onSurface,
             ),
           ),
         ],

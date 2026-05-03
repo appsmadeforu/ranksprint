@@ -333,9 +333,9 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
           SectionService.unlockedTime + SectionService.lockedTime;
       remainingSeconds =
           (sectionBasedDurationMinutes > 0
-                  ? sectionBasedDurationMinutes
-                  : _testDurationMinutes) *
-              60;
+              ? sectionBasedDurationMinutes
+              : _testDurationMinutes) *
+          60;
       loading = false;
       currentIndex = 0;
       answers = {};
@@ -985,7 +985,8 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                     final comment = controller.text.trim();
                     if (comment.isEmpty) {
                       setDialogState(() {
-                        errorText = 'Please describe what is wrong with the question.';
+                        errorText =
+                            'Please describe what is wrong with the question.';
                       });
                       return;
                     }
@@ -1090,7 +1091,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -1280,6 +1281,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
   }
 
   Widget _buildCounter(int count, String label, Color color) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1300,7 +1302,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
           ),
         ),
         const SizedBox(width: 6),
-        Text(label),
+        Text(label, style: TextStyle(color: colorScheme.onSurface)),
       ],
     );
   }
@@ -1351,6 +1353,8 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final hasAttempt = attemptId != null;
     final canLeaveScreen = !hasAttempt && !_isSubmittingAttempt;
 
@@ -1371,7 +1375,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
           AbsorbPointer(
             absorbing: _isSubmittingAttempt,
             child: Scaffold(
-              backgroundColor: const Color(0xFFF5F6FA),
+              backgroundColor: theme.scaffoldBackgroundColor,
               body: SafeArea(
                 child: Padding(
                   padding: const EdgeInsets.all(12.0),
@@ -1386,12 +1390,12 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                               child: Container(
                                 padding: const EdgeInsets.all(10),
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
+                                  color: colorScheme.surface,
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: const Icon(
+                                child: Icon(
                                   Icons.menu,
-                                  color: Color(0xFF2F6FEB),
+                                  color: colorScheme.primary,
                                 ),
                               ),
                             ),
@@ -1401,15 +1405,15 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                 vertical: 8,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: colorScheme.surface,
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
                                 _formatTime(remainingSeconds),
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
-                                  color: Color(0xFF2F6FEB),
+                                  color: colorScheme.primary,
                                 ),
                               ),
                             ),
@@ -1429,23 +1433,23 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                   height: 220,
                                   width: 220,
                                   decoration: BoxDecoration(
-                                    gradient: const LinearGradient(
+                                    gradient: LinearGradient(
                                       colors: [
-                                        Color(0xFFE9F1FF),
-                                        Color(0xFFF6F8FF),
+                                        colorScheme.primaryContainer,
+                                        colorScheme.surfaceContainerHighest,
                                       ],
                                       begin: Alignment.topLeft,
                                       end: Alignment.bottomRight,
                                     ),
                                     borderRadius: BorderRadius.circular(36),
                                   ),
-                                  child: const Column(
+                                  child: Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Icon(
                                         Icons.auto_awesome_rounded,
                                         size: 68,
-                                        color: Color(0xFF2F6FEB),
+                                        color: colorScheme.primary,
                                       ),
                                       SizedBox(height: 14),
                                       SizedBox(
@@ -1453,7 +1457,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                         height: 42,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 3,
-                                          color: Color(0xFF5B3FD6),
+                                          color: colorScheme.secondary,
                                         ),
                                       ),
                                     ],
@@ -1463,33 +1467,33 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                 const SizedBox(height: 20),
 
                                 /// Title
-                                const Text(
+                                Text(
                                   "AI Exam Engine",
                                   style: TextStyle(
                                     fontSize: 26,
                                     fontWeight: FontWeight.bold,
-                                    color: Color(0xFF2F6FEB),
+                                    color: colorScheme.primary,
                                   ),
                                 ),
 
                                 const SizedBox(height: 8),
 
                                 /// Subtitle
-                                const Text(
+                                Text(
                                   "Preparing your questions\nAnalyzing difficulty & timer",
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     fontSize: 15,
-                                    color: Colors.grey,
+                                    color: colorScheme.onSurfaceVariant,
                                     height: 1.5,
                                   ),
                                 ),
                                 const SizedBox(height: 30),
-                                const Text(
+                                Text(
                                   "Your Test starting in a moment...",
                                   style: TextStyle(
                                     fontSize: 13,
-                                    color: Colors.grey,
+                                    color: colorScheme.onSurfaceVariant,
                                   ),
                                 ),
                               ],
@@ -1532,6 +1536,7 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                             CrossAxisAlignment.stretch,
                                         children: [
                                           Card(
+                                            color: colorScheme.surface,
                                             shape: RoundedRectangleBorder(
                                               borderRadius:
                                                   BorderRadius.circular(12),
@@ -1563,20 +1568,18 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                                                 vertical: 6,
                                                               ),
                                                           decoration: BoxDecoration(
-                                                            color: const Color(
-                                                              0xFFEFF8FF,
-                                                            ),
+                                                            color: colorScheme
+                                                                .primaryContainer,
                                                             borderRadius:
                                                                 BorderRadius.circular(
                                                                   20,
                                                                 ),
                                                           ),
-                                                          child: const Text(
+                                                          child: Text(
                                                             'Clear Answer',
                                                             style: TextStyle(
-                                                              color: Color(
-                                                                0xFF2F6FEB,
-                                                              ),
+                                                              color: colorScheme
+                                                                  .primary,
                                                             ),
                                                           ),
                                                         ),
@@ -1595,9 +1598,8 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                                               ? const Color(
                                                                   0xFFFEE2E2,
                                                                 )
-                                                              : const Color(
-                                                                  0xFFF8FAFC,
-                                                                ),
+                                                              : colorScheme
+                                                                    .surfaceContainerHighest,
                                                           foregroundColor:
                                                               reported.contains(
                                                                 qid,
@@ -1605,9 +1607,8 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                                               ? const Color(
                                                                   0xFFB91C1C,
                                                                 )
-                                                              : const Color(
-                                                                  0xFF64748B,
-                                                                ),
+                                                              : colorScheme
+                                                                    .onSurfaceVariant,
                                                         ),
                                                         icon: Icon(
                                                           Icons
@@ -1628,7 +1629,9 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                                           ),
                                                       child: Text(
                                                         'Q${currentIndex + 1}.',
-                                                        style: const TextStyle(
+                                                        style: TextStyle(
+                                                          color: colorScheme
+                                                              .onSurface,
                                                           fontSize: 18,
                                                           fontWeight:
                                                               FontWeight.w600,
@@ -1647,7 +1650,9 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                                             questionText,
                                                           ),
                                                     imageUrls: questionImages,
-                                                    style: const TextStyle(
+                                                    style: TextStyle(
+                                                      color:
+                                                          colorScheme.onSurface,
                                                       fontSize: 18,
                                                       height: 1.4,
                                                     ),
@@ -1675,15 +1680,24 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                                   selected == optId;
 
                                               return Card(
+                                                color: colorScheme.surface,
                                                 shape: RoundedRectangleBorder(
                                                   borderRadius:
                                                       BorderRadius.circular(0),
                                                 ),
                                                 child: ListTile(
                                                   leading: CircleAvatar(
-                                                    backgroundColor:
-                                                        const Color(0xFFEAEFF6),
-                                                    child: Text(optId),
+                                                    backgroundColor: colorScheme
+                                                        .surfaceContainerHighest,
+                                                    child: Text(
+                                                      optId,
+                                                      style: TextStyle(
+                                                        color: colorScheme
+                                                            .onSurface,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                    ),
                                                   ),
                                                   title:
                                                       HtmlHelper.renderContent(
@@ -1693,14 +1707,17 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                                             _optionImageUrls(
                                                               opt,
                                                             ),
-                                                        style: const TextStyle(
+                                                        style: TextStyle(
+                                                          color: colorScheme
+                                                              .onSurface,
                                                           fontSize: 16,
                                                         ),
                                                       ),
                                                   onTap: () =>
                                                       _selectOption(qid, optId),
                                                   tileColor: isSelected
-                                                      ? const Color(0xFF8FBF8F)
+                                                      ? colorScheme
+                                                            .tertiaryContainer
                                                       : null,
                                                 ),
                                               );
@@ -1717,10 +1734,12 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                 builder: (context, constraints) {
                                   final isCompactPhone =
                                       constraints.maxWidth < 360;
-                                  final actionButtonHeight =
-                                      isCompactPhone ? 52.0 : 56.0;
-                                  final actionButtonWidth =
-                                      isCompactPhone ? 60.0 : 68.0;
+                                  final actionButtonHeight = isCompactPhone
+                                      ? 52.0
+                                      : 56.0;
+                                  final actionButtonWidth = isCompactPhone
+                                      ? 60.0
+                                      : 68.0;
                                   final actionButtonPadding =
                                       EdgeInsets.symmetric(
                                         horizontal: isCompactPhone ? 12 : 16,
@@ -1753,8 +1772,8 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                                 borderRadius:
                                                     BorderRadius.circular(12),
                                               ),
-                                              side: const BorderSide(
-                                                color: Color(0xFFCBD5E1),
+                                              side: BorderSide(
+                                                color: colorScheme.outline,
                                               ),
                                               minimumSize: Size(
                                                 actionButtonWidth,
@@ -1762,10 +1781,11 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                               ),
                                               padding: actionButtonPadding,
                                             ),
-                                            child: const Icon(
+                                            child: Icon(
                                               Icons.arrow_back,
                                               size: 24,
-                                              color: Color(0xFF475569),
+                                              color:
+                                                  colorScheme.onSurfaceVariant,
                                             ),
                                           ),
                                           const SizedBox(width: 12),
@@ -1785,8 +1805,8 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                               borderRadius:
                                                   BorderRadius.circular(12),
                                             ),
-                                            side: const BorderSide(
-                                              color: Color(0xFF2F6FEB),
+                                            side: BorderSide(
+                                              color: colorScheme.primary,
                                             ),
                                             minimumSize: Size.fromHeight(
                                               actionButtonHeight,
@@ -1797,10 +1817,9 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                             padding: EdgeInsets.zero,
                                             child: Text(
                                               'Review Later',
-                                              style:
-                                                  actionButtonTextStyle.copyWith(
-                                                    color:
-                                                        const Color(0xFF2F6FEB),
+                                              style: actionButtonTextStyle
+                                                  .copyWith(
+                                                    color: colorScheme.primary,
                                                   ),
                                             ),
                                           ),
@@ -1815,30 +1834,23 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                               child: ElevatedButton(
                                                 onPressed:
                                                     _showSubmitSectionDialog,
-                                                style:
-                                                    ElevatedButton.styleFrom(
-                                                      backgroundColor:
-                                                          const Color(
-                                                            0xFF1E40AF,
-                                                          ),
-                                                      foregroundColor:
-                                                          Colors.white,
-                                                      elevation: 0,
-                                                      shape:
-                                                          RoundedRectangleBorder(
-                                                            borderRadius:
-                                                                BorderRadius
-                                                                    .circular(
-                                                                      12,
-                                                                    ),
-                                                          ),
-                                                      minimumSize:
-                                                          Size.fromHeight(
-                                                            actionButtonHeight,
-                                                          ),
-                                                      padding:
-                                                          actionButtonPadding,
-                                                    ),
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: const Color(
+                                                    0xFF1E40AF,
+                                                  ),
+                                                  foregroundColor: Colors.white,
+                                                  elevation: 0,
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          12,
+                                                        ),
+                                                  ),
+                                                  minimumSize: Size.fromHeight(
+                                                    actionButtonHeight,
+                                                  ),
+                                                  padding: actionButtonPadding,
+                                                ),
                                                 child: Row(
                                                   mainAxisAlignment:
                                                       MainAxisAlignment.center,
@@ -1864,23 +1876,18 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                               child: ElevatedButton(
                                                 onPressed:
                                                     _showSubmitTestDialog,
-                                                style:
-                                                    ElevatedButton.styleFrom(
-                                                      shape:
-                                                          RoundedRectangleBorder(
-                                                            borderRadius:
-                                                                BorderRadius
-                                                                    .circular(
-                                                                      12,
-                                                                    ),
-                                                          ),
-                                                      minimumSize:
-                                                          Size.fromHeight(
-                                                            actionButtonHeight,
-                                                          ),
-                                                      padding:
-                                                          actionButtonPadding,
-                                                    ),
+                                                style: ElevatedButton.styleFrom(
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          12,
+                                                        ),
+                                                  ),
+                                                  minimumSize: Size.fromHeight(
+                                                    actionButtonHeight,
+                                                  ),
+                                                  padding: actionButtonPadding,
+                                                ),
                                                 child: Padding(
                                                   padding: EdgeInsets.zero,
                                                   child: Text(
@@ -1893,21 +1900,17 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                                             )
                                           : ElevatedButton(
                                               onPressed: _goToNextQuestion,
-                                              style:
-                                                  ElevatedButton.styleFrom(
-                                                    shape:
-                                                        RoundedRectangleBorder(
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(12),
-                                                        ),
-                                                    minimumSize: Size(
-                                                      actionButtonWidth,
-                                                      actionButtonHeight,
-                                                    ),
-                                                    padding:
-                                                        actionButtonPadding,
-                                                  ),
+                                              style: ElevatedButton.styleFrom(
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                ),
+                                                minimumSize: Size(
+                                                  actionButtonWidth,
+                                                  actionButtonHeight,
+                                                ),
+                                                padding: actionButtonPadding,
+                                              ),
                                               child: const Padding(
                                                 padding: EdgeInsets.zero,
                                                 child: Icon(
@@ -1932,21 +1935,21 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
           if (_isSubmittingAttempt)
             Positioned.fill(
               child: ColoredBox(
-                color: Color(0x99000000),
+                color: colorScheme.scrim.withValues(alpha: 0.6),
                 child: Center(
                   child: Container(
                     width: 280,
                     margin: const EdgeInsets.symmetric(horizontal: 24),
                     padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: colorScheme.surface,
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xFFE3E8F5)),
-                      boxShadow: const [
+                      border: Border.all(color: colorScheme.outlineVariant),
+                      boxShadow: [
                         BoxShadow(
-                          color: Color(0x180E1A33),
+                          color: colorScheme.shadow.withValues(alpha: 0.12),
                           blurRadius: 18,
-                          offset: Offset(0, 8),
+                          offset: const Offset(0, 8),
                         ),
                       ],
                     ),
@@ -1960,25 +1963,25 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                               width: 34,
                               height: 34,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFEFF3FF),
+                                color: colorScheme.primaryContainer,
                                 shape: BoxShape.circle,
                               ),
-                              child: const Padding(
+                              child: Padding(
                                 padding: EdgeInsets.all(7),
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2.4,
                                   valueColor: AlwaysStoppedAnimation<Color>(
-                                    Color(0xFF2F3E8F),
+                                    colorScheme.primary,
                                   ),
                                 ),
                               ),
                             ),
                             const SizedBox(width: 12),
-                            const Expanded(
+                            Expanded(
                               child: Text(
                                 'Submitting your test',
                                 style: TextStyle(
-                                  color: Color(0xFF172554),
+                                  color: colorScheme.onSurface,
                                   fontSize: 16,
                                   fontWeight: FontWeight.w700,
                                   decoration: TextDecoration.none,
@@ -1990,19 +1993,19 @@ class TestRunnerScreenState extends State<TestRunnerScreen>
                         const SizedBox(height: 14),
                         ClipRRect(
                           borderRadius: BorderRadius.circular(999),
-                          child: const LinearProgressIndicator(
+                          child: LinearProgressIndicator(
                             minHeight: 8,
-                            backgroundColor: Color(0xFFE6ECFA),
+                            backgroundColor: colorScheme.primaryContainer,
                             valueColor: AlwaysStoppedAnimation<Color>(
-                              Color(0xFF2F3E8F),
+                              colorScheme.primary,
                             ),
                           ),
                         ),
                         const SizedBox(height: 12),
-                        const Text(
+                        Text(
                           'Saving answers, calculating score, and preparing your result screen.',
                           style: TextStyle(
-                            color: Color(0xFF6B7280),
+                            color: colorScheme.onSurfaceVariant,
                             fontSize: 12,
                             height: 1.4,
                             decoration: TextDecoration.none,

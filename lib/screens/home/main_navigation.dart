@@ -73,6 +73,8 @@ class _MainNavigationState extends State<MainNavigation> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return PopScope(
       canPop: _index == 0,
       onPopInvokedWithResult: (didPop, result) {
@@ -83,9 +85,9 @@ class _MainNavigationState extends State<MainNavigation> {
         });
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF5F6FA),
+        backgroundColor: theme.scaffoldBackgroundColor,
         body: Container(
-          color: const Color(0xFFF5F6FA),
+          color: theme.scaffoldBackgroundColor,
           child: IndexedStack(
             index: _index,
             children: List<Widget>.generate(5, (index) {
@@ -102,10 +104,10 @@ class _MainNavigationState extends State<MainNavigation> {
             _index = value;
             _visited[value] = true;
           }),
-          backgroundColor: const Color(0xFFF5F6FA),
+          backgroundColor: colorScheme.surface,
           elevation: 0,
-          selectedItemColor: const Color(0xFF2F3E8F),
-          unselectedItemColor: Colors.grey,
+          selectedItemColor: colorScheme.primary,
+          unselectedItemColor: colorScheme.onSurfaceVariant,
           type: BottomNavigationBarType.fixed,
           items: const [
             BottomNavigationBarItem(
