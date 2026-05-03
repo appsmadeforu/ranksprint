@@ -365,6 +365,7 @@ class _TestHistoryScreenState extends State<TestHistoryScreen> {
             TopHeader(
               selectedExamId: selectedExamId,
               userExamIds: userExamIds,
+              showBackButton: true,
               onExamChanged: (id) {
                 setState(() {
                   selectedExamId = id;

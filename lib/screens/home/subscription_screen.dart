@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:in_app_purchase_android/in_app_purchase_android.dart';
+import '../../services/subscription_backend_service.dart';
 import '../../services/subscription_access_service.dart';
 
 class SubscriptionScreen extends StatefulWidget {
@@ -36,7 +38,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   bool isLoadingPlans = false;
   bool _isPurchasing = false;
   bool _isApplyingCoupon = false;
+  bool _isRestoring = false;
   Map<String, dynamic>? _appliedCoupon;
+  String? _pendingPurchasePlanId;
   String? _couponFeedback;
   bool _couponFeedbackIsError = false;
   StreamSubscription<List<PurchaseDetails>>? _purchaseSubscription;
@@ -77,49 +81,67 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     _purchaseSubscription = _iap.purchaseStream.listen(
       (purchaseDetailsList) async {
         for (final purchase in purchaseDetailsList) {
-          if (purchase.status == PurchaseStatus.pending) {
-            if (mounted) {
-              setState(() => _isPurchasing = true);
+          try {
+            if (purchase.status == PurchaseStatus.pending) {
+              if (mounted) {
+                setState(() => _isPurchasing = true);
+              }
+              continue;
             }
-            continue;
-          }
 
-          if (purchase.status == PurchaseStatus.error) {
-            if (mounted) {
-              setState(() => _isPurchasing = false);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    purchase.error?.message ?? 'Purchase failed. Try again.',
-                  ),
-                ),
-              );
+            if (purchase.status == PurchaseStatus.error) {
+              if (mounted) {
+                setState(() => _isPurchasing = false);
+                _showPurchaseErrorDialog(
+                  _friendlyBillingError(purchase.error),
+                );
+              }
             }
-          }
 
-          if (purchase.status == PurchaseStatus.purchased ||
-              purchase.status == PurchaseStatus.restored) {
-            await _grantSubscriptionForPurchase(purchase);
-            if (mounted) {
-              setState(() => _isPurchasing = false);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Subscription activated.')),
-              );
+            if (purchase.status == PurchaseStatus.purchased ||
+                purchase.status == PurchaseStatus.restored) {
+              await _finalizeSubscriptionForPurchase(purchase);
+              if (mounted) {
+                setState(() {
+                  _isPurchasing = false;
+                  _isRestoring = false;
+                });
+                _showSuccessAndPop();
+              }
             }
-          }
 
-          if (purchase.status == PurchaseStatus.canceled && mounted) {
-            setState(() => _isPurchasing = false);
-          }
-
-          if (purchase.pendingCompletePurchase) {
-            await _iap.completePurchase(purchase);
+            if (purchase.status == PurchaseStatus.canceled && mounted) {
+              setState(() {
+                _isPurchasing = false;
+                _isRestoring = false;
+              });
+            }
+          } catch (error) {
+            debugPrint('Subscription finalize error: $error');
+            if (mounted) {
+              setState(() {
+                _isPurchasing = false;
+                _isRestoring = false;
+              });
+              _showPurchaseErrorDialog((
+                title: 'Activation Failed',
+                body: _friendlyPurchaseError(error),
+                code: null,
+              ));
+            }
+          } finally {
+            if (purchase.pendingCompletePurchase) {
+              await _iap.completePurchase(purchase);
+            }
           }
         }
       },
       onError: (_) {
         if (!mounted) return;
-        setState(() => _isPurchasing = false);
+        setState(() {
+          _isPurchasing = false;
+          _isRestoring = false;
+        });
       },
     );
   }
@@ -132,16 +154,17 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       await _loadSelectedExamContext();
       final snapshot = await FirebaseFirestore.instance
           .collection('subscriptionPlans')
-          .where('features.isActive', isEqualTo: true)
           .get();
 
       final plans = <Map<String, dynamic>>[];
 
       for (var doc in snapshot.docs) {
         final data = doc.data();
-        final features = Map<String, dynamic>.from(
-          data['features'] ?? const <String, dynamic>{},
-        );
+        final features = _asStringMap(data['features']);
+        final isActive = _isPlanActive(data, features);
+        if (!isActive) {
+          continue;
+        }
 
         final rawExamsIncluded = data['examsIncluded'];
         final examsIncluded = <String, dynamic>{};
@@ -190,6 +213,21 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                       data['iosProductId'] ??
                       '')
                   .toString(),
+          'playBasePlanId':
+              (features['playBasePlanId'] ??
+                      features['googlePlayBasePlanId'] ??
+                      data['playBasePlanId'] ??
+                      data['googlePlayBasePlanId'] ??
+                      data['basePlanId'] ??
+                      '')
+                  .toString(),
+          'playOfferId':
+              (features['playOfferId'] ??
+                      features['googlePlayOfferId'] ??
+                      data['playOfferId'] ??
+                      data['googlePlayOfferId'] ??
+                      '')
+                  .toString(),
           'examsIncluded': examsIncluded,
         });
       }
@@ -216,6 +254,19 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       debugPrint("Plan load error: $e");
       setState(() => isLoadingPlans = false);
     }
+  }
+
+  bool _isPlanActive(
+    Map<String, dynamic> data,
+    Map<String, dynamic> features,
+  ) {
+    if (features['isActive'] is bool) {
+      return features['isActive'] == true;
+    }
+    if (data['isActive'] is bool) {
+      return data['isActive'] == true;
+    }
+    return true;
   }
 
   String _getDurationString(int days) {
@@ -334,23 +385,27 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       return;
     }
 
+    _pendingPurchasePlanId = plan['id'].toString();
+
     final productId = _productIdForPlan(plan);
     if (productId.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Missing storeProductId in selected subscription plan.'),
-        ),
-      );
+      _showPurchaseErrorDialog((
+        title: 'Plan Not Configured',
+        body: 'This plan is not linked to a store product yet. Please contact support.',
+        code: 'MISSING_PRODUCT_ID',
+      ));
       return;
     }
 
     final available = await _iap.isAvailable();
     if (!available) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('In-app purchases are not available.')),
-      );
+      _showPurchaseErrorDialog((
+        title: 'Store Unavailable',
+        body: 'In-app purchases are not available on this device. Please make sure you are signed in to Google Play.',
+        code: 'IAP_UNAVAILABLE',
+      ));
       return;
     }
 
@@ -363,52 +418,259 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
     if (response.error != null) {
       setState(() => _isPurchasing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            response.error!.message.isNotEmpty
-                ? response.error!.message
-                : 'Unable to load product details.',
-          ),
-        ),
-      );
+      _showPurchaseErrorDialog((
+        title: 'Store Error',
+        body: 'Could not load product details from Google Play. Please check your internet connection and try again.',
+        code: response.error!.code,
+      ));
       return;
     }
 
     if (response.notFoundIDs.contains(productId) ||
         response.productDetails.isEmpty) {
       setState(() => _isPurchasing = false);
+      _showPurchaseErrorDialog((
+        title: 'Plan Unavailable',
+        body: 'This plan could not be found on Google Play. It may have been removed or is not available in your region.',
+        code: 'PRODUCT_NOT_FOUND',
+      ));
+      return;
+    }
+
+    final productSelection = _selectProductDetailsForPlan(
+      plan,
+      response.productDetails,
+    );
+    if (!productSelection.isValid) {
+      setState(() => _isPurchasing = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Product not found in store: $productId')),
+        SnackBar(content: Text(productSelection.errorMessage)),
       );
       return;
     }
 
-    final product = response.productDetails.first;
-    final purchaseParam = PurchaseParam(productDetails: product);
+    final purchaseParam = _buildPurchaseParamForPlan(
+      plan,
+      productSelection.product!,
+    );
     final started = await _iap.buyNonConsumable(purchaseParam: purchaseParam);
     if (!started && mounted) {
+      _pendingPurchasePlanId = null;
       setState(() => _isPurchasing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not start purchase flow.')),
-      );
+      _showPurchaseErrorDialog((
+        title: 'Purchase Not Started',
+        body: 'Google Play could not start the purchase. Please try again.',
+        code: null,
+      ));
     }
   }
 
-  Future<void> _grantSubscriptionForPurchase(PurchaseDetails purchase) async {
-    final plan = subscriptionPlans.where((p) {
-      return (p['storeProductId'] ?? '').toString() == purchase.productID;
-    }).firstWhere(
-      (_) => true,
-      orElse: () => _selectedPlanOrNull() ?? <String, dynamic>{},
-    );
+  Future<void> _finalizeSubscriptionForPurchase(PurchaseDetails purchase) async {
+    final pendingPlanId = _pendingPurchasePlanId;
+    final plan = pendingPlanId != null
+        ? subscriptionPlans.firstWhere(
+            (p) => p['id'].toString() == pendingPlanId,
+            orElse: () => <String, dynamic>{},
+          )
+        : subscriptionPlans.where((p) {
+            return (p['storeProductId'] ?? '').toString() == purchase.productID;
+          }).firstWhere(
+            (_) => true,
+            orElse: () => _selectedPlanOrNull() ?? <String, dynamic>{},
+          );
     if (plan.isEmpty) return;
 
-    await _grantSubscription(
-      plan: plan,
-      source: 'iap',
-      productId: purchase.productID,
-      purchaseId: purchase.purchaseID ?? '',
+    await SubscriptionBackendService.finalizePurchase(
+      planId: plan['id'].toString(),
+      examId: selectedExamId ?? '',
+      purchase: purchase,
+      couponCode: (_appliedCoupon?['id'] ?? '').toString(),
+    );
+    _pendingPurchasePlanId = null;
+    SubscriptionAccessService.clearCache();
+  }
+
+  void _showSuccessAndPop() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        icon: const Icon(Icons.check_circle, color: Color(0xFF4CAF50), size: 56),
+        title: const Text('Subscription Activated!'),
+        content: Text(
+          widget.lockedItemLabel != null
+              ? '"${widget.lockedItemLabel}" is now unlocked. Redirecting you back...'
+              : 'Your subscription is now active. Enjoy full access!',
+          textAlign: TextAlign.center,
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2F6FEB),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                Navigator.of(context).pop(true);
+              },
+              child: const Text('Continue', style: TextStyle(fontSize: 16)),
+            ),
+          ),
+        ],
+      ),
+    ).then((_) {
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop(true);
+      }
+    });
+  }
+
+  String _friendlyPurchaseError(Object error) {
+    final message = error.toString().replaceFirst('Exception: ', '');
+    if (message.contains('OR_CSE_05')) {
+      return 'Google Play could not open the checkout. Please try again later.';
+    }
+    if (message.contains('Purchase product does not match the selected plan')) {
+      return 'The purchased product does not match the selected plan. Please contact support.';
+    }
+    if (message.contains('Missing purchase verification data')) {
+      return 'Payment completed but verification failed. Please contact support if your plan is not activated.';
+    }
+    if (message.contains('Subscription plan not found')) {
+      return 'This subscription plan is no longer available.';
+    }
+    if (message.contains('Subscription plan is inactive')) {
+      return 'This subscription plan is currently unavailable.';
+    }
+    if (message.contains('PERMISSION_DENIED') || message.contains('permission-denied')) {
+      return 'You do not have permission to complete this action. Please sign in again.';
+    }
+    if (message.contains('unauthenticated') || message.contains('UNAUTHENTICATED')) {
+      return 'Your session has expired. Please sign in again and retry.';
+    }
+    return 'Something went wrong. Please try again or contact support.';
+  }
+
+  ({String title, String body, String? code}) _friendlyBillingError(IAPError? error) {
+    final raw = error?.message ?? '';
+    final code = error?.code ?? '';
+
+    if (code.contains('developerError') || raw.contains('developerError')) {
+      return (
+        title: 'Purchase Unavailable',
+        body: 'This plan cannot be purchased right now. This is usually a temporary issue with the store configuration. Please try again later.',
+        code: 'DEV_ERROR',
+      );
+    }
+    if (code.contains('itemAlreadyOwned') || raw.contains('itemAlreadyOwned') || raw.contains('already extended')) {
+      return (
+        title: 'Already Subscribed',
+        body: 'You already own this plan. If your access is not active, try using "Restore Purchases" or contact support.',
+        code: 'ALREADY_OWNED',
+      );
+    }
+    if (code.contains('itemUnavailable') || raw.contains('itemUnavailable')) {
+      return (
+        title: 'Plan Unavailable',
+        body: 'This plan is not available for purchase in your region or on this device.',
+        code: 'UNAVAILABLE',
+      );
+    }
+    if (code.contains('userCanceled') || raw.contains('userCanceled')) {
+      return (
+        title: 'Purchase Cancelled',
+        body: 'You cancelled the purchase. No payment was made.',
+        code: null,
+      );
+    }
+    if (code.contains('serviceDisconnected') || raw.contains('serviceDisconnected')) {
+      return (
+        title: 'Connection Lost',
+        body: 'Google Play connection was lost. Please check your internet and try again.',
+        code: 'SERVICE_DISCONNECTED',
+      );
+    }
+    if (code.contains('serviceUnavailable') || raw.contains('serviceUnavailable')) {
+      return (
+        title: 'Store Unavailable',
+        body: 'Google Play is temporarily unavailable. Please try again in a few minutes.',
+        code: 'SERVICE_UNAVAILABLE',
+      );
+    }
+    if (code.contains('billingUnavailable') || raw.contains('billingUnavailable')) {
+      return (
+        title: 'Billing Unavailable',
+        body: 'Google Play billing is not available on this device. Make sure you are signed in to Google Play.',
+        code: 'BILLING_UNAVAILABLE',
+      );
+    }
+    if (code.contains('featureNotSupported') || raw.contains('featureNotSupported')) {
+      return (
+        title: 'Not Supported',
+        body: 'Subscriptions are not supported on this device. Please try on a different device.',
+        code: 'NOT_SUPPORTED',
+      );
+    }
+    if (raw.contains('network') || raw.contains('internet') || raw.contains('timeout')) {
+      return (
+        title: 'Network Error',
+        body: 'Please check your internet connection and try again.',
+        code: 'NETWORK',
+      );
+    }
+
+    return (
+      title: 'Purchase Failed',
+      body: 'Something went wrong with the purchase. Please try again or contact support.',
+      code: code.isNotEmpty ? code : null,
+    );
+  }
+
+  void _showPurchaseErrorDialog(({String title, String body, String? code}) info) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        icon: const Icon(Icons.error_outline, color: Color(0xFFE53935), size: 48),
+        title: Text(info.title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(info.body, textAlign: TextAlign.center),
+            if (info.code != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Error code: ${info.code}',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2F6FEB),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK', style: TextStyle(fontSize: 16)),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -455,6 +717,91 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
 
     return (plan['storeProductId'] ?? '').toString().trim();
+  }
+
+  Map<String, dynamic> _asStringMap(Object? value) {
+    if (value is Map) {
+      return value.map(
+        (key, mapValue) => MapEntry(key.toString(), mapValue),
+      );
+    }
+    return const <String, dynamic>{};
+  }
+
+  PurchaseParam _buildPurchaseParamForPlan(
+    Map<String, dynamic> plan,
+    ProductDetails product,
+  ) {
+    final basePlanId = (plan['playBasePlanId'] ?? '').toString().trim();
+    final offerId = (plan['playOfferId'] ?? '').toString().trim();
+    if (product is GooglePlayProductDetails && basePlanId.isNotEmpty) {
+      final matchedOffer = _matchGooglePlayOffer(
+        product,
+        basePlanId,
+        offerId: offerId,
+      );
+      final offerToken = matchedOffer?.offerIdToken ?? product.offerToken;
+      if ((offerToken ?? '').isNotEmpty) {
+        return GooglePlayPurchaseParam(
+          productDetails: product,
+          offerToken: offerToken,
+        );
+      }
+    }
+
+    return PurchaseParam(productDetails: product);
+  }
+
+  _ProductSelection _selectProductDetailsForPlan(
+    Map<String, dynamic> plan,
+    List<ProductDetails> products,
+  ) {
+    final basePlanId = (plan['playBasePlanId'] ?? '').toString().trim();
+    final offerId = (plan['playOfferId'] ?? '').toString().trim();
+    if (basePlanId.isEmpty) {
+      return _ProductSelection.valid(products.first);
+    }
+
+    for (final product in products) {
+      if (product is! GooglePlayProductDetails) {
+        continue;
+      }
+      final matchedOffer = _matchGooglePlayOffer(
+        product,
+        basePlanId,
+        offerId: offerId,
+      );
+      if (matchedOffer != null) {
+        return _ProductSelection.valid(product);
+      }
+    }
+
+    final productId = _productIdForPlan(plan);
+    return _ProductSelection.invalid(
+      offerId.isNotEmpty
+          ? 'Google Play offer "$offerId" under base plan "$basePlanId" was not found for product "$productId".'
+          : 'Google Play base plan "$basePlanId" was not found for product "$productId".',
+    );
+  }
+
+  dynamic _matchGooglePlayOffer(
+    GooglePlayProductDetails product,
+    String basePlanId,
+    {String offerId = ''}
+  ) {
+    final offers = product.productDetails.subscriptionOfferDetails;
+    if (offers == null || offers.isEmpty) {
+      return null;
+    }
+
+    for (final offer in offers) {
+      final offerMatches = offerId.isEmpty || (offer.offerId ?? '') == offerId;
+      if (offer.basePlanId == basePlanId && offerMatches) {
+        return offer;
+      }
+    }
+
+    return null;
   }
 
   bool _couponAppliesToPlan(Map<String, dynamic> coupon, Map<String, dynamic> plan) {
@@ -574,43 +921,19 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     });
 
     try {
-      final doc = await _findCouponDocument(rawCode);
-      if (doc == null) {
-        throw 'Coupon not found.';
-      }
-
-      final data = doc.data();
-      if ((data['isActive'] ?? false) != true) {
-        throw 'Coupon is inactive.';
-      }
-      if (!_couponWithinWindow(data)) {
-        throw 'Coupon has expired or is not live yet.';
-      }
-      if (!_couponAppliesToPlan(data, plan)) {
-        throw 'Coupon is not valid for this plan.';
-      }
-      if (!await _couponAllowedForUser(data)) {
-        throw 'Coupon is not available for this user.';
-      }
-
-      final maxRedemptions =
-          ((data['maxRedemptions'] ?? data['usageLimit'] ?? 0) as num).toInt();
-      final redeemedCount =
-          ((data['redeemedCount'] ?? data['usedCount'] ?? 0) as num).toInt();
-      if (maxRedemptions > 0 && redeemedCount >= maxRedemptions) {
-        throw 'Coupon redemption limit reached.';
-      }
-
-      if (!mounted) return;
-      final appliedCoupon = {
-        ...data,
-        'id': (data['code'] ?? rawCode).toString(),
-        'docId': doc.id,
-      };
-      final finalPrice = _effectivePriceForPlan(
-        plan,
-        couponOverride: appliedCoupon,
+      final result = await SubscriptionBackendService.redeemCoupon(
+        planId: plan['id'].toString(),
+        examId: selectedExamId ?? '',
+        couponCode: rawCode,
       );
+      if (!mounted) return;
+      final appliedCoupon = <String, dynamic>{
+        'id': result.couponCode,
+        'googlePlayProductId': result.checkoutProductId,
+        'discountType': result.finalPrice == 0 ? 'free' : 'custom',
+        'discountValue': 0,
+      };
+      final finalPrice = result.finalPrice;
       setState(() {
         _appliedCoupon = appliedCoupon;
         _couponFeedback =
@@ -624,6 +947,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           ),
         ),
       );
+      if (result.activated) {
+        SubscriptionAccessService.clearCache();
+        if (mounted) _showSuccessAndPop();
+        return;
+      }
     } catch (error) {
       if (!mounted) return;
       final message = error.toString().replaceFirst('Exception: ', '');
@@ -642,78 +970,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
   }
 
-  Future<void> _grantSubscription({
-    required Map<String, dynamic> plan,
-    required String source,
-    String productId = '',
-    String purchaseId = '',
-  }) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final durationDays = (plan['durationDays'] ?? 30) as int;
-    final now = DateTime.now();
-    final expiresAt = now.add(Duration(days: durationDays));
-    final subRef = FirebaseFirestore.instance.collection('subscriptions').doc();
-    final coupon = _appliedCoupon;
-    final couponCode = (coupon?['id'] ?? '').toString();
-    final effectivePrice = _effectivePriceForPlan(plan);
-
-    await subRef.set({
-      'userId': user.uid,
-      'planId': plan['id'],
-      'status': 'active',
-      'source': source,
-      'productId': productId,
-      'purchaseId': purchaseId,
-      'originalPrice': plan['price'],
-      'finalPrice': effectivePrice,
-      'couponCode': couponCode,
-      'couponSnapshot': coupon == null
-          ? null
-          : {
-              'discountType': coupon['discountType'],
-              'discountValue': coupon['discountValue'],
-              'googlePlayProductId': coupon['googlePlayProductId'],
-            },
-      'startedAt': Timestamp.fromDate(now),
-      'expiresAt': Timestamp.fromDate(expiresAt),
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-
-    await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-      'subscriptionStatus': 'paid',
-      'activePlanIds': FieldValue.arrayUnion([plan['id']]),
-      'subscriptionIds': FieldValue.arrayUnion([subRef.id]),
-    }, SetOptions(merge: true));
-
-    if (couponCode.isNotEmpty) {
-      final couponDocId = (coupon?['docId'] ?? '').toString();
-      if (couponDocId.isNotEmpty) {
-        await FirebaseFirestore.instance
-            .collection('coupons')
-            .doc(couponDocId)
-            .set({
-          'usedCount': FieldValue.increment(1),
-          'redeemedCount': FieldValue.increment(1),
-          'lastRedeemedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      }
-
-      await FirebaseFirestore.instance.collection('couponRedemptions').add({
-        'couponCode': couponCode,
-        'couponId': couponDocId.isNotEmpty ? couponDocId : couponCode,
-        'userId': user.uid,
-        'planId': plan['id'],
-        'subscriptionId': subRef.id,
-        'source': source,
-        'originalPrice': plan['price'],
-        'finalPrice': effectivePrice,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-    }
-  }
-
   Future<void> _redeemFreeCoupon(Map<String, dynamic> plan) async {
     if (_appliedCoupon == null) {
       if (!mounted) return;
@@ -728,19 +984,47 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
 
     try {
-      await _grantSubscription(
-        plan: plan,
-        source: 'coupon',
+      final result = await SubscriptionBackendService.redeemCoupon(
+        planId: plan['id'].toString(),
+        examId: selectedExamId ?? '',
+        couponCode: (_appliedCoupon?['id'] ?? '').toString(),
       );
+      if (!result.activated) {
+        throw Exception('Coupon requires checkout before activation.');
+      }
       SubscriptionAccessService.clearCache();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Coupon redeemed and subscription activated.')),
-      );
+      _showSuccessAndPop();
+      return;
     } finally {
       if (mounted) {
         setState(() => _isPurchasing = false);
       }
+    }
+  }
+
+  Future<void> _restorePurchases() async {
+    final available = await _iap.isAvailable();
+    if (!available) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('In-app purchases are not available.')),
+      );
+      return;
+    }
+
+    if (mounted) {
+      setState(() => _isRestoring = true);
+    }
+
+    try {
+      await _iap.restorePurchases();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isRestoring = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
+      );
     }
   }
 
@@ -1144,10 +1428,22 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                   _sectionCard(
                     color: const Color(0xFFEAF4FF),
                     child: Row(
-                      children: const [
-                        Icon(Icons.verified, color: Colors.green),
-                        SizedBox(width: 8),
-                        Text("100% Secure Payment"),
+                      children: [
+                        const Icon(Icons.verified, color: Colors.green),
+                        const SizedBox(width: 8),
+                        const Expanded(child: Text("100% Secure Payment")),
+                        TextButton(
+                          onPressed: _isPurchasing || _isRestoring
+                              ? null
+                              : _restorePurchases,
+                          child: _isRestoring
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Text('Restore'),
+                        ),
                       ],
                     ),
                   ),
@@ -1176,8 +1472,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                 ),
               ),
             ),
-            ElevatedButton(
-              onPressed: _isPurchasing ? null : _startPurchase,
+             ElevatedButton(
+               onPressed: (_isPurchasing || _isRestoring) ? null : _startPurchase,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange,
                 padding: const EdgeInsets.symmetric(
@@ -1224,6 +1520,34 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     _purchaseSubscription?.cancel();
     _couponController.dispose();
     super.dispose();
+  }
+}
+
+class _ProductSelection {
+  final ProductDetails? product;
+  final String errorMessage;
+  final bool isValid;
+
+  const _ProductSelection._({
+    required this.product,
+    required this.errorMessage,
+    required this.isValid,
+  });
+
+  factory _ProductSelection.valid(ProductDetails product) {
+    return _ProductSelection._(
+      product: product,
+      errorMessage: '',
+      isValid: true,
+    );
+  }
+
+  factory _ProductSelection.invalid(String errorMessage) {
+    return _ProductSelection._(
+      product: null,
+      errorMessage: errorMessage,
+      isValid: false,
+    );
   }
 }
 

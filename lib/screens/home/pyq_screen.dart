@@ -3,10 +3,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../services/content_access_service.dart';
+import '../../services/subscription_access_service.dart';
 import '../../services/user_exam_preference_service.dart';
 import '../../widgets/offline_state.dart';
 import '../../widgets/top_header.dart';
 import 'pyq_chapters_screen.dart';
+import 'subscription_screen.dart';
 
 class PyqScreen extends StatefulWidget {
   const PyqScreen({super.key});
@@ -19,6 +21,10 @@ class _PyqScreenState extends State<PyqScreen> {
   String? selectedExamId;
   List<String> userExamIds = [];
   final Map<String, Future<Map<String, int>>> _subjectPaperCountsFutures = {};
+  List<String> _examSubscriptionPlanIds = const [];
+  Map<String, List<String>> _pyqPlanIdsById = const {};
+  Set<String> _activePlanIds = <String>{};
+  bool _examIsPremium = false;
   int _reloadTick = 0;
 
   @override
@@ -57,6 +63,10 @@ class _PyqScreenState extends State<PyqScreen> {
       userExamIds = exams;
       selectedExamId = preferredExamId;
     });
+    if (preferredExamId != null) {
+      _loadExamSubscriptionScope(preferredExamId);
+      _loadActivePlans();
+    }
   }
 
   void _handlePreferredExamChanged() {
@@ -72,6 +82,54 @@ class _PyqScreenState extends State<PyqScreen> {
     setState(() {
       selectedExamId = preferredExamId;
     });
+    _loadExamSubscriptionScope(preferredExamId);
+  }
+
+  Future<void> _loadActivePlans() async {
+    try {
+      final activePlanIds =
+          await SubscriptionAccessService.getCurrentUserActivePlanIds();
+      if (!mounted) return;
+      setState(() {
+        _activePlanIds = activePlanIds;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _activePlanIds = <String>{};
+      });
+    }
+  }
+
+  Future<void> _loadExamSubscriptionScope(String examId) async {
+    try {
+      final examDoc = await FirebaseFirestore.instance
+          .collection('exams')
+          .doc(examId)
+          .get();
+      final examData = examDoc.data();
+      final directExamPlanIds = SubscriptionAccessService.readPlanIds(examData);
+      final scope = await SubscriptionAccessService.getExamSubscriptionScope(
+        examId,
+      );
+      if (!mounted || selectedExamId != examId) return;
+      final combinedExamPlanIds = <String>{
+        ...directExamPlanIds,
+        ...scope.examPlanIds,
+      }.toList(growable: false);
+      setState(() {
+        _examSubscriptionPlanIds = combinedExamPlanIds;
+        _pyqPlanIdsById = scope.pyqPlanIdsById;
+        _examIsPremium = combinedExamPlanIds.isNotEmpty;
+      });
+    } catch (_) {
+      if (!mounted || selectedExamId != examId) return;
+      setState(() {
+        _examSubscriptionPlanIds = const [];
+        _pyqPlanIdsById = const {};
+        _examIsPremium = false;
+      });
+    }
   }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> _getPyqs(String examId) {
@@ -144,6 +202,7 @@ class _PyqScreenState extends State<PyqScreen> {
                 onExamChanged: (id) {
                   if (!mounted) return;
                   setState(() => selectedExamId = id);
+                  _loadExamSubscriptionScope(id);
                 },
               ),
               const SizedBox(height: 8),
@@ -233,13 +292,45 @@ class _PyqScreenState extends State<PyqScreen> {
                                              itemCount: docs.length,
                                              itemBuilder: (context, index) {
                                                final doc = docs[index];
-                                               final title = doc['name'] ?? doc.id;
+                                                final title = doc['name'] ?? doc.id;
                                                 final questionCount =
                                                     questionCounts[doc.id] ?? 0;
+                                                final subjectData = doc.data();
+                                                final scopedPlanIds =
+                                                    _pyqPlanIdsById[doc.id] ??
+                                                    const <String>[];
+                                                final effectiveSubjectData =
+                                                    scopedPlanIds.isNotEmpty &&
+                                                        SubscriptionAccessService
+                                                            .readPlanIds(
+                                                              subjectData,
+                                                            )
+                                                            .isEmpty
+                                                    ? <String, dynamic>{
+                                                        ...subjectData,
+                                                        'subscriptionPlanIds':
+                                                            scopedPlanIds,
+                                                      }
+                                                    : subjectData;
+                                                final access =
+                                                    ContentAccessService
+                                                        .resolveAccess(
+                                                          itemData:
+                                                              effectiveSubjectData,
+                                                          examPlanIds:
+                                                              _examSubscriptionPlanIds,
+                                                          activePlanIds:
+                                                              _activePlanIds,
+                                                          fallbackPremium:
+                                                              _examIsPremium,
+                                                        );
+                                                final requiredPlanIds =
+                                                    access.requiredPlanIds;
+                                                final isLocked = access.isLocked;
                                                 return Container(
-                                                 margin: const EdgeInsets.only(
-                                                   bottom: 16,
-                                                 ),
+                                                  margin: const EdgeInsets.only(
+                                                    bottom: 16,
+                                                  ),
                                                  child: Material(
                                                    borderRadius:
                                                        BorderRadius.circular(18),
@@ -252,6 +343,32 @@ class _PyqScreenState extends State<PyqScreen> {
                                                        0xFF2F6FEB,
                                                      ).withValues(alpha: 0.1),
                                                       onTap: () {
+                                                        if (isLocked) {
+                                                          Navigator.push<bool>(
+                                                            context,
+                                                            MaterialPageRoute(
+                                                              builder: (_) =>
+                                                                  SubscriptionScreen(
+                                                                    initialExamId:
+                                                                        effectiveSelectedExamId,
+                                                                    initialPlanId:
+                                                                        requiredPlanIds.isNotEmpty
+                                                                        ? requiredPlanIds.first
+                                                                        : null,
+                                                                    lockedItemLabel:
+                                                                        title.toString(),
+                                                                    lockedItemType:
+                                                                        'pyq',
+                                                                  ),
+                                                            ),
+                                                          ).then((subscribed) {
+                                                            if (subscribed == true) {
+                                                              SubscriptionAccessService.clearCache();
+                                                              _loadActivePlans();
+                                                            }
+                                                          });
+                                                          return;
+                                                        }
                                                         Navigator.push(
                                                           context,
                                                           MaterialPageRoute(
@@ -276,20 +393,26 @@ class _PyqScreenState extends State<PyqScreen> {
                                                              width: 52,
                                                              height: 52,
                                                              decoration: BoxDecoration(
-                                                               color: const Color(
-                                                                 0xFFEFF3FF,
-                                                               ),
+                                                                color: isLocked
+                                                                    ? Colors.grey.shade200
+                                                                    : const Color(
+                                                                        0xFFEFF3FF,
+                                                                      ),
                                                                borderRadius:
                                                                    BorderRadius.circular(
                                                                      14,
                                                                    ),
                                                              ),
                                                               child: Icon(
-                                                                Icons.menu_book,
-                                                                color: const Color(
-                                                                  0xFF2F6FEB,
-                                                                ),
-                                                             ),
+                                                                isLocked
+                                                                    ? Icons.lock_outline
+                                                                    : Icons.menu_book,
+                                                                color: isLocked
+                                                                    ? Colors.grey
+                                                                    : const Color(
+                                                                        0xFF2F6FEB,
+                                                                      ),
+                                                              ),
                                                            ),
                                                            const SizedBox(width: 16),
                                                            Expanded(

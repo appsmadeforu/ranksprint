@@ -24,6 +24,7 @@ class _TestsScreenState extends State<TestsScreen> {
   String? selectedExamId;
   bool _examIsPremium = false;
   List<String> _examSubscriptionPlanIds = const [];
+  Map<String, List<String>> _testPlanIdsById = const {};
   Set<String> _activePlanIds = <String>{};
   _TestListFilter _testListFilter = _TestListFilter.all;
 
@@ -115,19 +116,29 @@ class _TestsScreenState extends State<TestsScreen> {
 
       final data = doc.data();
       final examPlanIds = SubscriptionAccessService.readPlanIds(data);
+      final scope = await SubscriptionAccessService.getExamSubscriptionScope(
+        examId,
+      );
+      if (!mounted || selectedExamId != examId) return;
+      final combinedExamPlanIds = <String>{
+        ...examPlanIds,
+        ...scope.examPlanIds,
+      }.toList(growable: false);
 
       final isPremium =
-          data != null && examPlanIds.isNotEmpty;
+          data != null && combinedExamPlanIds.isNotEmpty;
 
       setState(() {
         _examIsPremium = isPremium;
-        _examSubscriptionPlanIds = examPlanIds;
+        _examSubscriptionPlanIds = combinedExamPlanIds;
+        _testPlanIdsById = scope.testPlanIdsById;
       });
     } catch (_) {
       if (!mounted || selectedExamId != examId) return;
       setState(() {
         _examIsPremium = false;
         _examSubscriptionPlanIds = const [];
+        _testPlanIdsById = const {};
       });
     }
   }
@@ -403,9 +414,18 @@ class _TestsScreenState extends State<TestsScreen> {
         : "Attempts: $usedAttempts";
 
     final Map<String, dynamic>? tdata = test.data() as Map<String, dynamic>?;
+    final scopedPlanIds = _testPlanIdsById[test.id] ?? const <String>[];
+    final effectiveTestData = scopedPlanIds.isNotEmpty &&
+            (tdata == null ||
+                SubscriptionAccessService.readPlanIds(tdata).isEmpty)
+        ? <String, dynamic>{
+            ...?tdata,
+            'subscriptionPlanIds': scopedPlanIds,
+          }
+        : tdata;
 
     final access = ContentAccessService.resolveAccess(
-      itemData: tdata,
+      itemData: effectiveTestData,
       examPlanIds: _examSubscriptionPlanIds,
       activePlanIds: _activePlanIds,
       fallbackPremium: _examIsPremium,
@@ -424,7 +444,7 @@ class _TestsScreenState extends State<TestsScreen> {
           splashColor: const Color(0xFF2F6FEB).withValues(alpha: 0.1),
           onTap: () {
             if (isLocked) {
-              Navigator.push(
+              Navigator.push<bool>(
                 context,
                 MaterialPageRoute(
                   builder: (_) => SubscriptionScreen(
@@ -435,7 +455,12 @@ class _TestsScreenState extends State<TestsScreen> {
                     lockedItemType: 'test',
                   ),
                 ),
-              );
+              ).then((subscribed) {
+                if (subscribed == true) {
+                  SubscriptionAccessService.clearCache();
+                  _loadActivePlans();
+                }
+              });
               return;
             }
             if (limitReached) return;
@@ -502,7 +527,7 @@ class _TestsScreenState extends State<TestsScreen> {
                       ? null
                       : () {
                           if (isLocked) {
-                            Navigator.push(
+                            Navigator.push<bool>(
                               context,
                               MaterialPageRoute(
                                 builder: (_) => SubscriptionScreen(
@@ -514,7 +539,12 @@ class _TestsScreenState extends State<TestsScreen> {
                                   lockedItemType: 'test',
                                 ),
                               ),
-                            );
+                            ).then((subscribed) {
+                              if (subscribed == true) {
+                                SubscriptionAccessService.clearCache();
+                                _loadActivePlans();
+                              }
+                            });
                             return;
                           }
                           Navigator.push(

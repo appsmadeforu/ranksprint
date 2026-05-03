@@ -15,6 +15,7 @@ class TopHeader extends StatefulWidget {
   final bool showNotificationBell;
   final VoidCallback? onBellTap;
   final bool enableTitleNavigation;
+  final bool showBackButton;
   final Widget? trailingAction;
 
   const TopHeader({
@@ -26,6 +27,7 @@ class TopHeader extends StatefulWidget {
     this.showNotificationBell = true,
     this.onBellTap,
     this.enableTitleNavigation = true,
+    this.showBackButton = false,
     this.trailingAction,
   });
 
@@ -40,10 +42,15 @@ class _TopHeaderState extends State<TopHeader> {
   String? _lastSyncedExamId;
 
   void _goHome(BuildContext context) {
-    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const MainNavigation(initialIndex: 0)),
-      (route) => false,
-    );
+    final nav = MainNavigation.maybeOf(context);
+    if (nav != null) {
+      nav.switchToTab(0);
+    } else {
+      Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const MainNavigation(initialIndex: 0)),
+        (route) => false,
+      );
+    }
   }
 
   @override
@@ -103,10 +110,19 @@ class _TopHeaderState extends State<TopHeader> {
       ),
       child: Row(
         children: [
+          if (widget.showBackButton)
+            IconButton(
+              onPressed: () => Navigator.of(context).maybePop(),
+              icon: const Icon(
+                Icons.arrow_back_ios_new_rounded,
+                size: 20,
+                color: Color(0xFF111827),
+              ),
+            ),
           Expanded(
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
-               onTap: widget.enableTitleNavigation ? () => _goHome(context) : null,
+               onTap: widget.showBackButton ? null : (widget.enableTitleNavigation ? () => _goHome(context) : null),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                 child: FittedBox(

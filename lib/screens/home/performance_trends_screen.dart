@@ -150,6 +150,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
             TopHeader(
               selectedExamId: _examId,
               userExamIds: _examIds,
+              showBackButton: true,
               onExamChanged: (id) => setState(() {
                 _examId = id;
                 _showDeferredSections = false;

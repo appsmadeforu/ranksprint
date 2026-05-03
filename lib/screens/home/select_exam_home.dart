@@ -328,11 +328,21 @@ class _SelectExamHomeState extends State<SelectExamHome> {
 
       final plansSnap = await FirebaseFirestore.instance
           .collection('subscriptionPlans')
-          .where('features.isActive', isEqualTo: true)
           .get();
 
       for (final doc in plansSnap.docs) {
         final data = doc.data();
+        final features = _asStringMap(data['features']);
+        final hasFeatureFlag = features['isActive'] is bool;
+        final hasTopLevelFlag = data['isActive'] is bool;
+        final isActive = hasFeatureFlag
+            ? features['isActive'] == true
+            : hasTopLevelFlag
+                ? data['isActive'] == true
+                : true;
+        if (!isActive) {
+          continue;
+        }
         if (examPlanIds.contains(doc.id)) {
           return true;
         }
@@ -348,6 +358,15 @@ class _SelectExamHomeState extends State<SelectExamHome> {
     }
 
     return false;
+  }
+
+  Map<String, dynamic> _asStringMap(Object? value) {
+    if (value is Map) {
+      return value.map(
+        (key, mapValue) => MapEntry(key.toString(), mapValue),
+      );
+    }
+    return const <String, dynamic>{};
   }
 
   Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
@@ -869,12 +888,16 @@ class _SelectExamHomeState extends State<SelectExamHome> {
             const SizedBox(height: 14),
             ElevatedButton(
               onPressed: () {
-                Navigator.of(context).push(
+                Navigator.of(context).push<bool>(
                   MaterialPageRoute(
                     builder: (_) =>
                         SubscriptionScreen(initialExamId: activeExam?.examId),
                   ),
-                );
+                ).then((subscribed) {
+                  if (subscribed == true) {
+                    SubscriptionAccessService.clearCache();
+                  }
+                });
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
