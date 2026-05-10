@@ -16,7 +16,6 @@ import 'subject_insights_screen.dart';
 import 'subscription_screen.dart';
 import 'test_detail_screen.dart';
 import 'test_history_screen.dart';
-import 'tests_screen.dart';
 
 class SelectExamHome extends StatefulWidget {
   const SelectExamHome({super.key});
@@ -553,7 +552,11 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                       selectedExamId: vm.activeExam?.examId,
                       userExamIds: selectedExamIds,
                       showExamDropdown: true,
-                      onExamChanged: (examId) {
+                      onExamChanged: (examId) async {
+                        if (!mounted) return;
+                        await UserExamPreferenceService.savePreferredExamId(
+                          examId,
+                        );
                         if (!mounted) return;
                         WidgetsBinding.instance.addPostFrameCallback((_) {
                           if (!mounted) return;
@@ -664,11 +667,25 @@ class _SelectExamHomeState extends State<SelectExamHome> {
                             _buildSectionHeader(
                               title: 'Featured Mock Tests',
                               actionLabel: 'See All',
-                              onTap: () {
-                                Navigator.of(context).push(
+                              onTap: () async {
+                                final examId = vm.activeExam?.examId;
+                                final navState = MainNavigation.maybeOf(context);
+                                final navigator = Navigator.of(context);
+                                if (examId != null && examId.isNotEmpty) {
+                                  await UserExamPreferenceService
+                                      .savePreferredExamId(examId);
+                                  if (!mounted) return;
+                                }
+                                if (navState != null) {
+                                  navState.switchToTab(1, testsExamId: examId);
+                                  return;
+                                }
+
+                                navigator.push(
                                   MaterialPageRoute(
-                                    builder: (_) => TestsScreen(
-                                      selectedExam: vm.activeExam?.examId,
+                                    builder: (_) => MainNavigation(
+                                      initialIndex: 1,
+                                      initialTestsExamId: examId,
                                     ),
                                   ),
                                 );
@@ -857,10 +874,10 @@ class _SelectExamHomeState extends State<SelectExamHome> {
             goal == null && activeExam == null
                 ? 'Pick an exam to unlock your personalized study journey.'
                 : description,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 14,
-              height: 1.6,
-              color: colorScheme.onPrimary.withValues(alpha: 0.88),
+              height: 1.55,
+              color: Color(0xFFF3F4F6),
             ),
           ),
           if (deadlineLabel != null || daysLeftLabel != null) ...[
@@ -962,68 +979,93 @@ class _SelectExamHomeState extends State<SelectExamHome> {
 
   Widget _buildExamCard(_ExamCardVm exam) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: colorScheme.shadow.withValues(alpha: 0.08),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              color: colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(16),
+        onTap: () async {
+          final navState = MainNavigation.maybeOf(context);
+          final navigator = Navigator.of(context);
+          await UserExamPreferenceService.savePreferredExamId(exam.examId);
+          if (!mounted) return;
+          if (navState != null) {
+            navState.switchToTab(1, testsExamId: exam.examId);
+            return;
+          }
+
+          navigator.push(
+            MaterialPageRoute(
+              builder: (_) => MainNavigation(
+                initialIndex: 1,
+                initialTestsExamId: exam.examId,
+              ),
             ),
-            child: Icon(
-              Icons.school_rounded,
-              color: colorScheme.primary,
-              size: 34,
-            ),
+          );
+        },
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: colorScheme.shadow.withValues(alpha: 0.08),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  exam.title,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: colorScheme.onSurface,
-                  ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  exam.description,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 14,
-                    height: 1.55,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+                child: Icon(
+                  Icons.school_rounded,
+                  color: colorScheme.primary,
+                  size: 34,
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      exam.title,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      exam.description,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        height: 1.55,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                onPressed: () => _confirmRemoveExam(exam),
+                icon: const Icon(Icons.close_rounded, color: Color(0xFFEF4444)),
+              ),
+            ],
           ),
-          IconButton(
-            onPressed: () => _confirmRemoveExam(exam),
-            icon: const Icon(Icons.close_rounded, color: Color(0xFFEF4444)),
-          ),
-        ],
+        ),
       ),
     );
   }

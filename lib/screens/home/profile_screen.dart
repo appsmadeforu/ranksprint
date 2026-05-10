@@ -643,6 +643,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 TopHeader(
                   selectedExamId: effectiveSelectedExamId,
                   userExamIds: selectedExams,
+                  showExamDropdown: false,
                   onExamChanged: (examId) {
                     if (!mounted) return;
                     setState(() {

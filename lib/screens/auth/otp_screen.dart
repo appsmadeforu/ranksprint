@@ -330,6 +330,7 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
 
   Widget _buildOtpBox(int index) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return SizedBox(
       width: 45,
       child: Focus(
@@ -363,14 +364,31 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
           keyboardType: TextInputType.number,
           autofillHints: const [AutofillHints.oneTimeCode],
           textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: colorScheme.onSurface,
+          ),
+          cursorColor: colorScheme.primary,
           maxLength: 1,
           decoration: InputDecoration(
             counterText: "",
             filled: true,
-            fillColor: theme.inputDecorationTheme.fillColor,
+            fillColor:
+                theme.inputDecorationTheme.fillColor ??
+                colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
+            contentPadding: const EdgeInsets.symmetric(vertical: 14),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: colorScheme.outlineVariant),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: colorScheme.primary, width: 1.8),
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide.none,
+              borderSide: BorderSide(color: colorScheme.outlineVariant),
             ),
           ),
           onChanged: (value) {

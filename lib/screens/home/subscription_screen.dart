@@ -1075,13 +1075,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         ? null
         : Map<String, dynamic>.from(_selectedPlanOrNull()!);
     final bottomInset = MediaQuery.of(context).viewPadding.bottom;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     if (selectedPlan == null) {
       return Scaffold(
-        backgroundColor: const Color(0xFFF5F6FA),
+        backgroundColor: theme.scaffoldBackgroundColor,
         appBar: AppBar(
           title: const Text('Subscription'),
-          backgroundColor: const Color(0xFF2F3E8F),
-          foregroundColor: Colors.white,
         ),
         body: Center(
           child: Padding(
@@ -1091,11 +1091,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               constraints: const BoxConstraints(maxWidth: 520),
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: colorScheme.surface,
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: colorScheme.shadow.withValues(alpha: 0.18),
                     blurRadius: 20,
                     offset: const Offset(0, 10),
                   ),
@@ -1108,23 +1108,23 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     width: 72,
                     height: 72,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEAF1FF),
+                      color: colorScheme.primaryContainer,
                       borderRadius: BorderRadius.circular(22),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.workspace_premium_outlined,
                       size: 36,
-                      color: Color(0xFF2F3E8F),
+                      color: colorScheme.primary,
                     ),
                   ),
                   const SizedBox(height: 18),
-                  const Text(
+                  Text(
                     'No Plans Available',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF111827),
+                      color: colorScheme.onSurface,
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -1133,20 +1133,20 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                         ? 'There are no active subscription plans available for ${_selectedExamName ?? selectedExamId} right now.'
                         : 'There are no active subscription plans available right now.',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
                       height: 1.6,
-                      color: Color(0xFF6B7280),
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                   const SizedBox(height: 18),
-                  const Text(
+                  Text(
                     'Please check back later or contact support if you expected to see a plan here.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 13,
                       height: 1.5,
-                      color: Color(0xFF94A3B8),
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
                     ),
                   ),
                 ],
@@ -1165,9 +1165,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       selectedPlan['price'] = effectivePrice;
     }
 
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
@@ -1177,23 +1174,32 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
-              color: const Color(0xFF2F3E8F),
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
+                border: Border(
+                  bottom: BorderSide(color: colorScheme.outlineVariant),
+                ),
+              ),
               child: Column(
-                children: const [
-                  Icon(Icons.workspace_premium, color: Colors.orange, size: 40),
-                  SizedBox(height: 8),
+                children: [
+                  Icon(
+                    Icons.workspace_premium,
+                    color: colorScheme.primary,
+                    size: 40,
+                  ),
+                  const SizedBox(height: 8),
                   Text(
                     "Unlock Premium",
                     style: TextStyle(
-                      color: Colors.white,
+                      color: colorScheme.onSurface,
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Text(
                     "Get unlimited access to all features",
-                    style: TextStyle(color: Colors.white70),
+                    style: TextStyle(color: colorScheme.onSurfaceVariant),
                   ),
                 ],
               ),
@@ -1307,15 +1313,15 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                                               vertical: 2,
                                             ),
                                             decoration: BoxDecoration(
-                                              color: Colors.orange,
+                                              color: colorScheme.primaryContainer,
                                               borderRadius:
                                                   BorderRadius.circular(4),
                                             ),
-                                            child: const Text(
+                                            child: Text(
                                               "Most Popular",
                                               style: TextStyle(
                                                 fontSize: 10,
-                                                color: Colors.white,
+                                                color: colorScheme.onPrimaryContainer,
                                               ),
                                             ),
                                           ),
@@ -1343,7 +1349,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                                     style: TextStyle(
                                       fontSize: 12,
                                       decoration: TextDecoration.lineThrough,
-                                      color: Colors.grey[500],
+                                      color: colorScheme.onSurfaceVariant,
                                     ),
                                   ),
                                   const SizedBox(height: 2),
@@ -1358,9 +1364,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                                       const SizedBox(width: 4),
                                       Text(
                                         "${plan['discount']}% OFF",
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 11,
-                                          color: Colors.green,
+                                          color: colorScheme.tertiary,
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
@@ -1450,8 +1456,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                             const SizedBox(height: 10),
                             Text(
                               'Applied: ${_appliedCoupon!['id']}  |  Final price: Rs. $effectivePrice',
-                              style: const TextStyle(
-                                color: Colors.green,
+                              style: TextStyle(
+                                color: colorScheme.tertiary,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -1477,8 +1483,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                               style: TextStyle(
                                 fontSize: 13,
                                 color: _couponFeedbackIsError
-                                    ? Colors.red.shade700
-                                    : Colors.green.shade700,
+                                    ? colorScheme.error
+                                    : colorScheme.tertiary,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -1553,7 +1559,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                   ? null
                   : _startPurchase,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
+                backgroundColor: colorScheme.primary,
+                foregroundColor: colorScheme.onPrimary,
                 minimumSize: const Size(0, 42),
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 padding: const EdgeInsets.symmetric(

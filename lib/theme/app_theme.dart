@@ -7,8 +7,8 @@ class AppTheme {
   static const Color _brandSecondary = Color(0xFF2F6FEB);
   static const Color _lightSurfaceTint = Color(0xFFF5F6FA);
   static const Color _lightCard = Colors.white;
-  static const Color _darkSurface = Color(0xFF0F172A);
-  static const Color _darkSurfaceContainer = Color(0xFF16213E);
+  static const Color _darkSurface = Color(0xFF0F0F10);
+  static const Color _darkSurfaceContainer = Color(0xFF17181A);
 
   static final ColorScheme _lightColorScheme = ColorScheme(
     brightness: Brightness.light,
@@ -43,33 +43,33 @@ class AppTheme {
 
   static final ColorScheme _darkColorScheme = ColorScheme(
     brightness: Brightness.dark,
-    primary: const Color(0xFFAFC0FF),
-    onPrimary: const Color(0xFF14235D),
-    primaryContainer: const Color(0xFF253C8B),
-    onPrimaryContainer: const Color(0xFFE1E8FF),
-    secondary: const Color(0xFF9BB9FF),
-    onSecondary: const Color(0xFF0D2A57),
-    secondaryContainer: const Color(0xFF1A417B),
-    onSecondaryContainer: const Color(0xFFDCE9FF),
-    tertiary: const Color(0xFF5FD08B),
-    onTertiary: const Color(0xFF08361A),
+    primary: const Color(0xFF6B7280),
+    onPrimary: const Color(0xFFF9FAFB),
+    primaryContainer: const Color(0xFF23262B),
+    onPrimaryContainer: const Color(0xFFF9FAFB),
+    secondary: const Color(0xFFA1A1AA),
+    onSecondary: const Color(0xFF111111),
+    secondaryContainer: const Color(0xFF1F2125),
+    onSecondaryContainer: const Color(0xFFF3F4F6),
+    tertiary: const Color(0xFF86EFAC),
+    onTertiary: const Color(0xFF052E16),
     tertiaryContainer: const Color(0xFF14532D),
-    onTertiaryContainer: const Color(0xFFC9F4D6),
+    onTertiaryContainer: const Color(0xFFDCFCE7),
     error: const Color(0xFFF87171),
     onError: const Color(0xFF450A0A),
     errorContainer: const Color(0xFF7F1D1D),
     onErrorContainer: const Color(0xFFFECACA),
     surface: _darkSurfaceContainer,
-    onSurface: const Color(0xFFF8FAFC),
-    onSurfaceVariant: const Color(0xFF94A3B8),
-    outline: const Color(0xFF334155),
-    outlineVariant: const Color(0xFF1E293B),
+    onSurface: const Color(0xFFF9FAFB),
+    onSurfaceVariant: const Color(0xFFB4B8C0),
+    outline: const Color(0xFF3A3D44),
+    outlineVariant: const Color(0xFF25272C),
     shadow: Colors.black,
     scrim: const Color(0xCC000000),
-    inverseSurface: const Color(0xFFF8FAFC),
-    onInverseSurface: const Color(0xFF111827),
-    inversePrimary: _brandPrimary,
-    surfaceTint: const Color(0xFFAFC0FF),
+    inverseSurface: const Color(0xFFF9FAFB),
+    onInverseSurface: const Color(0xFF111111),
+    inversePrimary: const Color(0xFF222222),
+    surfaceTint: const Color(0xFF6B7280),
   );
 
   static ThemeData get lightTheme {
@@ -245,18 +245,18 @@ class AppTheme {
         ),
       ),
       cardTheme: CardThemeData(
-        color: _darkColorScheme.surface,
+        color: const Color(0xFF1B1C1F),
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: _darkColorScheme.surface,
+        backgroundColor: const Color(0xFF1B1C1F),
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       ),
       bottomSheetTheme: BottomSheetThemeData(
-        backgroundColor: _darkColorScheme.surface,
+        backgroundColor: const Color(0xFF1B1C1F),
         surfaceTintColor: Colors.transparent,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -287,8 +287,8 @@ class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: _darkColorScheme.primary,
-          foregroundColor: _darkColorScheme.onPrimary,
+          backgroundColor: const Color(0xFF2C2F36),
+          foregroundColor: const Color(0xFFF9FAFB),
           disabledBackgroundColor: _darkColorScheme.outlineVariant,
           disabledForegroundColor: _darkColorScheme.onSurfaceVariant,
           elevation: 0,
@@ -300,8 +300,8 @@ class AppTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: _darkColorScheme.primary,
-          side: BorderSide(color: _darkColorScheme.outline),
+          foregroundColor: _darkColorScheme.onSurface,
+          side: BorderSide(color: const Color(0xFF3F434B)),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
@@ -310,7 +310,7 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0xFF111827),
+        fillColor: const Color(0xFF141518),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 14,

@@ -58,10 +58,18 @@ class _MainNavigationState extends State<MainNavigation> {
     });
   }
 
-  void switchToTab(int index, {String? analyticsExamId, int? analyticsTabIndex}) {
+  void switchToTab(
+    int index, {
+    String? testsExamId,
+    String? analyticsExamId,
+    int? analyticsTabIndex,
+  }) {
     setState(() {
       _index = index;
       _visited[index] = true;
+      if (testsExamId != null) {
+        _testsExamId = testsExamId;
+      }
       if (analyticsExamId != null) {
         _analyticsExamId = analyticsExamId;
       }

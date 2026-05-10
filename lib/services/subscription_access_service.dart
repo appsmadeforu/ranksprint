@@ -17,11 +17,22 @@ class SubscriptionAccessService {
       return _cachedActivePlanIds!;
     }
 
+    SubscriptionRefreshResult? refreshedAccess;
     try {
-      await SubscriptionBackendService.refreshAccess();
+      refreshedAccess = await SubscriptionBackendService.refreshAccess();
     } catch (_) {
       // Fall back to direct reads so existing users are not blocked by a
       // temporary functions outage.
+    }
+
+    if (refreshedAccess != null) {
+      final refreshedPlanIds = refreshedAccess.activePlanIds
+          .map((id) => id.trim())
+          .where((id) => id.isNotEmpty)
+          .toSet();
+      _cachedUserId = user.uid;
+      _cachedActivePlanIds = refreshedPlanIds;
+      return refreshedPlanIds;
     }
 
     final snapshot = await FirebaseFirestore.instance

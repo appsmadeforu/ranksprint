@@ -918,21 +918,21 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
               return aTs.compareTo(bTs);
             });
 
-        if (attempts.isEmpty) {
-          return const Center(child: Text('No analytics data'));
-        }
-
-        final dashboardCacheKey = _dashboardCacheKey(
-          userId: user.uid,
-          examId: selectedExamId!,
-          attempts: attempts,
-        );
+        final dashboardCacheKey = attempts.isEmpty
+            ? '${user.uid}|${selectedExamId!}|empty'
+            : _dashboardCacheKey(
+                userId: user.uid,
+                examId: selectedExamId!,
+                attempts: attempts,
+              );
 
         return FutureBuilder<_DashboardVm>(
-          future: _dashboardFutureCache.putIfAbsent(
-            dashboardCacheKey,
-            () => _loadDashboardVm(user.uid, selectedExamId!, attempts),
-          ),
+          future: _dashboardFutureCache.putIfAbsent(dashboardCacheKey, () {
+            if (attempts.isEmpty) {
+              return _emptyDashboardVm(selectedExamId!);
+            }
+            return _loadDashboardVm(user.uid, selectedExamId!, attempts);
+          }),
           builder: (context, vmSnap) {
             if (vmSnap.hasError) {
               return OfflineState(
@@ -973,6 +973,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 22),
                 children: [
                   _dashboardHero(vm),
+                  if (vm.needsMoreDataForDeepAnalysis) ...[
+                    const SizedBox(height: 14),
+                    _analysisHintCard(),
+                  ],
                   const SizedBox(height: 14),
                   _performanceTrendCard(vm),
                   const SizedBox(height: 14),
@@ -1134,6 +1138,26 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           },
         ),
       ],
+    );
+  }
+
+  Widget _analysisHintCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7E8),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFF4C95D)),
+      ),
+      child: const Text(
+        'Take at least 3 tests to unlock deeper analysis.',
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFF8A5A11),
+        ),
+      ),
     );
   }
 
@@ -1766,21 +1790,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             children: [
               SizedBox(
                 height: 190,
-                child: displayPoints.length < 2
-                    ? const Center(
-                        child: Text('Need at least 2 attempts to show trend'),
-                      )
-                    : FutureBuilder<_CompetitionVm>(
-                        future: competitionFuture,
-                        builder: (context, competitionSnap) {
-                          final platformAvg =
-                              competitionSnap.data?.platformAvg ?? 0.0;
-                          return _TrendChart(
-                            points: displayPoints,
-                            platformAvg: platformAvg,
-                          );
-                        },
-                      ),
+                child: FutureBuilder<_CompetitionVm>(
+                  future: competitionFuture,
+                  builder: (context, competitionSnap) {
+                    final platformAvg = competitionSnap.data?.platformAvg ?? 0.0;
+                    return _TrendChart(
+                      points: displayPoints,
+                      platformAvg: platformAvg,
+                    );
+                  },
+                ),
               ),
               const SizedBox(height: 12),
               Row(
@@ -1842,6 +1861,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       child: ValueListenableBuilder<_SubjectViewMode>(
         valueListenable: _subjectViewModeNotifier,
         builder: (context, subjectViewMode, child) {
+          final subjects = vm.subjects.isEmpty
+              ? _placeholderSubjects()
+              : vm.subjects;
           return Column(
             children: [
               Align(
@@ -1858,16 +1880,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                 ),
               ),
               const SizedBox(height: 14),
-              if (vm.subjects.isEmpty)
-                const Text('No subject data available')
-              else
-                Column(
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: vm.subjects.take(4).map((subject) {
+              Column(
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: subjects.take(4).map((subject) {
                         final maxValue = _subjectMaxValue(
-                          vm.subjects,
+                          subjects,
                           subjectViewMode,
                         );
                         final value = _subjectMetricValue(
@@ -1917,68 +1936,79 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                             ),
                           ),
                         );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: subjects.take(4).map((subject) {
+                        return _LegendDot(
+                          color: _subjectColor(subject.name),
+                          label: subject.name,
+                        );
                       }).toList(),
                     ),
-                    const SizedBox(height: 10),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 6,
-                        children: vm.subjects.take(4).map((subject) {
-                          return _LegendDot(
-                            color: _subjectColor(subject.name),
-                            label: subject.name,
-                          );
-                        }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7E8),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFF4C95D)),
+                    ),
+                    child: Text(
+                      vm.subjects.isEmpty
+                          ? 'Take at least 3 tests to unlock deeper subject analysis.'
+                          : 'A weak accuracy dip was detected in ${vm.focusSubject}.',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF8A5A11),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF7E8),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => _SubjectExplorerScreen(vm: vm),
+                        ),
+                      );
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF2D4FCA),
+                      side: const BorderSide(color: Color(0xFFD9DFF0)),
+                      shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: const Color(0xFFF4C95D)),
                       ),
-                      child: Text(
-                        'A weak accuracy dip was detected in ${vm.focusSubject}.',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF8A5A11),
-                        ),
-                      ),
+                      minimumSize: const Size.fromHeight(44),
                     ),
-                    const SizedBox(height: 12),
-                    OutlinedButton(
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => _SubjectExplorerScreen(vm: vm),
-                          ),
-                        );
-                      },
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF2D4FCA),
-                        side: const BorderSide(color: Color(0xFFD9DFF0)),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        minimumSize: const Size.fromHeight(44),
-                      ),
-                      child: const Text(
-                        'View Subject Insights',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
+                    child: const Text(
+                      'View Subject Insights',
+                      style: TextStyle(fontWeight: FontWeight.w700),
                     ),
-                  ],
-                ),
+                  ),
+                ],
+              ),
             ],
           );
         },
       ),
     );
+  }
+
+  List<_SubjectMetric> _placeholderSubjects() {
+    return [
+      _SubjectMetric('Subject 1'),
+      _SubjectMetric('Subject 2'),
+      _SubjectMetric('Subject 3'),
+      _SubjectMetric('Subject 4'),
+    ];
   }
 
   Widget _dashboardSkeleton() {
@@ -3232,6 +3262,19 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     return vm;
   }
 
+  Future<_DashboardVm> _emptyDashboardVm(String examId) async {
+    try {
+      final examDoc = await FirebaseFirestore.instance
+          .collection('exams')
+          .doc(examId)
+          .get();
+      final examName = (examDoc.data()?['name'] ?? 'Selected Exam').toString();
+      return _DashboardVm.empty(examName: examName);
+    } catch (_) {
+      return _DashboardVm.empty();
+    }
+  }
+
   String _dashboardAttemptSignature(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> attempts,
   ) {
@@ -4401,6 +4444,8 @@ class _DashboardVm {
   double get avgMarksLostPerTest =>
       testsTaken <= 0 ? 0.0 : marksLost / testsTaken;
 
+  bool get needsMoreDataForDeepAnalysis => testsTaken < 3;
+
   const _DashboardVm({
     required this.examName,
     required this.lastUpdated,
@@ -4439,6 +4484,43 @@ class _DashboardVm {
     required this.recommendations,
     required this.gainPotential,
   });
+
+  _DashboardVm.empty({this.examName = 'Selected Exam'})
+    : lastUpdated = DateTime.fromMillisecondsSinceEpoch(0),
+      testsTaken = 0,
+      totalQuestions = 0,
+      totalMinutes = 0,
+      avgScore = 0,
+      maxScore = 0,
+      avgPercentile = 0,
+      bestRank = 0,
+      readiness = 0,
+      delta = 0,
+      focusSubject = 'General',
+      totalCorrect = 0,
+      totalIncorrect = 0,
+      totalSkipped = 0,
+      avgSecondsPerQuestion = 0,
+      trendPoints = const <_TrendPoint>[],
+      subjects = const <_SubjectMetric>[],
+      chapters = const <_ChapterMetric>[],
+      chapterAttempts = const <_ChapterAttemptMetric>[],
+      timeSlices = const <_TimeSlice>[],
+      timeScoreTrend = const <double>[],
+      timeInsight = 'Take at least 3 tests to unlock deeper analysis.',
+      riskBars = const <double>[0, 0, 0, 0],
+      marksLost = 0,
+      hasNegativeMarking = false,
+      riskAccuracy = 0,
+      safeAttempts = 0,
+      accuracyStability = 0,
+      scoreBalance = 0,
+      testFrequency = 0,
+      timeMgmt = 0,
+      speed = 0,
+      consistencyLabel = 'Build your baseline',
+      recommendations = const <_Recommendation>[],
+      gainPotential = 0;
 }
 
 class _CompetitionVm {
@@ -5263,13 +5345,26 @@ class _ChapterExplorerScreenState extends State<_ChapterExplorerScreen> {
                   : (items.isNotEmpty ? items.first : null),
               isExpanded: true,
               hint: const Text('Select'),
+              selectedItemBuilder: (context) => items
+                  .map(
+                    (item) => Align(
+                      alignment: Alignment.centerLeft,
+                      child: _RollingDropdownLabel(
+                        text: item,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
               items: items
                   .map(
                     (item) => DropdownMenuItem<String>(
                       value: item,
-                      child: Text(
-                        item,
-                        overflow: TextOverflow.ellipsis,
+                      child: _RollingDropdownLabel(
+                        text: item,
                         style: TextStyle(
                           fontSize: 13,
                           color: colorScheme.onSurface,
@@ -6880,6 +6975,145 @@ class _RadarPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _RadarPainter oldDelegate) =>
       oldDelegate.items != items;
+}
+
+class _RollingDropdownLabel extends StatefulWidget {
+  final String text;
+  final TextStyle style;
+
+  const _RollingDropdownLabel({required this.text, required this.style});
+
+  @override
+  State<_RollingDropdownLabel> createState() => _RollingDropdownLabelState();
+}
+
+class _RollingDropdownLabelState extends State<_RollingDropdownLabel>
+    with SingleTickerProviderStateMixin {
+  static const double _pixelsPerSecond = 28;
+  static const double _endPadding = 20;
+  late final ScrollController _scrollController;
+  int _scrollSession = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollSession++;
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _ensureScrollLoop(double requestedExtent) async {
+    if (!mounted) return;
+    if (requestedExtent <= 2) {
+      _scrollSession++;
+      if (_scrollController.hasClients && _scrollController.offset != 0) {
+        _scrollController.jumpTo(0);
+      }
+      return;
+    }
+    _scrollSession++;
+    final session = _scrollSession;
+
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
+
+    while (mounted && session == _scrollSession) {
+      if (!_scrollController.hasClients) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        continue;
+      }
+
+      final extent = _scrollController.position.maxScrollExtent;
+      if (extent <= 2) {
+        if (_scrollController.offset != 0) {
+          _scrollController.jumpTo(0);
+        }
+        break;
+      }
+
+      final durationMs = ((extent / _pixelsPerSecond) * 1000)
+          .round()
+          .clamp(2500, 14000);
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      if (!mounted || session != _scrollSession || !_scrollController.hasClients) {
+        break;
+      }
+
+      await _scrollController.animateTo(
+        extent,
+        duration: Duration(milliseconds: durationMs),
+        curve: Curves.linear,
+      );
+      if (!mounted || session != _scrollSession || !_scrollController.hasClients) {
+        break;
+      }
+
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      if (!mounted || session != _scrollSession || !_scrollController.hasClients) {
+        break;
+      }
+      _scrollController.jumpTo(0);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.of(context).size.width;
+        final painter = TextPainter(
+          text: TextSpan(text: widget.text, style: widget.style),
+          maxLines: 1,
+          textDirection: Directionality.of(context),
+        )..layout();
+        final overflow = painter.width - maxWidth;
+
+        if (overflow <= 2) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _ensureScrollLoop(0);
+          });
+          return Text(
+            widget.text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: widget.style,
+          );
+        }
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _ensureScrollLoop(overflow);
+        });
+
+        return ClipRect(
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            scrollDirection: Axis.horizontal,
+            physics: const NeverScrollableScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: maxWidth),
+              child: Padding(
+                padding: const EdgeInsets.only(right: _endPadding),
+                child: Text(
+                  widget.text,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: widget.style,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 Color _subjectColor(String subject) {

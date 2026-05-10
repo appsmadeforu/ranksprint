@@ -38,6 +38,24 @@ class _TestsScreenState extends State<TestsScreen> {
   }
 
   @override
+  void didUpdateWidget(covariant TestsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final nextExamId = widget.selectedExam;
+    if (nextExamId == null ||
+        nextExamId.isEmpty ||
+        nextExamId == oldWidget.selectedExam ||
+        nextExamId == selectedExamId ||
+        !userExamIds.contains(nextExamId)) {
+      return;
+    }
+
+    setState(() {
+      selectedExamId = nextExamId;
+    });
+    _loadExamMetadata(nextExamId);
+  }
+
+  @override
   void dispose() {
     UserExamPreferenceService.preferredExamNotifier.removeListener(
       _handlePreferredExamChanged,
@@ -162,7 +180,9 @@ class _TestsScreenState extends State<TestsScreen> {
             TopHeader(
               selectedExamId: selectedExamId,
               userExamIds: userExamIds,
-              onExamChanged: (value) {
+              onExamChanged: (value) async {
+                if (!mounted) return;
+                await UserExamPreferenceService.savePreferredExamId(value);
                 if (!mounted) return;
                 setState(() {
                   selectedExamId = value;
