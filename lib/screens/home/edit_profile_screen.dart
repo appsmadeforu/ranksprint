@@ -34,9 +34,15 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   final pincodeController = TextEditingController();
   final cityController = TextEditingController();
   final stateController = TextEditingController();
+  final schoolOtherController = TextEditingController();
+  final examOtherController = TextEditingController();
 
   String? gender;
   DateTime? dob;
+  String? selectedSchool;
+  String? selectedGrade;
+  String? selectedMedium;
+  String? selectedSource;
   bool loading = false;
   bool _initialLoadComplete = false;
   bool _emailLocked = false;
@@ -56,8 +62,36 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   bool _showHeaderLogout = false;
   int _activePincodeLookupToken = 0;
   bool _refreshingAfterResume = false;
+  bool _loadingSchoolingOptions = false;
+  String? _schoolingOptionsError;
+  List<String> _schoolOptions = const <String>[];
+  List<String> _sourceOptions = const <String>[];
+  List<_ExamOption> _allExamOptions = const <_ExamOption>[];
+  List<String> _selectedExamIds = <String>[];
+  List<String> _gradeRecommendedExamIds = <String>[];
 
   static const List<String> _genderOptions = ['Male', 'Female', 'Other'];
+  static const List<String> _gradeOptions = <String>[
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9',
+    '10',
+    '11',
+    '12',
+  ];
+  static const List<String> _mediumOptions = <String>[
+    'English',
+    'Hindi',
+    'Marathi',
+    'Semi-English',
+  ];
+  static const String _otherOption = 'Other';
   static const int _maxProfilePhotoBytes = 2 * 1024 * 1024;
   static const double _pickedPhotoMaxDimension = 1600;
   static const int _croppedPhotoMaxDimension = 1080;
@@ -66,6 +100,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _loadSchoolingOptions();
     _loadUserData();
   }
 
@@ -105,9 +140,14 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       final hasSelectedExam = await _hasAnySelectedExam();
       if (!mounted) return;
 
-      if (_showHeaderLogout && hasProfileName && hasContact && hasSelectedExam) {
+      if (_showHeaderLogout &&
+          hasProfileName &&
+          hasContact &&
+          hasSelectedExam) {
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const MainNavigation(initialIndex: 0)),
+          MaterialPageRoute(
+            builder: (_) => const MainNavigation(initialIndex: 0),
+          ),
           (route) => false,
         );
       } else {
@@ -136,7 +176,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   Future<void> _loadUserData() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-    final userDoc = FirebaseFirestore.instance.collection('users').doc(user.uid);
+    final userDoc = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid);
 
     final authEmail = (user.email ?? '').trim();
     final authPhone = (user.phoneNumber ?? '').trim();
@@ -194,6 +236,30 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     final isProfileIncomplete =
         ((!hasStoredEmail && !hasStoredPhone) || !hasProfileName);
 
+    final storedSelectedExams = _stringListFromDynamic(data['selectedExams']);
+    final storedSchool = (data['schoolName'] ?? data['school'] ?? '')
+        .toString()
+        .trim();
+    final storedGrade =
+        (data['grade'] ?? data['classGrade'] ?? data['class'] ?? '')
+            .toString()
+            .trim();
+    final storedMedium = (data['medium'] ?? '').toString().trim();
+    final storedSource =
+        (data['discoverySource'] ??
+                data['howDidYouKnow'] ??
+                data['source'] ??
+                '')
+            .toString()
+            .trim();
+    final storedOtherExamName =
+        (data['otherExamName'] ?? data['manualExamName'] ?? '')
+            .toString()
+            .trim();
+    final storedOtherSchoolName = (data['otherSchoolName'] ?? '')
+        .toString()
+        .trim();
+
     setState(() {
       firstNameController.text = resolvedNames.firstName;
       middleNameController.text = resolvedNames.middleName;
@@ -216,9 +282,8 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       _photoUrl = (data['photoURL'] is String)
           ? (data['photoURL'] as String).trim()
           : '';
-      _pendingEmailVerificationEmail = pendingEmailMatchesAuth || pendingEmail.isEmpty
-          ? null
-          : pendingEmail;
+      _pendingEmailVerificationEmail =
+          pendingEmailMatchesAuth || pendingEmail.isEmpty ? null : pendingEmail;
       _showHeaderLogout = isProfileIncomplete;
       _selectedPhotoBytes = null;
       _selectedPhotoName = null;
@@ -239,9 +304,152 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       } else {
         dob = null;
       }
+      selectedSchool = storedSchool.isEmpty ? null : storedSchool;
+      selectedGrade = storedGrade.isEmpty ? null : storedGrade;
+      selectedMedium = storedMedium.isEmpty ? null : storedMedium;
+      selectedSource = storedSource.isEmpty ? null : storedSource;
+      _selectedExamIds = storedSelectedExams;
+      schoolOtherController.text = storedSchool == _otherOption
+          ? storedOtherSchoolName
+          : storedOtherSchoolName.isNotEmpty &&
+                !_schoolOptions.contains(storedSchool)
+          ? storedOtherSchoolName
+          : '';
+      examOtherController.text = storedOtherExamName;
+      _gradeRecommendedExamIds = _recommendedExamIdsForGrade(storedGrade);
       _initialProfileSnapshot = _currentProfileSnapshot();
       _initialLoadComplete = true;
     });
+  }
+
+  Future<void> _loadSchoolingOptions() async {
+    setState(() {
+      _loadingSchoolingOptions = true;
+      _schoolingOptionsError = null;
+    });
+
+    try {
+      final results = await Future.wait([
+        FirebaseFirestore.instance.collection('staticData').doc('config').get(),
+        FirebaseFirestore.instance
+            .collection('exams')
+            .where('isActive', isEqualTo: true)
+            .get(),
+      ]);
+
+      final configDoc = results[0] as DocumentSnapshot<Map<String, dynamic>>;
+      final examSnapshot = results[1] as QuerySnapshot<Map<String, dynamic>>;
+      final config = configDoc.data() ?? const <String, dynamic>{};
+
+      final schoolOptions = _normalizeOptionList(config['schools']);
+      final sourceOptions = _normalizeOptionList(config['sources']);
+      final exams =
+          examSnapshot.docs
+              .map((doc) => _ExamOption.fromFirestore(doc))
+              .toList()
+            ..sort(
+              (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+            );
+
+      if (!mounted) return;
+      setState(() {
+        _schoolOptions = schoolOptions;
+        _sourceOptions = sourceOptions;
+        _allExamOptions = exams;
+        _gradeRecommendedExamIds = _recommendedExamIdsForGrade(
+          selectedGrade ?? '',
+        );
+        _schoolingOptionsError = null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _schoolingOptionsError =
+            'Could not load some schooling options. You can still finish the rest of your profile.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingSchoolingOptions = false;
+        });
+      }
+    }
+  }
+
+  List<String> _normalizeOptionList(dynamic raw) {
+    final options = <String>[];
+    if (raw is Iterable) {
+      for (final value in raw) {
+        final option = value.toString().trim();
+        if (option.isNotEmpty && !options.contains(option)) {
+          options.add(option);
+        }
+      }
+    }
+    return options;
+  }
+
+  List<String> _stringListFromDynamic(dynamic raw) {
+    if (raw is! Iterable) return <String>[];
+    final values = <String>[];
+    for (final item in raw) {
+      final value = item.toString().trim();
+      if (value.isNotEmpty && !values.contains(value)) {
+        values.add(value);
+      }
+    }
+    return values;
+  }
+
+  List<String> _recommendedExamIdsForGrade(String grade) {
+    final normalizedGrade = grade.trim();
+    if (normalizedGrade.isEmpty || _allExamOptions.isEmpty) {
+      return <String>[];
+    }
+    return _allExamOptions
+        .where((exam) => exam.isApplicableToGrade(normalizedGrade))
+        .map((exam) => exam.id)
+        .toList();
+  }
+
+  bool _validateSchoolingSection() {
+    if ((selectedSchool ?? '').trim().isEmpty) {
+      _showMessage('Please select your school name.');
+      return false;
+    }
+    if (selectedSchool == _otherOption &&
+        schoolOtherController.text.trim().isEmpty) {
+      _showMessage('Please enter your school name.');
+      return false;
+    }
+    if ((selectedGrade ?? '').trim().isEmpty) {
+      _showMessage('Please select your class/grade.');
+      return false;
+    }
+    if ((selectedMedium ?? '').trim().isEmpty) {
+      _showMessage('Please select your medium.');
+      return false;
+    }
+    if (_selectedExamIds.isEmpty) {
+      _showMessage('Please select at least one exam you are preparing for.');
+      return false;
+    }
+    if (_selectedExamIds.contains(_otherOption) &&
+        examOtherController.text.trim().isEmpty) {
+      _showMessage('Please enter the exam name for Other.');
+      return false;
+    }
+    if ((selectedSource ?? '').trim().isEmpty) {
+      _showMessage('Please tell us how you got to know about the app.');
+      return false;
+    }
+    return true;
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Map<String, dynamic> _currentProfileSnapshot() {
@@ -258,9 +466,16 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       'dob': dob == null
           ? ''
           : DateTime(dob!.year, dob!.month, dob!.day).millisecondsSinceEpoch,
+      'schoolName': selectedSchool ?? '',
+      'otherSchoolName': schoolOtherController.text.trim(),
+      'grade': selectedGrade ?? '',
+      'medium': selectedMedium ?? '',
+      'selectedExams': List<String>.from(_selectedExamIds)..sort(),
+      'otherExamName': examOtherController.text.trim(),
+      'discoverySource': selectedSource ?? '',
       'photoUrl': (_photoUrl ?? '').trim(),
-      'pendingEmailVerificationEmail':
-          (_pendingEmailVerificationEmail ?? '').trim(),
+      'pendingEmailVerificationEmail': (_pendingEmailVerificationEmail ?? '')
+          .trim(),
       'hasSelectedPhoto': _selectedPhotoBytes != null,
       'selectedPhotoName': (_selectedPhotoName ?? '').trim(),
       'removePhoto': _removePhoto,
@@ -279,7 +494,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
           title: const Text('Discard changes?'),
           content: const Text(
             'You have unsaved profile changes. Do you want to discard them and leave?',
@@ -309,11 +526,11 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          title: const Text('Apply changes?'),
-          content: const Text(
-            'Do you want to save these profile updates now?',
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
           ),
+          title: const Text('Apply changes?'),
+          content: const Text('Do you want to save these profile updates now?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -336,6 +553,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
 
   Future<void> _handleSavePressed() async {
     if (!_formKey.currentState!.validate()) return;
+    if (!_validateSchoolingSection()) return;
     if (!await _confirmApplyChanges()) return;
     await _saveProfile();
   }
@@ -401,6 +619,16 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       'city': cityController.text.trim(),
       'state': stateController.text.trim(),
       'gender': gender,
+      'schoolName': selectedSchool,
+      'otherSchoolName': selectedSchool == _otherOption
+          ? schoolOtherController.text.trim()
+          : '',
+      'grade': selectedGrade,
+      'classGrade': selectedGrade,
+      'medium': selectedMedium,
+      'selectedExams': _selectedExamIds,
+      'otherExamName': examOtherController.text.trim(),
+      'discoverySource': selectedSource,
       'updatedAt': Timestamp.now(),
     };
     if (pendingEmail.isNotEmpty) {
@@ -420,7 +648,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('That email address is already being used by another account.'),
+              content: Text(
+                'That email address is already being used by another account.',
+              ),
             ),
           );
           return;
@@ -443,7 +673,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('That phone number is already being used by another account.'),
+              content: Text(
+                'That phone number is already being used by another account.',
+              ),
             ),
           );
           return;
@@ -494,9 +726,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(
-          SnackBar(content: Text(_profileSaveErrorMessage(e))),
-        );
+        ).showSnackBar(SnackBar(content: Text(_profileSaveErrorMessage(e))));
       }
     } finally {
       if (mounted) {
@@ -525,9 +755,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
               borderRadius: BorderRadius.circular(18),
             ),
             title: const Text('Verify your new email'),
-          content: Text(
+            content: Text(
               'We sent a verification link to $newEmail. The email could be in your SPAM folder. After you verify it, you may need to log out and sign in again before using this new email to log in or changing the email again.',
-          ),
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(
@@ -556,9 +786,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       return _EmailUpdateFlowResult.pending;
     } on FirebaseAuthException catch (e) {
       if (!mounted) return _EmailUpdateFlowResult.cancelled;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_emailChangeErrorMessage(e))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_emailChangeErrorMessage(e))));
       return _EmailUpdateFlowResult.cancelled;
     } catch (_) {
       if (!mounted) return _EmailUpdateFlowResult.cancelled;
@@ -571,8 +801,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
 
   String _emailChangeErrorMessage(FirebaseAuthException error) {
     return switch (error.code) {
-      'requires-recent-login' ||
-      'email-change-needs-verification' =>
+      'requires-recent-login' || 'email-change-needs-verification' =>
         'Please verify the email change you already requested, then log out and sign in again before trying to change your email.',
       'invalid-email' => 'Enter a valid email address.',
       'email-already-in-use' =>
@@ -588,7 +817,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
           'Could not save your profile right now. Please check your internet connection and try again.',
         'requires-recent-login' =>
           'For security reasons, please sign in again and then retry saving your profile.',
-        _ => error.message ?? 'Could not save your profile right now. Please try again.',
+        _ =>
+          error.message ??
+              'Could not save your profile right now. Please try again.',
       };
     }
 
@@ -668,7 +899,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
           title: const Text('Log out?'),
           content: const Text(
             'You will need to sign in again to continue editing your profile.',
@@ -739,9 +972,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
           'This mobile number is already linked to another account.',
         _ => e.message ?? 'Could not verify phone number.',
       };
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
       return false;
     } catch (_) {
       if (!mounted) return false;
@@ -948,9 +1181,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not pick image: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not pick image: $e')));
     } finally {
       if (mounted) {
         setState(() => _isProcessingPhoto = false);
@@ -1043,9 +1276,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     });
 
     try {
-      final response = await http.get(
-        Uri.parse('https://api.postalpincode.in/pincode/$pincode'),
-      ).timeout(const Duration(seconds: 8));
+      final response = await http
+          .get(Uri.parse('https://api.postalpincode.in/pincode/$pincode'))
+          .timeout(const Duration(seconds: 8));
 
       if (!mounted ||
           lookupToken != _activePincodeLookupToken ||
@@ -1131,6 +1364,8 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     pincodeController.dispose();
     cityController.dispose();
     stateController.dispose();
+    schoolOtherController.dispose();
+    examOtherController.dispose();
     super.dispose();
   }
 
@@ -1199,265 +1434,349 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                                 ),
                                 child: Form(
                                   key: _formKey,
-                                   child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                           children: [
-                              Text(
-                                 'Keep your details accurate so RankSprint can personalize your exam journey.',
-                                  style: TextStyle(
-                                   fontSize: 14,
-                                  color: colorScheme.onSurfaceVariant,
-                                  height: 1.5,
-                                ),
-                              ),
-                             const SizedBox(height: 18),
-                             _buildSectionCard(
-                               title: 'Profile Photo',
-                               subtitle:
-                                   'Upload a clear profile image up to 2 MB.',
-                               children: [
-                                 _buildPhotoEditor(),
-                               ],
-                             ),
-                             const SizedBox(height: 16),
-                             _buildSectionCard(
-                         title: 'Basic Details',
-                        subtitle: 'Your identity and personal information',
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildTextField(
-                                  firstNameController,
-                                  'First Name',
-                                  required: true,
-                                  validator: (value) {
-                                    if ((value ?? '').trim().isEmpty) {
-                                      return 'First name is required';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _buildTextField(
-                                  middleNameController,
-                                  'Middle Name',
-                                ),
-                              ),
-                            ],
-                          ),
-                          _buildTextField(
-                            lastNameController,
-                            'Last Name',
-                            required: true,
-                            validator: (value) {
-                              if ((value ?? '').trim().isEmpty) {
-                                return 'Last name is required';
-                              }
-                              return null;
-                            },
-                          ),
-                          _buildTextField(
-                            emailController,
-                            'Email ID',
-                            enabled: !_emailLocked,
-                            keyboardType: TextInputType.emailAddress,
-                            helperText: _emailLocked
-                                ? 'Managed by your sign-in method'
-                                : null,
-                            validator: (value) {
-                              final v = (value ?? '').trim();
-                              if (v.isEmpty) return 'Email is required';
-                              final emailRegex = RegExp(
-                                r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-                              );
-                              if (!emailRegex.hasMatch(v)) {
-                                return 'Enter a valid email';
-                              }
-                              return null;
-                            },
-                          ),
-                          if ((_pendingEmailVerificationEmail ?? '').isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(14),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFFFBEB),
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color: const Color(0xFFF59E0B).withValues(
-                                      alpha: 0.35,
-                                    ),
-                                  ),
-                                ),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Padding(
-                                      padding: EdgeInsets.only(top: 1),
-                                      child: Icon(
-                                        Icons.mark_email_unread_outlined,
-                                        size: 18,
-                                        color: Color(0xFFB45309),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        'Verification pending for ${_pendingEmailVerificationEmail!}. After verifying, log out and sign in again if you want to use this email for login or make another email change.',
-                                        style: const TextStyle(
-                                          fontSize: 12.5,
-                                          height: 1.4,
-                                          color: Color(0xFF92400E),
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          _buildTextField(
-                            phoneController,
-                            'Phone Number',
-                            enabled: !_phoneLocked,
-                            keyboardType: TextInputType.phone,
-                            helperText: _phoneLocked
-                                ? 'Managed by your sign-in method'
-                                : null,
-                            validator: (value) {
-                              final v = (value ?? '').trim();
-                              if (v.isEmpty) return 'Phone number is required';
-                              if (v.length < 10) {
-                                return 'Enter a valid phone number';
-                              }
-                              return null;
-                            },
-                          ),
-                          _buildGenderField(),
-                          _buildDobField(),
-                        ],
-                      ),
-                            const SizedBox(height: 16),
-                            _buildSectionCard(
-                        title: 'Location',
-                        subtitle:
-                            'PIN code can help autofill your city and state',
-                        children: [
-                          _buildTextField(
-                            pincodeController,
-                            'Pincode',
-                            keyboardType: TextInputType.number,
-                            helperText: 'Enter a 6-digit PIN code',
-                            validator: (value) {
-                              final v = (value ?? '').trim();
-                              if (v.isEmpty) return 'Pincode is required';
-                              if (v.length != 6) return 'Enter a valid pincode';
-                              return null;
-                            },
-                            onChanged: _onPincodeChanged,
-                            suffixIcon: _isResolvingPincode
-                                ? const Padding(
-                                    padding: EdgeInsets.all(12),
-                                    child: SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.location_searching_rounded,
-                                    color: Color(0xFF6B7280),
-                                  ),
-                          ),
-                          if (_pincodeLookupMessage != null) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              _pincodeLookupMessage!,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color:
-                                    _pincodeLookupMessage!
-                                        .toLowerCase()
-                                        .contains('autofilled')
-                                    ? const Color(0xFF0F766E)
-                                    : const Color(0xFF92400E),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                          ],
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildTextField(
-                                  cityController,
-                                  'City',
-                                  validator: (value) {
-                                    if ((value ?? '').trim().isEmpty) {
-                                      return 'City is required';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _buildTextField(
-                                  stateController,
-                                  'State',
-                                  validator: (value) {
-                                    if ((value ?? '').trim().isEmpty) {
-                                      return 'State is required';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                            const SizedBox(height: 24),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: loading ? null : _handleSavePressed,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF2F3E8F),
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 15),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  elevation: 0,
-                                ),
-                                child: loading
-                                    ? const SizedBox(
-                                        height: 20,
-                                        width: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor: AlwaysStoppedAnimation<Color>(
-                                            Colors.white,
-                                          ),
-                                        ),
-                                      )
-                                    : const Text(
-                                        'Save Changes',
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Keep your details accurate so RankSprint can personalize your exam journey.',
                                         style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w700,
+                                          fontSize: 14,
+                                          color: colorScheme.onSurfaceVariant,
+                                          height: 1.5,
                                         ),
                                       ),
-                              ),
-                            ),
-                          ],
+                                      const SizedBox(height: 18),
+                                      _buildSectionCard(
+                                        title: 'Profile Photo',
+                                        subtitle:
+                                            'Upload a clear profile image up to 2 MB.',
+                                        children: [_buildPhotoEditor()],
+                                      ),
+                                      const SizedBox(height: 16),
+                                      _buildSectionCard(
+                                        title: 'Basic Details',
+                                        subtitle:
+                                            'Your identity and personal information',
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: _buildTextField(
+                                                  firstNameController,
+                                                  'First Name',
+                                                  required: true,
+                                                  validator: (value) {
+                                                    if ((value ?? '')
+                                                        .trim()
+                                                        .isEmpty) {
+                                                      return 'First name is required';
+                                                    }
+                                                    return null;
+                                                  },
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: _buildTextField(
+                                                  middleNameController,
+                                                  'Middle Name',
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          _buildTextField(
+                                            lastNameController,
+                                            'Last Name',
+                                            required: true,
+                                            validator: (value) {
+                                              if ((value ?? '')
+                                                  .trim()
+                                                  .isEmpty) {
+                                                return 'Last name is required';
+                                              }
+                                              return null;
+                                            },
+                                          ),
+                                          _buildTextField(
+                                            emailController,
+                                            'Email ID',
+                                            enabled: !_emailLocked,
+                                            keyboardType:
+                                                TextInputType.emailAddress,
+                                            helperText: _emailLocked
+                                                ? 'Managed by your sign-in method'
+                                                : null,
+                                            validator: (value) {
+                                              final v = (value ?? '').trim();
+                                              if (v.isEmpty)
+                                                return 'Email is required';
+                                              final emailRegex = RegExp(
+                                                r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                                              );
+                                              if (!emailRegex.hasMatch(v)) {
+                                                return 'Enter a valid email';
+                                              }
+                                              return null;
+                                            },
+                                          ),
+                                          if ((_pendingEmailVerificationEmail ??
+                                                  '')
+                                              .isNotEmpty)
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                bottom: 12,
+                                              ),
+                                              child: Container(
+                                                width: double.infinity,
+                                                padding: const EdgeInsets.all(
+                                                  14,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(
+                                                    0xFFFFFBEB,
+                                                  ),
+                                                  borderRadius:
+                                                      BorderRadius.circular(16),
+                                                  border: Border.all(
+                                                    color: const Color(
+                                                      0xFFF59E0B,
+                                                    ).withValues(alpha: 0.35),
+                                                  ),
+                                                ),
+                                                child: Row(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    const Padding(
+                                                      padding: EdgeInsets.only(
+                                                        top: 1,
+                                                      ),
+                                                      child: Icon(
+                                                        Icons
+                                                            .mark_email_unread_outlined,
+                                                        size: 18,
+                                                        color: Color(
+                                                          0xFFB45309,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 10),
+                                                    Expanded(
+                                                      child: Text(
+                                                        'Verification pending for ${_pendingEmailVerificationEmail!}. After verifying, log out and sign in again if you want to use this email for login or make another email change.',
+                                                        style: const TextStyle(
+                                                          fontSize: 12.5,
+                                                          height: 1.4,
+                                                          color: Color(
+                                                            0xFF92400E,
+                                                          ),
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          _buildTextField(
+                                            phoneController,
+                                            'Phone Number',
+                                            enabled: !_phoneLocked,
+                                            keyboardType: TextInputType.phone,
+                                            helperText: _phoneLocked
+                                                ? 'Managed by your sign-in method'
+                                                : null,
+                                            validator: (value) {
+                                              final v = (value ?? '').trim();
+                                              if (v.isEmpty)
+                                                return 'Phone number is required';
+                                              if (v.length < 10) {
+                                                return 'Enter a valid phone number';
+                                              }
+                                              return null;
+                                            },
+                                          ),
+                                          _buildGenderField(),
+                                          _buildDobField(),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 16),
+                                      _buildSectionCard(
+                                        title: 'Schooling & Preferences',
+                                        subtitle:
+                                            'Help us tailor exams and content to your academic journey',
+                                        children: [
+                                          if (_schoolingOptionsError != null)
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                bottom: 12,
+                                              ),
+                                              child: Text(
+                                                _schoolingOptionsError!,
+                                                style: const TextStyle(
+                                                  color: Color(0xFFB45309),
+                                                  fontSize: 12.5,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                          _buildSchoolSelector(),
+                                          if (selectedSchool == _otherOption)
+                                            _buildTextField(
+                                              schoolOtherController,
+                                              'Enter School Name',
+                                              required: true,
+                                            ),
+                                          _buildGradeField(),
+                                          _buildMediumField(),
+                                          _buildExamPreparationField(),
+                                          if (_selectedExamIds.contains(
+                                            _otherOption,
+                                          ))
+                                            _buildTextField(
+                                              examOtherController,
+                                              'Enter Exam Name',
+                                              required: true,
+                                            ),
+                                          _buildSourceField(),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 16),
+                                      _buildSectionCard(
+                                        title: 'Location',
+                                        subtitle:
+                                            'PIN code can help autofill your city and state',
+                                        children: [
+                                          _buildTextField(
+                                            pincodeController,
+                                            'Pincode',
+                                            keyboardType: TextInputType.number,
+                                            helperText:
+                                                'Enter a 6-digit PIN code',
+                                            validator: (value) {
+                                              final v = (value ?? '').trim();
+                                              if (v.isEmpty)
+                                                return 'Pincode is required';
+                                              if (v.length != 6)
+                                                return 'Enter a valid pincode';
+                                              return null;
+                                            },
+                                            onChanged: _onPincodeChanged,
+                                            suffixIcon: _isResolvingPincode
+                                                ? const Padding(
+                                                    padding: EdgeInsets.all(12),
+                                                    child: SizedBox(
+                                                      width: 18,
+                                                      height: 18,
+                                                      child:
+                                                          CircularProgressIndicator(
+                                                            strokeWidth: 2,
+                                                          ),
+                                                    ),
+                                                  )
+                                                : const Icon(
+                                                    Icons
+                                                        .location_searching_rounded,
+                                                    color: Color(0xFF6B7280),
+                                                  ),
+                                          ),
+                                          if (_pincodeLookupMessage !=
+                                              null) ...[
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              _pincodeLookupMessage!,
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color:
+                                                    _pincodeLookupMessage!
+                                                        .toLowerCase()
+                                                        .contains('autofilled')
+                                                    ? const Color(0xFF0F766E)
+                                                    : const Color(0xFF92400E),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 12),
+                                          ],
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: _buildTextField(
+                                                  cityController,
+                                                  'City',
+                                                  validator: (value) {
+                                                    if ((value ?? '')
+                                                        .trim()
+                                                        .isEmpty) {
+                                                      return 'City is required';
+                                                    }
+                                                    return null;
+                                                  },
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: _buildTextField(
+                                                  stateController,
+                                                  'State',
+                                                  validator: (value) {
+                                                    if ((value ?? '')
+                                                        .trim()
+                                                        .isEmpty) {
+                                                      return 'State is required';
+                                                    }
+                                                    return null;
+                                                  },
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 24),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton(
+                                          onPressed: loading
+                                              ? null
+                                              : _handleSavePressed,
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(
+                                              0xFF2F3E8F,
+                                            ),
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 15,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                            ),
+                                            elevation: 0,
+                                          ),
+                                          child: loading
+                                              ? const SizedBox(
+                                                  height: 20,
+                                                  width: 20,
+                                                  child: CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                    valueColor:
+                                                        AlwaysStoppedAnimation<
+                                                          Color
+                                                        >(Colors.white),
+                                                  ),
+                                                )
+                                              : const Text(
+                                                  'Save Changes',
+                                                  style: TextStyle(
+                                                    fontSize: 15,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
@@ -1473,10 +1792,10 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                   color: Colors.black.withValues(alpha: 0.12),
                   child: Center(
                     child: DecoratedBox(
-                                        decoration: BoxDecoration(
-                                          color: colorScheme.surface,
-                                          borderRadius: BorderRadius.all(Radius.circular(18)),
-                                        ),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surface,
+                        borderRadius: BorderRadius.all(Radius.circular(18)),
+                      ),
                       child: Padding(
                         padding: EdgeInsets.symmetric(
                           horizontal: 20,
@@ -1488,7 +1807,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                             SizedBox(
                               width: 24,
                               height: 24,
-                              child: CircularProgressIndicator(strokeWidth: 2.4),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.4,
+                              ),
                             ),
                             SizedBox(height: 12),
                             Text(
@@ -1587,7 +1908,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ElevatedButton.icon(
-                onPressed: loading || _isProcessingPhoto ? null : _pickProfilePhoto,
+                onPressed: loading || _isProcessingPhoto
+                    ? null
+                    : _pickProfilePhoto,
                 icon: _isProcessingPhoto
                     ? const SizedBox(
                         width: 16,
@@ -1603,8 +1926,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
               if (_selectedPhotoBytes != null ||
                   ((_photoUrl ?? '').isNotEmpty && !_removePhoto))
                 TextButton(
-                  onPressed:
-                      loading || _isProcessingPhoto ? null : _removeProfilePhoto,
+                  onPressed: loading || _isProcessingPhoto
+                      ? null
+                      : _removeProfilePhoto,
                   child: const Text('Remove Photo'),
                 ),
               const SizedBox(height: 4),
@@ -1658,7 +1982,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: DropdownButtonFormField<String>(
-        value: _genderOptions.contains(gender) ? gender : null,
+        initialValue: _genderOptions.contains(gender) ? gender : null,
         isExpanded: true,
         menuMaxHeight: 220,
         icon: Container(
@@ -1681,33 +2005,34 @@ class _EditProfileScreenState extends State<EditProfileScreen>
           fontWeight: FontWeight.w600,
           color: colorScheme.onSurface,
         ),
-        decoration: _inputDecoration(
-          'Gender',
-          helperText: 'Choose the option that best describes you',
-          suffixIcon: const Icon(
-            Icons.arrow_drop_down_rounded,
-            color: Colors.transparent,
-          ),
-        ).copyWith(
-          prefixIcon: Padding(
-            padding: EdgeInsets.only(left: 14, right: 8),
-            child: Icon(
-              Icons.person_outline_rounded,
-              size: 20,
-              color: colorScheme.onSurfaceVariant,
+        decoration:
+            _inputDecoration(
+              'Gender',
+              helperText: 'Choose the option that best describes you',
+              suffixIcon: const Icon(
+                Icons.arrow_drop_down_rounded,
+                color: Colors.transparent,
+              ),
+            ).copyWith(
+              prefixIcon: Padding(
+                padding: EdgeInsets.only(left: 14, right: 8),
+                child: Icon(
+                  Icons.person_outline_rounded,
+                  size: 20,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              prefixIconConstraints: const BoxConstraints(
+                minWidth: 44,
+                minHeight: 20,
+              ),
+              hintText: 'Select Gender',
+              hintStyle: TextStyle(
+                fontSize: 15,
+                color: colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+              ),
             ),
-          ),
-          prefixIconConstraints: const BoxConstraints(
-            minWidth: 44,
-            minHeight: 20,
-          ),
-          hintText: 'Select Gender',
-          hintStyle: TextStyle(
-            fontSize: 15,
-            color: colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
         items: _genderOptions
             .map(
               (option) => DropdownMenuItem<String>(
@@ -1778,6 +2103,426 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     );
   }
 
+  Widget _buildSchoolSelector() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: _loadingSchoolingOptions ? null : _pickSchool,
+        borderRadius: BorderRadius.circular(16),
+        child: InputDecorator(
+          decoration: _inputDecoration(
+            'School Name *',
+            helperText: 'Choose from the admin-managed school list',
+            suffixIcon: _loadingSchoolingOptions
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : const Icon(Icons.search_rounded),
+          ),
+          child: Text(
+            (selectedSchool ?? '').isNotEmpty
+                ? selectedSchool!
+                : 'Select School',
+            style: TextStyle(
+              fontSize: 15,
+              color: (selectedSchool ?? '').isNotEmpty
+                  ? Theme.of(context).colorScheme.onSurface
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGradeField() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        initialValue: _gradeOptions.contains(selectedGrade)
+            ? selectedGrade
+            : null,
+        isExpanded: true,
+        decoration: _inputDecoration('Class/Grade *').copyWith(
+          hintText: 'Select Class/Grade',
+          hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+        ),
+        items: _gradeOptions
+            .map(
+              (grade) =>
+                  DropdownMenuItem<String>(value: grade, child: Text(grade)),
+            )
+            .toList(),
+        onChanged: (value) {
+          setState(() {
+            selectedGrade = value;
+            _gradeRecommendedExamIds = _recommendedExamIdsForGrade(value ?? '');
+          });
+        },
+      ),
+    );
+  }
+
+  Widget _buildMediumField() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        initialValue: _mediumOptions.contains(selectedMedium)
+            ? selectedMedium
+            : null,
+        isExpanded: true,
+        decoration: _inputDecoration(
+          'Medium *',
+        ).copyWith(hintText: 'Select Medium'),
+        items: _mediumOptions
+            .map(
+              (medium) =>
+                  DropdownMenuItem<String>(value: medium, child: Text(medium)),
+            )
+            .toList(),
+        onChanged: (value) => setState(() => selectedMedium = value),
+      ),
+    );
+  }
+
+  Widget _buildExamPreparationField() {
+    final allVisibleExamIds = <String>{
+      ..._selectedExamIds.where((id) => id != _otherOption),
+      ..._gradeRecommendedExamIds,
+    }.toList();
+    final selectedNames = allVisibleExamIds
+        .map(_examNameForId)
+        .where((name) => name.isNotEmpty)
+        .toList();
+    if (_selectedExamIds.contains(_otherOption)) {
+      selectedNames.add(
+        examOtherController.text.trim().isNotEmpty
+            ? 'Other: ${examOtherController.text.trim()}'
+            : 'Other',
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: _pickExams,
+        borderRadius: BorderRadius.circular(16),
+        child: InputDecorator(
+          decoration: _inputDecoration(
+            'What Exam Are You Preparing For? *',
+            helperText:
+                'Selected exams stay checked. Grade-matched exams also appear here.',
+            suffixIcon: const Icon(Icons.checklist_rounded),
+          ),
+          child: selectedNames.isEmpty
+              ? Text(
+                  'Select Exam(s)',
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                )
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: selectedNames
+                      .map(
+                        (name) => Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.primaryContainer,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            name,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onPrimaryContainer,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSourceField() {
+    final options = _sourceOptions.take(4).toList();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'How Did You Get to Know About the App? *',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          if (options.isEmpty)
+            const Text(
+              'No discovery source options available yet.',
+              style: TextStyle(fontSize: 12.5, color: Color(0xFF6B7280)),
+            )
+          else
+            RadioGroup<String>(
+              groupValue: selectedSource,
+              onChanged: (value) => setState(() => selectedSource = value),
+              child: Column(
+                children: options
+                    .map(
+                      (option) => RadioListTile<String>(
+                        value: option,
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: Text(option),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickSchool() async {
+    final options = _schoolOptions.isEmpty
+        ? <String>[_otherOption]
+        : <String>[
+            ..._schoolOptions,
+            if (!_schoolOptions.contains(_otherOption)) _otherOption,
+          ];
+    final value = await _showSearchableSingleSelectSheet(
+      title: 'Select School',
+      options: options,
+      selectedValue: selectedSchool,
+      searchHint: 'Search schools',
+    );
+    if (value == null || !mounted) return;
+    setState(() {
+      selectedSchool = value;
+      if (value != _otherOption) {
+        schoolOtherController.clear();
+      }
+    });
+  }
+
+  Future<void> _pickExams() async {
+    final result = await showModalBottomSheet<_ExamSelectionResult>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        final searchController = TextEditingController();
+        var tempSelected = <String>{..._selectedExamIds};
+        var query = '';
+
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final filteredExams = _allExamOptions.where((exam) {
+              if (query.isEmpty) return true;
+              final haystack = '${exam.name} ${exam.description}'.toLowerCase();
+              return haystack.contains(query.toLowerCase());
+            }).toList();
+
+            Widget buildExamTile(
+              String examId,
+              String title, {
+              bool recommended = false,
+            }) {
+              final checked = tempSelected.contains(examId);
+              return CheckboxListTile(
+                value: checked,
+                contentPadding: EdgeInsets.zero,
+                title: Text(title),
+                subtitle: recommended
+                    ? const Text('Suggested for the selected grade')
+                    : null,
+                onChanged: (_) {
+                  setSheetState(() {
+                    if (checked) {
+                      tempSelected.remove(examId);
+                    } else {
+                      tempSelected.add(examId);
+                    }
+                  });
+                },
+              );
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  top: 12,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: searchController,
+                      decoration: const InputDecoration(
+                        labelText: 'Search Exams',
+                        prefixIcon: Icon(Icons.search_rounded),
+                      ),
+                      onChanged: (value) =>
+                          setSheetState(() => query = value.trim()),
+                    ),
+                    const SizedBox(height: 12),
+                    Flexible(
+                      child: ListView(
+                        shrinkWrap: true,
+                        children: [
+                          ...filteredExams.map(
+                            (exam) => buildExamTile(
+                              exam.id,
+                              exam.name,
+                              recommended: _gradeRecommendedExamIds.contains(
+                                exam.id,
+                              ),
+                            ),
+                          ),
+                          buildExamTile(_otherOption, _otherOption),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).pop(
+                            _ExamSelectionResult(
+                              selectedExamIds: tempSelected.toList(),
+                            ),
+                          );
+                        },
+                        child: const Text('Apply'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null || !mounted) return;
+    setState(() {
+      _selectedExamIds = result.selectedExamIds.toSet().toList()..sort();
+      if (!_selectedExamIds.contains(_otherOption)) {
+        examOtherController.clear();
+      }
+    });
+  }
+
+  Future<String?> _showSearchableSingleSelectSheet({
+    required String title,
+    required List<String> options,
+    required String? selectedValue,
+    required String searchHint,
+  }) async {
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        final searchController = TextEditingController();
+        var query = '';
+
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final filteredOptions = options.where((option) {
+              if (query.isEmpty) return true;
+              return option.toLowerCase().contains(query.toLowerCase());
+            }).toList();
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  top: 8,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: searchController,
+                      decoration: InputDecoration(
+                        labelText: searchHint,
+                        prefixIcon: const Icon(Icons.search_rounded),
+                      ),
+                      onChanged: (value) =>
+                          setSheetState(() => query = value.trim()),
+                    ),
+                    const SizedBox(height: 12),
+                    Flexible(
+                      child: ListView(
+                        shrinkWrap: true,
+                        children: filteredOptions
+                            .map(
+                              (option) => ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(option),
+                                trailing: option == selectedValue
+                                    ? const Icon(Icons.check_rounded)
+                                    : null,
+                                onTap: () => Navigator.of(context).pop(option),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _examNameForId(String examId) {
+    if (examId == _otherOption) return _otherOption;
+    for (final exam in _allExamOptions) {
+      if (exam.id == examId) return exam.name;
+    }
+    return examId;
+  }
+
   Widget _buildTextField(
     TextEditingController controller,
     String label, {
@@ -1825,14 +2570,8 @@ class _EditProfileScreenState extends State<EditProfileScreen>
         color: colorScheme.primary,
         fontWeight: FontWeight.w700,
       ),
-      helperStyle: TextStyle(
-        color: colorScheme.onSurfaceVariant,
-        fontSize: 12,
-      ),
-      errorStyle: const TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.w600,
-      ),
+      helperStyle: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
+      errorStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
       filled: true,
       fillColor: colorScheme.surfaceContainerLow,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -1960,4 +2699,61 @@ class _ResolvedNameParts {
   final String firstName;
   final String middleName;
   final String lastName;
+}
+
+class _ExamSelectionResult {
+  const _ExamSelectionResult({required this.selectedExamIds});
+
+  final List<String> selectedExamIds;
+}
+
+class _ExamOption {
+  const _ExamOption({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.gradeTags,
+  });
+
+  factory _ExamOption.fromFirestore(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data();
+    final gradeTags = <String>{};
+    for (final key in const [
+      'applicableGrades',
+      'grades',
+      'gradeLevels',
+      'classGrades',
+      'classes',
+      'standards',
+    ]) {
+      final raw = data[key];
+      if (raw is Iterable) {
+        for (final item in raw) {
+          final value = item.toString().trim();
+          if (value.isNotEmpty) {
+            gradeTags.add(value);
+          }
+        }
+      }
+    }
+
+    return _ExamOption(
+      id: doc.id,
+      name: (data['name'] ?? doc.id).toString().trim(),
+      description: (data['description'] ?? '').toString().trim(),
+      gradeTags: gradeTags,
+    );
+  }
+
+  final String id;
+  final String name;
+  final String description;
+  final Set<String> gradeTags;
+
+  bool isApplicableToGrade(String grade) {
+    if (gradeTags.isEmpty) return false;
+    return gradeTags.contains(grade);
+  }
 }
