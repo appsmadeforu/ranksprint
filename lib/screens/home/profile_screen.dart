@@ -16,8 +16,8 @@ import '../../services/user_exam_preference_service.dart';
 import '../../widgets/offline_state.dart';
 import '../../widgets/theme_mode_tile.dart';
 import '../../widgets/top_header.dart';
-import 'edit_profile_screen.dart';
 import '../auth/login_screen.dart';
+import 'edit_profile_screen.dart';
 import 'test_history_screen.dart';
 import 'performance_trends_screen.dart';
 
@@ -41,14 +41,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     imageCache.clearLiveImages();
   }
 
-  Future<void> _forceLogoutAndGoToLogin(BuildContext context) async {
+  Future<void> _forceLogoutAndGoToLogin() async {
     await SingleDeviceSessionService.signOutToLogin();
     await _clearAppCache();
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
   }
 
   @override
@@ -295,7 +290,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         await AuthAccountDeletionService.deleteCurrentAccount();
       }
 
-      await _forceLogoutAndGoToLogin(context);
+      await _forceLogoutAndGoToLogin();
     } on FirebaseAuthException catch (e) {
       if (mounted) {
         final msg = e.code == 'requires-recent-login'
@@ -307,12 +302,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
 
       if (e.code == 'requires-recent-login') {
-        await _forceLogoutAndGoToLogin(context);
+        await _forceLogoutAndGoToLogin();
       }
     } on Exception catch (e) {
-      final message = e.toString().contains('requires-recent-login')
+      final errorText = e.toString();
+      final message = errorText.contains('requires-recent-login')
           ? 'For security, please log in again and retry account deletion.'
-          : 'Error deleting account: $e';
+          : errorText.contains('account-deletion-incomplete')
+              ? 'Account deletion could not be completed. Please try again in a moment.'
+              : errorText.toLowerCase().contains('timeout')
+                  ? 'Deleting your account is taking too long right now. Please try again.'
+                  : 'Error deleting account: $e';
       if (mounted) {
         ScaffoldMessenger.of(
           context,

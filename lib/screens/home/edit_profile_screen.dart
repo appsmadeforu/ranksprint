@@ -566,8 +566,10 @@ class _EditProfileScreenState extends State<EditProfileScreen>
 
     if (dob != null && !_isAllowedDob(dob!)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Date of birth must be on or before 01/01/2007.'),
+        SnackBar(
+          content: Text(
+            'Date of birth must be on or before ${_formatDate(_latestAllowedDob)}.',
+          ),
         ),
       );
       return;
@@ -2655,7 +2657,8 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   }
 
   DateTime get _latestAllowedDob {
-    return DateTime(2007, 1, 1);
+    final today = DateTime.now();
+    return DateTime(today.year - 8, today.month, today.day);
   }
 
   bool _isAllowedDob(DateTime value) {

@@ -47,7 +47,9 @@ class _TopHeaderState extends State<TopHeader> {
       nav.switchToTab(0);
     } else {
       Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const MainNavigation(initialIndex: 0)),
+        MaterialPageRoute(
+          builder: (_) => const MainNavigation(initialIndex: 0),
+        ),
         (route) => false,
       );
     }
@@ -124,7 +126,11 @@ class _TopHeaderState extends State<TopHeader> {
           Expanded(
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
-               onTap: widget.showBackButton ? null : (widget.enableTitleNavigation ? () => _goHome(context) : null),
+              onTap: widget.showBackButton
+                  ? null
+                  : (widget.enableTitleNavigation
+                        ? () => _goHome(context)
+                        : null),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                 child: FittedBox(
@@ -135,11 +141,11 @@ class _TopHeaderState extends State<TopHeader> {
                       children: [
                         TextSpan(
                           text: 'RankSprintAI',
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 19,
                             fontWeight: FontWeight.w800,
                             letterSpacing: -0.1,
-                            color: colorScheme.primary,
+                            color: Color(0xFF2F3E8F),
                           ),
                         ),
                       ],
@@ -156,7 +162,7 @@ class _TopHeaderState extends State<TopHeader> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                   if (widget.showExamDropdown)
+                  if (widget.showExamDropdown)
                     Flexible(
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 220),
@@ -176,7 +182,9 @@ class _TopHeaderState extends State<TopHeader> {
                                   )
                                 : widget.userExamIds;
 
-                            return FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                            return FutureBuilder<
+                              QuerySnapshot<Map<String, dynamic>>
+                            >(
                               future: _activeExamsFuture,
                               builder: (context, snapshot) {
                                 if (!snapshot.hasData) {
@@ -193,56 +201,60 @@ class _TopHeaderState extends State<TopHeader> {
                                 final unlockedExamIds = unlockedExams
                                     .map((exam) => exam.id)
                                     .toList();
-                                final dropdownItems = <DropdownMenuItem<String>>[
-                                  ...unlockedExams.map((exam) {
-                                    final label =
-                                        (exam['name'] ?? exam.id).toString();
-                                    return DropdownMenuItem<String>(
-                                      value: exam.id,
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              label,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w600,
-                                                color: colorScheme.onSurface,
+                                final dropdownItems =
+                                    <DropdownMenuItem<String>>[
+                                      ...unlockedExams.map((exam) {
+                                        final label = (exam['name'] ?? exam.id)
+                                            .toString();
+                                        return DropdownMenuItem<String>(
+                                          value: exam.id,
+                                          child: Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  label,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.w600,
+                                                    color:
+                                                        colorScheme.onSurface,
+                                                  ),
+                                                ),
                                               ),
-                                            ),
+                                            ],
                                           ),
-                                        ],
-                                      ),
-                                    );
-                                  }),
-                                  DropdownMenuItem<String>(
-                                    value: _addExamMenuValue,
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          Icons.add_circle_outline_rounded,
-                                          size: 18,
-                                          color: colorScheme.primary,
-                                        ),
-                                        SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            'Add exam',
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w700,
+                                        );
+                                      }),
+                                      DropdownMenuItem<String>(
+                                        value: _addExamMenuValue,
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.add_circle_outline_rounded,
+                                              size: 18,
                                               color: colorScheme.primary,
                                             ),
-                                          ),
+                                            SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                'Add exam',
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: colorScheme.primary,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      ],
-                                    ),
-                                  ),
-                                ];
+                                      ),
+                                    ];
                                 final requestedExamId =
-                                    _pendingSelectedExamId ?? widget.selectedExamId;
+                                    _pendingSelectedExamId ??
+                                    widget.selectedExamId;
                                 final validSelectedExamId =
                                     unlockedExamIds.contains(requestedExamId)
                                     ? requestedExamId
@@ -339,12 +351,12 @@ class _TopHeaderState extends State<TopHeader> {
                         ),
                       ),
                     ),
-                   if (widget.showExamDropdown) const SizedBox(width: 12),
-                   if (widget.trailingAction != null) ...[
-                     widget.trailingAction!,
-                     const SizedBox(width: 8),
-                   ],
-                   if (widget.showNotificationBell)
+                  if (widget.showExamDropdown) const SizedBox(width: 12),
+                  if (widget.trailingAction != null) ...[
+                    widget.trailingAction!,
+                    const SizedBox(width: 8),
+                  ],
+                  if (widget.showNotificationBell)
                     StreamBuilder<QuerySnapshot>(
                       stream: FirebaseAuth.instance.currentUser == null
                           ? const Stream.empty()
