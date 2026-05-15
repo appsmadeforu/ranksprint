@@ -410,7 +410,9 @@ class _PyqScreenState extends State<PyqScreen> {
                                                                     : Icons.menu_book,
                                                                 color: isLocked
                                                                     ? colorScheme.onSurfaceVariant
-                                                                    : colorScheme.primary,
+                                                                    : Theme.of(context).brightness == Brightness.dark
+                                                                        ? const Color(0xFF7EA6FF) // light blue for dark mode
+                                                                        : colorScheme.primary,
                                                               ),
                                                            ),
                                                            const SizedBox(width: 16),

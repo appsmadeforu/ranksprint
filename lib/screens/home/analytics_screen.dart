@@ -263,13 +263,40 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                             child: TabBar(
                               controller: _tabController,
                               indicator: BoxDecoration(
-                                color: colorScheme.primary,
+                                gradient: Theme.of(context).brightness == Brightness.dark
+                                    ? const LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          Color(0xFF7EA6FF),
+                                          Color(0xFF5B84F1),
+                                        ],
+                                      )
+                                    : LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          colorScheme.primary,
+                                          colorScheme.primary,
+                                        ],
+                                      ),
                                 borderRadius: const BorderRadius.all(
                                   Radius.circular(14),
                                 ),
+                                boxShadow: Theme.of(context).brightness == Brightness.dark
+                                    ? [
+                                        BoxShadow(
+                                          color: const Color(0xFF7EA6FF).withValues(alpha: 0.28),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ]
+                                    : null,
                               ),
                               indicatorSize: TabBarIndicatorSize.tab,
-                              labelColor: colorScheme.onPrimary,
+                              labelColor: Theme.of(context).brightness == Brightness.dark
+                                  ? const Color(0xFF0F172A)
+                                  : colorScheme.onPrimary,
                               unselectedLabelColor:
                                   colorScheme.onSurfaceVariant,
                               dividerColor: Colors.transparent,

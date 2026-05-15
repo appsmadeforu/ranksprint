@@ -452,10 +452,41 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                   child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 7),
                   decoration: BoxDecoration(
+                    gradient: s
+                        ? (Theme.of(context).brightness == Brightness.dark
+                            ? const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Color(0xFF7EA6FF),
+                                  Color(0xFF5B84F1),
+                                ],
+                              )
+                            : LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  colorScheme.primary,
+                                  colorScheme.primary,
+                                ],
+                              ))
+                        : null,
                     color: s
-                        ? colorScheme.primary
+                        ? null
                         : colorScheme.surfaceContainerLowest,
                     borderRadius: BorderRadius.circular(8),
+                    boxShadow: s &&
+                            Theme.of(context).brightness == Brightness.dark
+                        ? [
+                            BoxShadow(
+                              color: const Color(
+                                0xFF7EA6FF,
+                              ).withValues(alpha: 0.28),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ]
+                        : null,
                   ),
                   child: Text(
                     w.label,
@@ -464,7 +495,9 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                       color: s
-                          ? colorScheme.onPrimary
+                          ? (Theme.of(context).brightness == Brightness.dark
+                              ? const Color(0xFF0F172A)
+                              : colorScheme.onPrimary)
                           : colorScheme.onSurfaceVariant,
                     ),
                   ),
