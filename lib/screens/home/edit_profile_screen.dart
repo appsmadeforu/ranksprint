@@ -222,15 +222,11 @@ class _EditProfileScreenState extends State<EditProfileScreen>
         ((!hasStoredEmail && !hasStoredPhone) || !hasProfileName);
 
     final storedSelectedExams = _stringListFromDynamic(data['selectedExams']);
-    final storedSchool =
-        (data['schoolName'] ?? data['school'] ?? '')
-            .toString()
-            .trim();
+    final storedSchool = (data['schoolName'] ?? data['school'] ?? '')
+        .toString()
+        .trim();
 
-    final storedBoard =
-        (data['educationBoard'] ?? '')
-            .toString()
-            .trim();
+    final storedBoard = (data['educationBoard'] ?? '').toString().trim();
     final storedGrade =
         (data['grade'] ?? data['classGrade'] ?? data['class'] ?? '')
             .toString()
@@ -1147,22 +1143,21 @@ class _EditProfileScreenState extends State<EditProfileScreen>
             toolbarTitle: 'Crop Photo',
             toolbarColor: const Color(0xFF2F3E8F),
             toolbarWidgetColor: Colors.white,
+            statusBarColor: const Color(0xFF2F3E8F),
+            backgroundColor: Colors.black,
             initAspectRatio: CropAspectRatioPreset.square,
-            aspectRatioPresets: const [
-              CropAspectRatioPreset.square,
-              CropAspectRatioPreset.original,
-            ],
-            lockAspectRatio: false,
-            hideBottomControls: false,
+            aspectRatioPresets: const [CropAspectRatioPreset.square],
+            lockAspectRatio: true,
+            hideBottomControls: true,
+            cropFrameStrokeWidth: 2,
+            cropGridStrokeWidth: 1,
+            activeControlsWidgetColor: Colors.white,
           ),
           IOSUiSettings(
             title: 'Crop Photo',
-            aspectRatioLockEnabled: false,
-            resetAspectRatioEnabled: true,
-            aspectRatioPresets: const [
-              CropAspectRatioPreset.square,
-              CropAspectRatioPreset.original,
-            ],
+            aspectRatioLockEnabled: true,
+            resetAspectRatioEnabled: false,
+            aspectRatioPresets: const [CropAspectRatioPreset.square],
           ),
         ],
       );
@@ -2157,20 +2152,14 @@ class _EditProfileScreenState extends State<EditProfileScreen>
             ? selectedBoard
             : null,
         isExpanded: true,
-        decoration: _inputDecoration(
-          'Education Board *',
-        ).copyWith(
+        decoration: _inputDecoration('Education Board *').copyWith(
           hintText: 'Select Education Board',
-          hintStyle: TextStyle(
-            color: colorScheme.onSurfaceVariant,
-          ),
+          hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
         ),
         items: _boardOptions
             .map(
-              (board) => DropdownMenuItem<String>(
-                value: board,
-                child: Text(board),
-              ),
+              (board) =>
+                  DropdownMenuItem<String>(value: board, child: Text(board)),
             )
             .toList(),
         onChanged: (value) {
