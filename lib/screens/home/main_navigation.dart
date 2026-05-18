@@ -106,39 +106,53 @@ class _MainNavigationState extends State<MainNavigation> {
             }),
           ),
         ),
-        bottomNavigationBar: BottomNavigationBar(
-          currentIndex: _index,
-          onTap: (value) => setState(() {
-            _index = value;
-            _visited[value] = true;
-          }),
-          backgroundColor: colorScheme.surface,
-          elevation: 0,
-          selectedItemColor: colorScheme.primary,
-          unselectedItemColor: colorScheme.onSurfaceVariant,
-          type: BottomNavigationBarType.fixed,
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              label: "Home",
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.description_outlined),
-              label: "Tests",
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.menu_book_outlined),
-              label: "PYQs",
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.bar_chart_outlined),
-              label: "Analytics",
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              label: "Profile",
-            ),
-          ],
+        bottomNavigationBar: Container(
+          margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 8,
+            vertical: 8,
+          ),
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: [
+              BoxShadow(
+                color: colorScheme.shadow.withValues(alpha: 0.10),
+                blurRadius: 18,
+                offset: const Offset(0, -4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _navItem(
+                index: 0,
+                icon: Icons.home_outlined,
+                label: "Home",
+              ),
+              _navItem(
+                index: 1,
+                icon: Icons.description_outlined,
+                label: "Tests",
+              ),
+              _navItem(
+                index: 2,
+                icon: Icons.menu_book_outlined,
+                label: "PYQs",
+              ),
+              _navItem(
+                index: 3,
+                icon: Icons.bar_chart_outlined,
+                label: "Analytics",
+              ),
+              _navItem(
+                index: 4,
+                icon: Icons.person_outline,
+                label: "Profile",
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -162,5 +176,114 @@ class _MainNavigationState extends State<MainNavigation> {
       default:
         return const SizedBox.shrink();
     }
+  }
+
+  Widget _navItem({
+    required int index,
+    required IconData icon,
+    required String label,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isSelected = _index == index;
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: GestureDetector(
+          onTap: () {
+            setState(() {
+              _index = index;
+              _visited[index] = true;
+            });
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOut,
+            padding: const EdgeInsets.symmetric(
+              vertical: 10,
+            ),
+            decoration: BoxDecoration(
+              gradient: isSelected
+                  ? (isDark
+                      ? const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFF7EA6FF),
+                            Color(0xFF5B84F1),
+                          ],
+                        )
+                      : LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            colorScheme.primary,
+                            colorScheme.primary.withValues(alpha: 0.88),
+                          ],
+                        ))
+                  : null,
+              color: isSelected
+                  ? null
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: isSelected && isDark
+                  ? [
+                      BoxShadow(
+                        color: const Color(
+                          0xFF7EA6FF,
+                        ).withValues(alpha: 0.25),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ]
+                  : isSelected
+                      ? [
+                          BoxShadow(
+                            color: colorScheme.primary.withValues(alpha: 0.15),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ]
+                      : null,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedScale(
+                  duration: const Duration(milliseconds: 180),
+                  scale: isSelected ? 1.08 : 1,
+                  child: Icon(
+                    icon,
+                    size: 23,
+                    color: isSelected
+                        ? (isDark
+                            ? const Color(0xFF0F172A)
+                            : colorScheme.onPrimary)
+                        : colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: isSelected
+                        ? FontWeight.w700
+                        : FontWeight.w600,
+                    color: isSelected
+                        ? (isDark
+                            ? const Color(0xFF0F172A)
+                            : colorScheme.onPrimary)
+                        : colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

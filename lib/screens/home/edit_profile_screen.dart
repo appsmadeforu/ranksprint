@@ -40,6 +40,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   String? gender;
   DateTime? dob;
   String? selectedSchool;
+  String? selectedBoard;
   String? selectedGrade;
   String? selectedMedium;
   String? selectedSource;
@@ -66,31 +67,15 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   String? _schoolingOptionsError;
   List<String> _schoolOptions = const <String>[];
   List<String> _sourceOptions = const <String>[];
+  List<String> _gradeOptions = const <String>[];
+  List<String> _mediumOptions = const <String>[];
+  List<String> _boardOptions = const <String>[];
   List<_ExamOption> _allExamOptions = const <_ExamOption>[];
   List<String> _selectedExamIds = <String>[];
   List<String> _gradeRecommendedExamIds = <String>[];
 
   static const List<String> _genderOptions = ['Male', 'Female', 'Other'];
-  static const List<String> _gradeOptions = <String>[
-    '1',
-    '2',
-    '3',
-    '4',
-    '5',
-    '6',
-    '7',
-    '8',
-    '9',
-    '10',
-    '11',
-    '12',
-  ];
-  static const List<String> _mediumOptions = <String>[
-    'English',
-    'Hindi',
-    'Marathi',
-    'Semi-English',
-  ];
+
   static const String _otherOption = 'Other';
   static const int _maxProfilePhotoBytes = 2 * 1024 * 1024;
   static const double _pickedPhotoMaxDimension = 1600;
@@ -240,6 +225,8 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     final storedSchool = (data['schoolName'] ?? data['school'] ?? '')
         .toString()
         .trim();
+
+    final storedBoard = (data['educationBoard'] ?? '').toString().trim();
     final storedGrade =
         (data['grade'] ?? data['classGrade'] ?? data['class'] ?? '')
             .toString()
@@ -305,6 +292,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
         dob = null;
       }
       selectedSchool = storedSchool.isEmpty ? null : storedSchool;
+      selectedBoard = storedBoard.isEmpty ? null : storedBoard;
       selectedGrade = storedGrade.isEmpty ? null : storedGrade;
       selectedMedium = storedMedium.isEmpty ? null : storedMedium;
       selectedSource = storedSource.isEmpty ? null : storedSource;
@@ -343,6 +331,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
 
       final schoolOptions = _normalizeOptionList(config['schools']);
       final sourceOptions = _normalizeOptionList(config['sources']);
+      final gradeOptions = _normalizeOptionList(config['classes']);
+      final mediumOptions = _normalizeOptionList(config['mediums']);
+      final boardOptions = _normalizeOptionList(config['boards']);
       final exams =
           examSnapshot.docs
               .map((doc) => _ExamOption.fromFirestore(doc))
@@ -355,6 +346,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       setState(() {
         _schoolOptions = schoolOptions;
         _sourceOptions = sourceOptions;
+        _gradeOptions = gradeOptions;
+        _mediumOptions = mediumOptions;
+        _boardOptions = boardOptions;
         _allExamOptions = exams;
         _gradeRecommendedExamIds = _recommendedExamIdsForGrade(
           selectedGrade ?? '',
@@ -422,6 +416,10 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       _showMessage('Please enter your school name.');
       return false;
     }
+    if ((selectedBoard ?? '').trim().isEmpty) {
+      _showMessage('Please select your education board.');
+      return false;
+    }
     if ((selectedGrade ?? '').trim().isEmpty) {
       _showMessage('Please select your class/grade.');
       return false;
@@ -467,6 +465,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
           ? ''
           : DateTime(dob!.year, dob!.month, dob!.day).millisecondsSinceEpoch,
       'schoolName': selectedSchool ?? '',
+      'educationBoard': selectedBoard ?? '',
       'otherSchoolName': schoolOtherController.text.trim(),
       'grade': selectedGrade ?? '',
       'medium': selectedMedium ?? '',
@@ -563,8 +562,10 @@ class _EditProfileScreenState extends State<EditProfileScreen>
 
     if (dob != null && !_isAllowedDob(dob!)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Date of birth must be on or before 01/01/2007.'),
+        SnackBar(
+          content: Text(
+            'Date of birth must be on or before ${_formatDate(_latestAllowedDob)}.',
+          ),
         ),
       );
       return;
@@ -620,6 +621,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       'state': stateController.text.trim(),
       'gender': gender,
       'schoolName': selectedSchool,
+      'educationBoard': selectedBoard,
       'otherSchoolName': selectedSchool == _otherOption
           ? schoolOtherController.text.trim()
           : '',
@@ -1141,22 +1143,21 @@ class _EditProfileScreenState extends State<EditProfileScreen>
             toolbarTitle: 'Crop Photo',
             toolbarColor: const Color(0xFF2F3E8F),
             toolbarWidgetColor: Colors.white,
+            statusBarColor: const Color(0xFF2F3E8F),
+            backgroundColor: Colors.black,
             initAspectRatio: CropAspectRatioPreset.square,
-            aspectRatioPresets: const [
-              CropAspectRatioPreset.square,
-              CropAspectRatioPreset.original,
-            ],
-            lockAspectRatio: false,
-            hideBottomControls: false,
+            aspectRatioPresets: const [CropAspectRatioPreset.square],
+            lockAspectRatio: true,
+            hideBottomControls: true,
+            cropFrameStrokeWidth: 2,
+            cropGridStrokeWidth: 1,
+            activeControlsWidgetColor: Colors.white,
           ),
           IOSUiSettings(
             title: 'Crop Photo',
-            aspectRatioLockEnabled: false,
-            resetAspectRatioEnabled: true,
-            aspectRatioPresets: const [
-              CropAspectRatioPreset.square,
-              CropAspectRatioPreset.original,
-            ],
+            aspectRatioLockEnabled: true,
+            resetAspectRatioEnabled: false,
+            aspectRatioPresets: const [CropAspectRatioPreset.square],
           ),
         ],
       );
@@ -1623,6 +1624,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                                               ),
                                             ),
                                           _buildSchoolSelector(),
+                                          _buildBoardField(),
                                           if (selectedSchool == _otherOption)
                                             _buildTextField(
                                               schoolOtherController,
@@ -2140,6 +2142,35 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     );
   }
 
+  Widget _buildBoardField() {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        initialValue: _boardOptions.contains(selectedBoard)
+            ? selectedBoard
+            : null,
+        isExpanded: true,
+        decoration: _inputDecoration('Education Board *').copyWith(
+          hintText: 'Select Education Board',
+          hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+        ),
+        items: _boardOptions
+            .map(
+              (board) =>
+                  DropdownMenuItem<String>(value: board, child: Text(board)),
+            )
+            .toList(),
+        onChanged: (value) {
+          setState(() {
+            selectedBoard = value;
+          });
+        },
+      ),
+    );
+  }
+
   Widget _buildGradeField() {
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
@@ -2615,7 +2646,8 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   }
 
   DateTime get _latestAllowedDob {
-    return DateTime(2007, 1, 1);
+    final today = DateTime.now();
+    return DateTime(today.year - 8, today.month, today.day);
   }
 
   bool _isAllowedDob(DateTime value) {

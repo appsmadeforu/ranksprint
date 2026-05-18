@@ -11,7 +11,16 @@ class AuthAccountDeletionService {
     await user.getIdToken(true);
     final callable = FirebaseFunctions.instance.httpsCallable(
       'deleteUserAccount',
+      options: HttpsCallableOptions(timeout: const Duration(seconds: 20)),
     );
-    await callable.call();
+    final result = await callable.call();
+    final data = result.data;
+    if (data is Map && data['success'] == true) {
+      return;
+    }
+    throw FirebaseFunctionsException(
+      code: 'internal',
+      message: 'Account deletion did not complete successfully.',
+    );
   }
 }
